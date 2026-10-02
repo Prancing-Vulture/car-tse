@@ -1,0 +1,13 @@
+name: eval_end_to_end
+sample_rate: 8000
+manifest: stage1_mc_triplets.jsonl
+split: test
+presence_threshold: 0.5
+kws_threshold: 0.5
+enable_asr_eval: false
+
+checkpoints:
+  spex: stage1_spex_mc/best.pt
+  presence: stage2_presence/best.pt
+  kws: stage3_kws/best.pt
+  intent: stage4_intent/best.pt

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "car-tse"
+version = "0.1.0"
+description = "SpEx+ in-car target speaker extraction and voice assistant pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "PyYAML>=6.0",
+    "soundfile>=0.12",
+    "torch>=2.0",
+    "torchmetrics>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "third_party/speaker_extraction_SpEx"]

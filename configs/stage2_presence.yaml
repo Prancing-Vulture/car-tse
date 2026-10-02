@@ -1,0 +1,16 @@
+name: stage2_presence
+sample_rate: 8000
+segment_seconds: 4.0
+manifest: stage2_presence.jsonl
+spex_checkpoint: stage1_spex_mc/best.pt
+presence_threshold: 0.5
+
+model:
+  hidden: 128
+
+train:
+  batch_size: 16
+  max_epochs: 30
+  lr: 1.0e-4
+  grad_clip: 5.0
+  absent_output_penalty: 1.0

@@ -1,0 +1,18 @@
+name: stage3_kws
+sample_rate: 8000
+segment_seconds: 1.0
+manifest_train: stage3_kws_train.jsonl
+manifest_eval: stage3_kws_eval.jsonl
+spex_checkpoint: stage1_spex_mc/best.pt
+presence_checkpoint: stage2_presence/best.pt
+
+model:
+  n_mels: 40
+  channels: [32, 64, 128]
+  num_classes: 36
+
+train:
+  batch_size: 64
+  max_epochs: 40
+  lr: 1.0e-3
+  grad_clip: 5.0

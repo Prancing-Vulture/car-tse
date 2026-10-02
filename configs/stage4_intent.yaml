@@ -1,0 +1,20 @@
+name: stage4_intent
+sample_rate: 8000
+segment_seconds: 2.0
+manifest_train: stage4_intent_train.jsonl
+manifest_eval: stage4_intent_eval.jsonl
+label_map: intent_label_map.json
+spex_checkpoint: stage1_spex_mc/best.pt
+presence_checkpoint: stage2_presence/best.pt
+kws_checkpoint: stage3_kws/best.pt
+
+model:
+  n_mels: 80
+  hidden: 256
+  num_layers: 2
+
+train:
+  batch_size: 32
+  max_epochs: 50
+  lr: 1.0e-3
+  grad_clip: 5.0

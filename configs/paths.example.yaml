@@ -1,0 +1,29 @@
+# Copy to configs/paths.yaml and set absolute paths.
+
+data_root: "D:/car-tse-data"
+checkpoint_root: "checkpoints"
+manifest_root: "manifests"
+log_root: "logs"
+
+# Vendor SpEx+ pretrained checkpoint directory (must contain best.pt.tar)
+spex_pretrained_dir: "checkpoints/spex_pretrained"
+
+corpora:
+  librispeech: "LibriSpeech"
+  librimix: "Libri2Mix"
+  aishell5: "AISHELL-5"
+  wham: "WHAM"
+  speech_commands_v2: "speech_commands_v2"
+  mswc_en: "mswc/en"
+  hey_snips: "hey_snips"
+  fluent_speech_commands: "fluent_speech_commands"
+  slurp: "slurp"
+  custom_incar: "custom_incar"
+
+splits:
+  librispeech_speakers: "manifests/meta/librispeech_speakers.json"
+  intent_label_map: "manifests/meta/intent_label_map.json"
+  kws_label_map: "manifests/meta/kws_label_map.json"
+
+sample_rate: 8000
+segment_seconds: 4.0
