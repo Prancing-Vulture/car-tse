@@ -20,7 +20,10 @@ def collect_speakers(librispeech_root: Path) -> dict[str, list[str]]:
         parts = flac.relative_to(librispeech_root).parts
         if len(parts) < 3:
             continue
-        spk = parts[0]
+        # LibriSpeech normally has a subset directory before the speaker id:
+        # ``train-clean-100/<speaker>/<chapter>/<utterance>.flac``.  Also
+        # support a corpus root that already points at one subset.
+        spk = parts[1] if parts[0].startswith(("train-", "dev-", "test-")) else parts[0]
         speakers.setdefault(spk, []).append(str(flac))
     return speakers
 

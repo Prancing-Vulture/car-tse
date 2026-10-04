@@ -1,0 +1,31 @@
+name: stage4_intent_cavemove_cabin
+sample_rate: 16000
+segment_seconds: 2.0
+manifest_train: stage4_cavemove_intent.jsonl
+manifest_eval: stage4_cavemove_intent.jsonl
+label_map: intent_label_map.json
+wake_word: marvin
+cabin_noise: true
+cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
+cabin_noise_cache_size: 32
+cabin_noise_cache_dir: data/cache/cavemove_16k
+audio_cache_size: 0
+waveform_cache_dir: data/cache/stage4_intent_16k
+waveform_cache_includes_cabin_noise: true
+
+model:
+  n_mels: 80
+  hidden: 256
+  num_layers: 2
+
+train:
+  batch_size: 512
+  val_batch_size: 512
+  max_epochs: 12
+  patience: 3
+  lr: 1.0e-3
+  grad_clip: 5.0
+  amp: false
+  balanced_sampler: true
+  num_workers: 0
+  prefetch_factor: 2

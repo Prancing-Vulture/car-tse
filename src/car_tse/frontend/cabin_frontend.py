@@ -26,6 +26,15 @@ class CabinFrontend(nn.Module):
             nn.ReLU(),
             nn.Conv1d(spatial_channels, 1, kernel_size=5, padding=2),
         )
+        # Start from a safe, usable baseline.  A randomly initialized front
+        # end would destroy the signal seen by a pretrained SpEx+ backbone on
+        # the first update.  The residual branches therefore start at zero,
+        # while the direct path is the same mean-pool baseline used in the
+        # noisy transfer evaluation.
+        nn.init.zeros_(self.ec[-1].weight)
+        nn.init.zeros_(self.ec[-1].bias)
+        nn.init.zeros_(self.spatial[-1].weight)
+        nn.init.zeros_(self.spatial[-1].bias)
 
     def forward(
         self,
@@ -41,5 +50,5 @@ class CabinFrontend(nn.Module):
         ec_in = torch.cat([multichannel, ref], dim=1)
         residual = self.ec(ec_in)
         enhanced = multichannel - residual
-        mono = self.spatial(enhanced).squeeze(1)
+        mono = multichannel.mean(dim=1) + self.spatial(enhanced).squeeze(1)
         return mono

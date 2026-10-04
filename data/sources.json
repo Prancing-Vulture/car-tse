@@ -1,0 +1,93 @@
+{
+  "purpose": "Dataset provenance and local acquisition record for the car-TSE target-speaker extraction pipeline.",
+  "selection": [
+    {
+      "name": "AISHELL-5",
+      "role": "real in-car speech, four-channel far-field audio, near-field references, AEC references, and cabin noise",
+      "source": "https://www.openslr.org/159/",
+      "license": "CC BY-SA 4.0",
+      "local_root": "data/raw/aishell5",
+      "archives": [
+        {"file": "Dev_full.tar.gz", "bytes": 1916430826, "status": "complete"},
+        {"file": "Eval1_full.tar.gz", "bytes": 1727013906, "status": "complete"},
+        {"file": "Eval2_full.tar.gz", "bytes": 1885457834, "status": "complete"},
+        {"file": "noise_full.tar.gz", "bytes": 13361773095, "status": "complete"},
+        {"file": "train_full.tar.gz", "bytes": 54598541447, "status": "complete"},
+        {"file": "train.tar.gz.partial", "status": "superseded_partial_resume_only"}
+      ]
+    },
+    {
+      "name": "CAVEMOVE",
+      "role": "multichannel car impulse responses and driving-condition noise for acoustic augmentation",
+      "source": "https://doi.org/10.5281/zenodo.13594243",
+      "repository": "https://github.com/SPL-FORTH-ICS/CAVEMOVE",
+      "license": "CC BY 4.0",
+      "local_root": "data/raw/cavemove",
+      "archives": [
+        {"file": "cavemove_dataset_full.zip", "bytes": 2917523835, "md5": "f23b49d284878337fba4fe5169460d67", "status": "complete_verified"},
+        {"file": "Documentation.pdf", "bytes": 7213365, "md5": "ef87365182bac1efe25f6c4d7befa321", "status": "complete"}
+      ]
+    },
+    {
+      "name": "LibriSpeech",
+      "role": "clean enrollment and target speech for speaker-disjoint extraction training",
+      "source": "https://www.openslr.org/12/",
+      "license": "CC BY 4.0",
+      "local_root": "data/raw/librispeech",
+      "archives": [
+        {"file": "dev-clean.tar.gz", "bytes": 337926286, "md5": "42e2234ba48799c1f50f24a7926300a1", "status": "complete"},
+        {"file": "test-clean.tar.gz", "bytes": 346663984, "md5": "32fa31d27d2e1cad72775fee3f4849a9", "status": "complete"},
+        {"file": "train-clean-100_fixed.tar.gz", "bytes": 6387309499, "md5": "2a93770f6d5c6c964bc36631d331a522", "status": "complete_verified"}
+      ]
+    },
+    {
+      "name": "LibriMix generator",
+      "role": "reproducible clean/noisy two-speaker mixtures; local bootstrap generator is used to avoid the full multi-hundred-GB expansion",
+      "source": "https://github.com/JorisCos/LibriMix",
+      "license": "MIT for generator scripts; source corpora retain their own licenses",
+      "local_root": "data/raw/LibriMix"
+    },
+    {
+      "name": "Fluent Speech Commands",
+      "role": "intent classification with speaker-disjoint command utterances",
+      "source": "https://doi.org/10.5281/zenodo.11106540",
+      "license": "CC BY 4.0",
+      "local_root": "data/raw/fluent_speech_commands",
+      "archives": [
+        {"file": "fluentai_full.zip", "bytes": 1545730387, "md5": "625d5dfecef850443955a034d5f892b2", "status": "complete_verified"}
+      ]
+    },
+    {
+      "name": "Speech Commands v2",
+      "role": "wake-word/KWS pretraining and negative examples",
+      "source": "https://www.tensorflow.org/datasets/catalog/speech_commands",
+      "download": "https://storage.googleapis.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz",
+      "local_root": "data/raw/speech_commands_v2",
+      "archives": [
+        {"file": "speech_commands_v0.02.tar.gz", "bytes": 2428923189, "status": "complete"}
+      ]
+    },
+    {
+      "name": "Vehicle Interior Sound Dataset",
+      "role": "auxiliary vehicle-noise domain material; not speech supervision",
+      "source": "https://doi.org/10.5281/zenodo.5606504",
+      "license": "CC BY 4.0",
+      "local_root": "data/raw/vehicle_interior_sound",
+      "archives": [
+        {"file": "VISC_Dataset_SON_full.rar", "bytes": 1228671997, "md5": "a5b26d20784de4e1bfed71fa89a99987", "status": "complete_verified"}
+      ]
+    }
+  ],
+  "not_downloaded": [
+    {
+      "name": "ASR-CabNois",
+      "source": "https://magichub.com/datasets/in-vehicle-noise-dataset/",
+      "reason": "full 2.47 GB download requires authenticated MagicHub access and carries CC BY-NC-ND 4.0 terms"
+    },
+    {
+      "name": "Nexdata 531-Hours In-Car Noise",
+      "source": "https://github.com/Nexdata-AI/531-Hours-In-Car-Noise-Data-by-Microphone-and-Mobile-Phone",
+      "reason": "commercial dataset; public repository/sample retained only"
+    }
+  ]
+}

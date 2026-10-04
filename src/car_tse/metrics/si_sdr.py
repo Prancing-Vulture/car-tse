@@ -7,6 +7,11 @@ import torch
 
 def si_sdr(est: torch.Tensor, ref: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     """Per-batch mean SI-SDR (higher is better). est/ref: [B, T]."""
+    return si_sdr_per_example(est, ref, eps).mean()
+
+
+def si_sdr_per_example(est: torch.Tensor, ref: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    """Return one SI-SDR value per batch item."""
     ref = ref - ref.mean(dim=-1, keepdim=True)
     est = est - est.mean(dim=-1, keepdim=True)
     dot = torch.sum(est * ref, dim=-1, keepdim=True)
@@ -14,4 +19,4 @@ def si_sdr(est: torch.Tensor, ref: torch.Tensor, eps: float = 1e-8) -> torch.Ten
     s_target = dot * ref / ref_energy
     e_noise = est - s_target
     ratio = torch.sum(s_target ** 2, dim=-1) / (torch.sum(e_noise ** 2, dim=-1) + eps)
-    return 10 * torch.log10(ratio + eps).mean()
+    return 10 * torch.log10(ratio + eps)

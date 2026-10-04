@@ -1,0 +1,35 @@
+{
+  "description": "Held-out Volkswagen CAVEMOVE TSE samples and held-out Fluent Speech Commands intent samples.",
+  "sample_rate": 16000,
+  "tse": [
+    {
+      "index": 0,
+      "vehicle": "Volkswagen_Golf",
+      "cabin_noise_type": "noise",
+      "snr_db": -5.0,
+      "input_si_sdr_db": -8.230448722839355,
+      "extracted_si_sdr_db": 3.183908700942993,
+      "si_sdri_db": 11.414357423782349,
+      "presence_probability": 0.9805096387863159,
+      "wake_probability": 0.7107241153717041,
+      "accepted": true,
+      "wake_detected": true,
+      "direct_intent_prediction": "bring|socks",
+      "input_audio": "reports\\artifacts\\full_pipeline_cavemove\\tse\\sample_000_input_mean.wav",
+      "extracted_audio": "reports\\artifacts\\full_pipeline_cavemove\\tse\\sample_000_extracted.wav",
+      "clean_target_audio": "reports\\artifacts\\full_pipeline_cavemove\\tse\\sample_000_clean_target.wav"
+    }
+  ],
+  "intent": [
+    {
+      "index": 0,
+      "expected_intent": "increase|heat|washroom",
+      "predicted_intent": "increase|heat|washroom",
+      "confidence": 0.2728519141674042,
+      "correct": true,
+      "snr_db": -5.0,
+      "cabin_input_audio": "reports\\artifacts\\full_pipeline_cavemove\\intent\\sample_000_cabin_input.wav",
+      "clean_input_audio": "reports\\artifacts\\full_pipeline_cavemove\\intent\\sample_000_clean_input.wav"
+    }
+  ]
+}

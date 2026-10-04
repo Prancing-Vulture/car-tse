@@ -1,0 +1,43 @@
+# Short multichannel cabin-front-end fine-tune initialized from the single-
+# channel bootstrap checkpoint.
+name: stage1_spex_mc_bootstrap
+sample_rate: 8000
+segment_seconds: 4.0
+multichannel: true
+use_cabin_frontend: true
+num_mics: 4
+
+spex:
+  L1_ms: 2.5
+  L2_ms: 10.0
+  L3_ms: 20.0
+  N: 256
+  B: 8
+  O: 256
+  P: 512
+  Q: 3
+  num_spks: 921
+  spk_embed_dim: 256
+  causal: false
+
+frontend:
+  ec_hidden: 128
+  spatial_channels: 64
+
+loss:
+  alpha: 0.1
+  beta: 0.1
+  gamma: 0.5
+
+train:
+  batch_size: 2
+  max_epochs: 1
+  grad_clip: 5.0
+  manifest: stage1_mc_triplets.jsonl
+  init_checkpoint: stage1_spex_sc_bootstrap/best.pt
+  schedule:
+    - epochs: [1, 1]
+      freeze_encoder: true
+      lr_encoder: 0.0
+      lr_rest: 1.0e-4
+      lr_frontend: 1.0e-4

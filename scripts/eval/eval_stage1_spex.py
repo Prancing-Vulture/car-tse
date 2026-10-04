@@ -38,7 +38,8 @@ def main() -> int:
         use_cabin_frontend=cfg.get("use_cabin_frontend", False),
         num_mics=cfg.get("num_mics", 4),
         frontend_cfg=cfg.get("frontend"),
-        pretrained_dir=str(paths["spex_pretrained_dir"]),
+        pretrained_dir=str(cfg.get("pretrained_checkpoint", paths["spex_pretrained_dir"])),
+        backend=cfg.get("spex_backend", "vendor_8k"),
     ).to(device)
     ckpt = args.checkpoint or (paths["checkpoint_root"] / cfg["name"] / "best.pt")
     if ckpt.exists():
@@ -50,7 +51,13 @@ def main() -> int:
             mix = batch["mixture"].to(device)
             enroll = batch["enrollment"].to(device)
             target = batch["target"].to(device)
-            s1, _, _, _ = model(mix, enroll)
+            multichannel = batch.get("multichannel")
+            playback_ref = batch.get("playback_ref")
+            if multichannel is not None:
+                multichannel = multichannel.to(device)
+            if playback_ref is not None:
+                playback_ref = playback_ref.to(device)
+            s1, _, _, _ = model(mix, enroll, multichannel=multichannel, playback_ref=playback_ref)
             scores.append(float(si_sdr(s1, target)))
     mean_si = sum(scores) / max(len(scores), 1)
     out = paths["log_root"] / cfg["name"] / f"metrics_{args.split}.json"
