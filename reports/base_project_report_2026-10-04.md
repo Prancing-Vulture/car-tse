@@ -111,6 +111,30 @@ AISHELL-5 diagnostic results show the domain gap:
 
 The transfer model is therefore promising on synthetic CAVEMOVE, but real-cabin target-speaker quality is not yet solved.
 
+#### Scale-aware Stage 1 conditioning sweep (2026-10-04)
+
+Because the AISHELL frontend output RMS was much lower than the CAVEMOVE
+conditioning (about `0.0053` versus `0.0476`), an inference-only scale sweep
+was run before starting another fine-tune. The sweep used the current
+`stage1_spex_transfer_mc_cavemove_cabin` checkpoint and did not change any
+weights.
+
+| Input policy | AISHELL-5 target-present test, 73 rows | CAVEMOVE held-out test, 400 rows |
+|---|---:|---:|
+| Raw input | -31.26 dB output / +1.47 dB SI-SDRi | 8.57 dB output / **+10.98 dB SI-SDRi** |
+| Mixture RMS → 0.10 | -29.01 dB / **+4.94 dB** | 8.51 dB / **+10.91 dB** |
+| Mixture RMS → 0.20 | **-27.76 dB / +6.43 dB** | 8.23 dB / +10.62 dB |
+| Mixture RMS → enrollment RMS | -32.22 dB / +1.11 dB | 8.29 dB / +10.72 dB |
+
+This is evidence of a real AISHELL amplitude/frontend mismatch: fixed RMS
+conditioning improves the AISHELL diagnostic substantially while a moderate
+`0.10` target changes CAVEMOVE by only `-0.07 dB`. The `0.20` target gives the
+best AISHELL result in this small sweep but costs `-0.36 dB` on CAVEMOVE, so no
+normalization policy is promoted as the default yet. The reusable diagnostic is
+`scripts/eval/eval_stage1_input_scale_sweep.py`; exact outputs are in
+`logs/stage1_input_scale_sweep_aishell5_test.json` and
+`logs/stage1_input_scale_sweep_cavemove_test.json`.
+
 ### Stage 2: target-presence gate
 
 The original scalar presence calibration is highly threshold-sensitive:
