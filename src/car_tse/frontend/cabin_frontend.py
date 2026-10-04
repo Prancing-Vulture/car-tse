@@ -13,9 +13,18 @@ class CabinFrontend(nn.Module):
     Learned EC uses ref; spatial conv collapses channels.
     """
 
-    def __init__(self, num_mics: int = 4, ec_hidden: int = 128, spatial_channels: int = 64):
+    def __init__(
+        self,
+        num_mics: int = 4,
+        ec_hidden: int = 128,
+        spatial_channels: int = 64,
+        input_rms_target: float | None = None,
+    ):
         super().__init__()
         self.num_mics = num_mics
+        self.input_rms_target = (
+            None if input_rms_target is None or float(input_rms_target) <= 0 else float(input_rms_target)
+        )
         self.ec = nn.Sequential(
             nn.Conv1d(num_mics + 1, ec_hidden, kernel_size=7, padding=3),
             nn.ReLU(),
@@ -44,6 +53,13 @@ class CabinFrontend(nn.Module):
         if multichannel.dim() == 2:
             multichannel = multichannel.unsqueeze(1)
         b, c, t = multichannel.shape
+        input_scale = None
+        if self.input_rms_target is not None:
+            input_rms = multichannel.float().square().mean(dim=(1, 2), keepdim=True).sqrt()
+            input_scale = (self.input_rms_target / input_rms.clamp_min(1.0e-8)).clamp(0.05, 20.0)
+            multichannel = multichannel * input_scale.to(multichannel.dtype)
+            if playback_ref is not None:
+                playback_ref = playback_ref * input_scale[:, 0, 0].to(playback_ref.dtype).unsqueeze(1)
         if playback_ref is None:
             playback_ref = torch.zeros(b, t, device=multichannel.device, dtype=multichannel.dtype)
         ref = playback_ref.unsqueeze(1)

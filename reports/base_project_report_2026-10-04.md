@@ -135,6 +135,14 @@ normalization policy is promoted as the default yet. The reusable diagnostic is
 `logs/stage1_input_scale_sweep_aishell5_test.json` and
 `logs/stage1_input_scale_sweep_cavemove_test.json`.
 
+The runtime consequence is important: on a 120-second real AISHELL-5
+target-absent stream with the same frame-presence/KWS thresholds, raw input had
+`0` full-path smoothed events/hour and `210` KWS-only smoothed events/hour;
+fixed `0.10` RMS conditioning produced `90` full-path events/hour and `300`
+KWS-only events/hour. The configurable policy is therefore retained as an
+experiment, but **rejected as a runtime default** until Stage 1, presence, and
+KWS are jointly recalibrated or trained with the same conditioning.
+
 ### Stage 2: target-presence gate
 
 The original scalar presence calibration is highly threshold-sensitive:

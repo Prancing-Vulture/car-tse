@@ -33,6 +33,7 @@ class Stage1System(nn.Module):
                 num_mics=num_mics,
                 ec_hidden=frontend_cfg.get("ec_hidden", 128),
                 spatial_channels=frontend_cfg.get("spatial_channels", 64),
+                input_rms_target=frontend_cfg.get("input_rms_target"),
             )
         else:
             self.frontend = None

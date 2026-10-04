@@ -1,5 +1,6 @@
 import torch
 
+from car_tse.frontend.cabin_frontend import CabinFrontend
 from scripts.eval.eval_stage1_input_scale_sweep import scale_batch
 
 
@@ -34,3 +35,18 @@ def test_raw_mode_is_identity():
 
     assert scaled_mix is multichannel
     assert scaled_enrollment is enrollment
+
+
+def test_cabin_frontend_input_rms_target_scales_playback_consistently():
+    frontend = CabinFrontend(num_mics=2, ec_hidden=4, spatial_channels=2, input_rms_target=0.1)
+    frontend.eval()
+    multichannel = torch.ones(1, 2, 8) * 0.02
+    playback = torch.ones(1, 8) * 0.01
+
+    with torch.no_grad():
+        output = frontend(multichannel, playback)
+
+    # The final convs are zero-initialized, so the output is the mean path;
+    # this verifies the configured input normalization without depending on
+    # learned frontend residual weights.
+    assert torch.allclose(output, torch.full_like(output, 0.1), atol=1.0e-6)
