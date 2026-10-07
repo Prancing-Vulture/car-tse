@@ -1,0 +1,6 @@
+Evaluation,SI-SDR (dB)
+CAVEMOVE synthetic test: mixture,-2.41
+CAVEMOVE synthetic test: extractor,8.57
+AISHELL-5 real target: far-field,-37.31
+AISHELL-5 real target: current extractor,-31.22
+AISHELL-5 real target: adapted frontend,-30.57

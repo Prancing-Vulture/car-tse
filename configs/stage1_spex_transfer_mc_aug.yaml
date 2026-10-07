@@ -1,0 +1,57 @@
+name: stage1_spex_transfer_mc_aug_aligned
+sample_rate: 16000
+segment_seconds: 3.0
+multichannel: true
+use_cabin_frontend: true
+num_mics: 4
+spex_backend: transfer_spexplus_16k
+pretrained_checkpoint: "E:/prawin/snn/runs/spexplus_no_jepa_30/best.pt"
+
+spex:
+  L1_ms: 1.25
+  L2_ms: 5.0
+  L3_ms: 10.0
+  N: 256
+  B: 8
+  O: 256
+  P: 512
+  Q: 3
+  num_spks: 251
+  spk_embed_dim: 256
+  causal: false
+
+frontend:
+  ec_hidden: 128
+  spatial_channels: 64
+
+loss:
+  alpha: 0.1
+  beta: 0.1
+  gamma: 0.0
+
+train:
+  batch_size: 2
+  max_epochs: 8
+  grad_clip: 5.0
+  manifest: stage1_mc_aug_triplets.jsonl
+  val_manifest: stage1_mc_aug_triplets.jsonl
+  val_limit: 100
+  val_batch_size: 2
+  schedule:
+    - epochs: [1, 2]
+      freeze_spex: true
+      lr_encoder: 0.0
+      lr_rest: 0.0
+      lr_frontend: 5.0e-5
+    - epochs: [3, 5]
+      freeze_spex: false
+      freeze_encoder: true
+      lr_encoder: 0.0
+      lr_rest: 1.0e-5
+      lr_frontend: 1.0e-5
+    - epochs: [6, 8]
+      freeze_spex: false
+      freeze_encoder: false
+      lr_encoder: 1.0e-6
+      lr_rest: 1.0e-5
+      lr_frontend: 1.0e-5

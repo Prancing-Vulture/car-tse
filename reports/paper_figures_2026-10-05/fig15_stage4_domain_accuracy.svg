@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1185" viewBox="0 0 1100 1185">
+<rect width="100%" height="100%" fill="#fff"/>
+<style>text{font-family:Arial,sans-serif;fill:#253247}.title{font-size:23px;font-weight:bold}.label{font-size:14px}.small{font-size:12px}.grid{stroke:#d9e0e8;stroke-width:1}.axis{stroke:#536273;stroke-width:1.2}</style>
+<text class="title" x="550.0" y="38" text-anchor="middle">Stage 4: intent accuracy across models and domains</text>
+<line class="grid" x1="420.0" y1="78" x2="420.0" y2="1110"/>
+<text class="small" x="420.0" y="1133" text-anchor="middle">0.0</text>
+<line class="grid" x1="542.0" y1="78" x2="542.0" y2="1110"/>
+<text class="small" x="542.0" y="1133" text-anchor="middle">21.0</text>
+<line class="grid" x1="664.0" y1="78" x2="664.0" y2="1110"/>
+<text class="small" x="664.0" y="1133" text-anchor="middle">42.0</text>
+<line class="grid" x1="786.0" y1="78" x2="786.0" y2="1110"/>
+<text class="small" x="786.0" y="1133" text-anchor="middle">63.0</text>
+<line class="grid" x1="908.0" y1="78" x2="908.0" y2="1110"/>
+<text class="small" x="908.0" y="1133" text-anchor="middle">84.0</text>
+<line class="grid" x1="1030.0" y1="78" x2="1030.0" y2="1110"/>
+<text class="small" x="1030.0" y="1133" text-anchor="middle">105.0</text>
+<text class="label" x="408" y="135.94210909090907" text-anchor="end">CRNN bootstrap clean</text>
+<rect x="420" y="96.76363636363637" width="241.26952380952378" height="54.41454545454545" fill="#386cb0" rx="4"/>
+<text class="small" x="669.2695238095238" y="135.94210909090907">41.53</text>
+<text class="label" x="408" y="229.76029090909088" text-anchor="end">CRNN CAVEMOVE</text>
+<rect x="420" y="190.58181818181816" width="238.7714285714286" height="54.41454545454545" fill="#f0027f" rx="4"/>
+<text class="small" x="666.7714285714286" y="229.76029090909088">41.10</text>
+<text class="label" x="408" y="323.5784727272727" text-anchor="end">CRNN TSE-domain</text>
+<rect x="420" y="284.4" width="282.4590476190476" height="54.41454545454545" fill="#7fc97f" rx="4"/>
+<text class="small" x="710.4590476190476" y="323.5784727272727">48.62</text>
+<text class="label" x="408" y="417.3966545454545" text-anchor="end">wav2vec bootstrap clean</text>
+<rect x="420" y="378.2181818181818" width="534.9990476190476" height="54.41454545454545" fill="#fdc086" rx="4"/>
+<text class="small" x="962.9990476190476" y="417.3966545454545">92.09</text>
+<text class="label" x="408" y="511.2148363636363" text-anchor="end">wav2vec bootstrap raw cabin</text>
+<rect x="420" y="472.0363636363636" width="516.9314285714286" height="54.41454545454545" fill="#beaed4" rx="4"/>
+<text class="small" x="944.9314285714286" y="511.2148363636363">88.98</text>
+<text class="label" x="408" y="605.0330181818181" text-anchor="end">wav2vec bootstrap TSE-domain</text>
+<rect x="420" y="565.8545454545454" width="519.4295238095237" height="54.41454545454545" fill="#386cb0" rx="4"/>
+<text class="small" x="947.4295238095237" y="605.0330181818181">89.41</text>
+<text class="label" x="408" y="698.8512" text-anchor="end">wav2vec fine-tuned local clean</text>
+<rect x="420" y="659.6727272727272" width="540.5180952380953" height="54.41454545454545" fill="#f0027f" rx="4"/>
+<text class="small" x="968.5180952380953" y="698.8512">93.04</text>
+<text class="label" x="408" y="792.6693818181818" text-anchor="end">wav2vec fine-tuned raw cabin</text>
+<rect x="420" y="753.4909090909091" width="526.9819047619047" height="54.41454545454545" fill="#7fc97f" rx="4"/>
+<text class="small" x="954.9819047619047" y="792.6693818181818">90.71</text>
+<text class="label" x="408" y="886.4875636363636" text-anchor="end">wav2vec fine-tuned TSE-domain</text>
+<rect x="420" y="847.3090909090909" width="525.7038095238095" height="54.41454545454545" fill="#fdc086" rx="4"/>
+<text class="small" x="953.7038095238095" y="886.4875636363636">90.49</text>
+<text class="label" x="408" y="980.3057454545453" text-anchor="end">wav2vec fine-tuned FSC validation</text>
+<rect x="420" y="941.1272727272726" width="561.2" height="54.41454545454545" fill="#beaed4" rx="4"/>
+<text class="small" x="989.2" y="980.3057454545453">96.60</text>
+<text class="label" x="408" y="1074.1239272727273" text-anchor="end">wav2vec fine-tuned FSC test</text>
+<rect x="420" y="1034.9454545454546" width="576.9438095238095" height="54.41454545454545" fill="#386cb0" rx="4"/>
+<text class="small" x="1004.9438095238095" y="1074.1239272727273">99.31</text>
+<line class="axis" x1="420" y1="1110" x2="1030" y2="1110"/>
+<text class="label" x="725.0" y="1137" text-anchor="middle">Top-1 accuracy (%)</text>
+<text class="small" x="420" y="1173">Official FSC clean test/validation and local noisy-domain validation are separate evaluations.</text>
+</svg>

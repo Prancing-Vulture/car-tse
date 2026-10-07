@@ -1,0 +1,7 @@
+Device,Component,Latency
+RTX 4080 GPU,Stage 1,51.6
+RTX 4080 GPU,KWS,1.92
+RTX 4080 GPU,Intent,16.43
+CPU,Stage 1,168.06
+CPU,KWS,2.09
+CPU,Intent,105.19

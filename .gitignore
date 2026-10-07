@@ -8,6 +8,14 @@ checkpoints/
 logs/
 MANIFEST_ROOT/
 data/cache/
+# Downloaded and generated audio corpora stay on the data drive.  The
+# reproducible inventory and preparation scripts are versioned instead.
+data/raw/
+data/processed/
+# Large generated audio artifacts are local inspection outputs; keep their
+# JSON/Markdown metadata versioned.
+reports/artifacts/**/*.wav
+*.DS_Store
 *.pt
 *.pt.tar
 wandb/

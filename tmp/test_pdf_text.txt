@@ -1,0 +1,755 @@
+PAGES 22
+\n--- PAGE 1 ---\nA Target-Speaker Extraction Pipeline for In-Car Audio1
+Harreeshnarain S 1†, Prawin Dillibabu 1†, Umesh 1†, Dr. Mohanaprasad 2*, Dr.2
+Balakrishnan R 1, and Dr. Selvasundari 1
+3
+1School of Computer Science and Engineering, VIT Chennai4
+2Samsung Research Institute, Chennai5
+*Address correspondence to: balakrishnan.r@vit.ac.in6
+†These authors contributed equally to this work.7
+Abstract8
+Standard target speaker extraction (TSE) models are trained on a wide corpus of noise and9
+may not be optimally suited for car noise. Furthermore, such models perform speaker separation10
+alone and does not determine if the target speaker is active, listen for wake words, perform voice11
+to action mapping. Hence this work presents a full pipeline utilizing a custom TSE model trained12
+on car cabin noise, followed by target-speech presence gating, wake word detection, intent map-13
+ping and intent to action mapping. This would provide a full end to end pipeline for detecting,14
+extracting and understanding the intent of the target speaker, preventing other passengers from15
+accidental trigger of wake words and accurate mapping of voice audio to actions. The proposed16
+work presents a multi stage model, utilizing SpEx+ based TSE adapted using car cabin noise,17
+a target-speech presence gate, wake-word detection, intent classification, and intent-to-action18
+mapping. Datasets were used for each individual stage in the pipeline ( LibriSpeech, Libri2Mix,19
+CAVEMOVE, AISHELL-5, Google Speech Commands V2, Fluent Speech Commands, Vehicle20
+Interior Sound Dataset). On the reported CAVEMOVE evaluation, extraction improves mean21
+SI-SDR by 10.98 dB. The intent classifier reaches 99.31% top-1 accuracy on the clean Fluent22
+Speech Commands test set.23
+1 Introduction24
+As compared to standard development of speech models where clean, anechoic, close-talk speech is25
+used as data, real scenarios of voice interfaces in vehicles operate in a substantially different environ-26
+ment. Road and other vehicle noise, ventilation, reverberation, loudspeaker playback, microphone27
+placement, and speech from other passengers in the vehicle add to the unwanted signal noise cap-28
+tured by on-device microphones. Simulating such scenarios would require hundreds of hours of in29
+car audio recordings, and thus would prove difficult in data acquisition. Recent in-car corpora such30
+as AISHELL-5 [1] and CAVEMOVE [2] make such systematic data acquisition and research more31
+accessible. AISHELL-5 provides multichannel in-car speech and noise, and Chinese audio tracks,32
+1
+\n--- PAGE 2 ---\nwhich we do not use as our focus is primarily on English speech and data. CAVEMOVE provides33
+vehicle impulse responses and noise recordings that support the ease of synthesis of cabin mixtures34
+for the development of a robust in-car model. Due to the nature of the various source of noises, it35
+is highlighted that a model trained on generic speech mixtures may not generalize well to car cabin36
+noise mixtures.37
+There are several tasks that a in-car voice assistant must solve, extending beyond simple acoustic38
+separation. Given a reference target speaker, the model should retain the target speaker’s speech39
+while suppressing competing passenger speech and background noise using accurate masks on the40
+mixture, determine when the target is speaking, detect a keyword ( such as ’Marvin’ in our case)41
+phrase, interpret the command and map the command to the inferred action. Hence unlike a42
+standard model, our proposed work identifies several distinct questions: who is speaking, whether43
+the intended user is speaking now, whether the system should activate, and what action is requested44
+from the user. This pipeline is quintessential as a passenger should not be able to use the wake45
+words and activate a driver-oriented command path. Hence speaker diarization is important and46
+proves as a vital stage in intent mapping for determining speaker activity over time [3].47
+Target speaker extraction (TSE) proves useful in this setting. Unlike speaker-independent sepa-48
+ration ( such as Blind Source Separation paradigms), which estimates a set of sources without the49
+understanding of which speaker is mapped to what source, TSE provides a reference utterance to50
+condition the separation on the target speaker. SpEx+ is a time-domain TSE architecture that51
+uses a shared representation for mixture and reference speech and attained strong results on stan-52
+dard speech-mixture benchmarks [4]. While it has attained success on generic and synthetically53
+mixed speech, it is not implicitly guaranteed that the model will have high performance on in-car54
+cabin noise mixtures. Due to a domain mismatch, there is motivation to evaluate and adapt such55
+architectures to in-car recordings from generic training mixtures. LibriSpeech and Libri2Mix offer56
+clean speech and speech-mixtures resources for model development, while CAVEMOVE and vehicle-57
+interior recordings contribute driving noise and cabin acoustics [2, 5–7]. AISHELL-5 further provides58
+real multichannel, multi-speaker in-car recordings for speech technology research [1].59
+The successive stages in the pipeline also require task-specific data and evaluation sets. Keyword60
+spotting (KWS) detects a short, predefined phrase in an audio stream in real time; the Google61
+Speech Commands V2 corpus was introduced as a benchmark for such keyword spotting and limited-62
+vocabulary recognition tasks [8]. Spoken language understanding maps an utterance to a predefined63
+and structured intent, and the Fluent Speech Commands corpus supports evaluation of direct speech-64
+to-intent systems [9]. However, even though isolated and clean intent test sets perform well in65
+accuracy, it does not measure the performance of the entire system, as it does not consider the66
+separation of the mixture, the selection of the target speaker, whether the activation phrase was67
+accepted correctly, or whether the entire system pipeline executed the correct intended action. It is68
+therefore useful to describe, evaluate and assess the system, by stage and as a cascade.69
+This work presents a multi-stage in-car voice-processing pipeline utilizing a SpEx+-based target70
+speaker extractor adapted using vehicle-cabin noise augmented mixtures with a reference utterance.71
+The extracted signal is then passed through a target-speech presence gate, wake-word detection,72
+intent classification, and intent-to-action mapping. The stages utilize datasets suited to their respec-73
+2
+\n--- PAGE 3 ---\ntive stages: LibriSpeech and Libri2Mix for speech and mixture generation; and the CAVEMOVE,74
+AISHELL-5, and the Vehicle Interior Sound Dataset for cabin acoustics, noise, and evaluation or75
+augmentation of mixtures. Google Speech Commands V2 for keyword spotting. Fluent Speech76
+Commands for intent classification. The pipeline is designed to make the activation of the intent77
+detector and action mapper conditional on the target speaker, reducing the risk of other passenger78
+triggering an action.79
+On the reported CAVEMOVE evaluation, the extraction stage improves mean SI-SDR by 10.9880
+dB relative to the in-car noisy mixture input. The intent classifier achieves 99.31% top-1 accuracy81
+on the clean Fluent Speech Commands test set. These results demonstrate promising performance82
+for two individual stages considered independently; they should not be interpreted as an end-to-end83
+voice-to-action accuracy. The contribution of this work is the construction and stage-wise evaluation84
+of a in-vehicle cabin-adapted, target-conditioned voice pipeline that connects extraction to target-85
+speech gating, wake-word detection, intent recognition, and action mapping. The remainder of86
+this paper details the full corpora of datasets and methods, reporting stage-specific and pipeline87
+evaluations, and discusses the limitations and requirements for validating the complete system under88
+real in-car use and production grade scenarios.89
+Figure 1: Overview of the proposed system architecture.
+2 Related Work90
+This section elaborates the various works done in each stage individually. The stages are trained91
+separately and connected at inference; the system is therefore a staged cascade, not a single jointly92
+optimized end-to-end neural network.93
+2.1 Target-Speaker Extraction and Target-Presence Decisions94
+Wang et al. prtoposed VoiceFilter, using a target speaker enrollment recording to aid in spectogram95
+mask determination. On the LibriSpeech mixtures, its bidirectional LSTM models reduced word96
+error rate ( WER ) from 55.9% to 23.4% while WER on clean speech changed from 10.9% to97
+11.1%. The authors reported 17.9 dB mean SDR for the model [10]. Delcroix et al. combined98
+SpeakerBeam with end-to-end speech recognition to recognize the target speaker in the two-speaker99
+3
+\n--- PAGE 4 ---\nmixture, addressing the permutation-invariant ambiguity among the outputs that arises when the100
+system separates the speakers without speaker context. It attained a mean dB of 4.3 on mixtures101
+with full overlap and 5.7 on partial overlap and achieved a WER of 18.0/102
+Ge et al. proposed SpEx+, the foundation paper that this paper’s target speaker block is built103
+upon, a multi-scale, time-domain extraction model with shared weights among mixture and speaker104
+encoders. On WSJ0-2mix-extr, it improved SDR over the SpEx baseline by 0.8dB for different gender105
+mixtures and 2.1 dB for same gender mixtures [4]. Li et al. developed direction-aware SpeakerBeam,106
+combining spatial direction information with target speaker-conditioned extraction. They proposed107
+an oracle MVDR beamformer ( OMVDR ) block which lead to an improvement of 1.2dB on SDR108
+[11].109
+Mennedikov et al. proposed target-speaker voice activity (TS-VAD), predicting speaker activity110
+frame by frame. On the CHiME-6 unsegmented evaluation set, TS-VAD reduced the diarization111
+error rate by more than 30% absolute realtive to the x vector baseline [3]. Sato et al. proposed a112
+system focused on variation in enrollment recordings. Their worst enrollment training and speaker-113
+identification loss improved worst-enrollment SDR by 0.9dB on average [12]. Borsdorf et al. experi-114
+mented with extraction when the target speaker may be present or absent in mixtures containing one115
+or two speakers [13]. Delcroix et al. compared direct silence-output training with speaker-presence116
+detection for inactive target speaker cases, hence highlighting false alarms as an evaluation measure117
+[14]. Zhao et al. addressed target speaker confusion due to ambiguous speaker embeddings, as their118
+training strategy to make speaker embeddings more distinguishable improved SI-SDR by more than119
+1 dB [15].120
+Table 1: Comparison of speaker extraction, activity, and target-presence research.
+Study or resource Evidence or stress condition Relevance to this pipeline
+VoiceFilter [10] Enrollment speaker embedding Speaker-conditioned spectral extraction
+SpeakerBeam [16] Target-adaptive extraction and ASR Connects extraction with recognition
+SpEx+ [4] Enrollment and mixture waveforms Time-domain extraction backbone
+Direction-Aware Beam [11] Multichannel spatial evidence Motivates cabin microphone front end
+TS-VAD [3] Speaker-conditioned activity over time Activity decision complements extraction
+Sato et al. [12] Enrollment utterance variation Motivates multi-enrollment testing
+Borsdorf / Delcroix / Zhao [13–15] Target absent, false alarms, or wrong speaker Motivates explicit negative and identity checks
+AISHELL-5 / CAVEMOVE [1, 2] Real or simulated in-car acoustics Cabin-specific training and evaluation
+2.2 Wake-Word Detection, Intent, and the Cascade121
+Keyword spotting (KWS) recognizes a predefined phrase under strict latency, compute, and false-122
+alarm constraints. Compact CNNs and Speech Commands establish small-footprint keyword-recognition123
+baselines; VoiceFilter-Lite studies a related streaming target-speaker front end, while Fluent Speech124
+Commands and SLURP support fixed-domain and broader spoken-language-understanding evalua-125
+tion. Textual knowledge distillation and wav2vec 2.0 represent alternative approaches to learning126
+intent from speech [8, 9, 17–21]. In this repository, Stage 3 is a binary Marvin/non-Marvin log-mel127
+CNN, and Stage 4 is a 31-class wav2vec 2.0 intent classifier. Their separate training sets and clean-128
+set scores do not, by themselves, measure whether a target user can traverse the full wake-to-action129
+4
+\n--- PAGE 5 ---\ncascade.130
+Table 2: Wake-word and spoken-intent approaches and the scope of their evidence.
+Study or resource Task and evidence Limitation for the in-car cascade
+Sainath and Parada [17] Compact CNN keyword spotting Footprint and isolated KWS do not equal stream FAR
+Speech Commands [8] Limited-vocabulary speech recognition Requires cabin and continuous-stream validation
+VoiceFilter-Lite [18] Streaming target-speech preservation A front end, not a wake detector or intent model
+Fluent Speech Commands [9] Fixed-domain speech-to-intent corpus Clean test performance is domain-specific
+SLURP [19] Multi-domain spoken language understanding Broader domain scope differs from fixed car commands
+Textual distillation [20] Speech-to-intent teacher/student learning Not a matched training comparison with this model
+wav2vec 2.0 [21] Self-supervised speech encoder Requires task- and domain-specific evaluation
+Letz w be the two-class KWS logits computed on a one-second extracted-speech window. The131
+wake score is the wake-class softmax probability,132
+qw = softmax(zw)wake.(1)
+At runtime, the repository keeps a finite history of scores and requires a configured number of133
+individual threshold-crossing hits within that history; after a detection it applies a refractory interval.134
+On a wake decision, the state machine arms command capture; the wake-word window itself is not135
+reused as the intent command. The next accepted target-speech window is passed to the intent136
+model, and its highest-logit label is mapped through the intent-to-action table. Optional speaker-137
+similarity checking or secondary-KWS score fusion is supported by the pipeline but is not active in138
+every reported experiment.139
+For 31 intent classes, the prediction and supervised objective are140
+ˆc= arg max
+k∈{1,...,31}
+zk,L intent =−
+31∑︂
+k=1
+qk log softmax(z)k,(2)
+whereqis one-hot for ordinary cross-entropy and is smoothed in the wav2vec fine-tuning recipe. The141
+distinction between isolated-stage and cascade success can be written explicitly. IfAis the event that142
+the correct target’s wake word is accepted,Ithe event that the following intent is correct, andMthe143
+event that the corresponding action is mapped correctly, then successful execution requiresA∩I∩M;144
+consequently, high intent accuracy conditional on a clean command does not guarantee high end-145
+to-end success. The current pipeline uses a held-out CAVEMOVE test for extraction, validation146
+windows for the scalar gate, several KWS datasets/candidates, and Fluent Speech Commands for147
+intent; these are not a single jointly held-out real-car wake-to-action test.148
+The PDF reports 97.79% accuracy and 79.67% F1 for its post-TSE hybrid KWS candidate,149
+with 75.38% recall and an estimated 30.4 false activations per hour from independent one-second150
+windows. The AISHELL-5-augmented candidate reports 98.40% accuracy and 80.74% F1, again with151
+a window-based false-activation estimate. The fine-tuned wav2vec 2.0 intent model reports 99.31%152
+top-1 accuracy on the Fluent Speech Commands test set and 90.71% / 90.49% top-1 accuracy on the153
+local raw-cabin / TSE-domain validation sets. These figures are stage-specific; they do not establish154
+the probability of correct action execution through the cascade.155
+5
+\n--- PAGE 6 ---\nAlgorithm 1Streaming inference from target enrollment to an intent action
+Require:Incoming audio chunkx, enrollmente, stateS, thresholdsτ p, τw
+Ensure:Updated stateSand optional actiona
+1:(ˆs1, dp)←ExtractAndCheckPresence(x, e)
+2:ifd p = 0then
+3:Clear accumulated KWS scores; keep waiting for accepted target speech
+4:ifSis awaiting a command and the configured wait timeout has elapsedthen
+5:Reset command-capture state
+6:end if
+7:return(S,∅)
+8:end if
+9:Normalize extracted waveform without amplifying quiet samples
+10:ifSis awaiting a command after a prior wake decisionthen
+11:Form the configured command window from this later target-speech chunk
+12:z i ←IntentModel(command window)
+13:ˆc←arg max k zi,k;a←MapIntentToAction(ˆc)
+14:Reset command-capture state andreturn(S, a)
+15:end if
+16:q w ←KWS(one-second extracted window) wake
+17:Appendq w to the smoothing history; update hit count and refractory counter
+18:ifat least the configured number of scores in the history are≥τ w then
+19:SetSto awaiting-command; clear wake history
+20:end if
+21:return(S,∅)
+2.3 Evaluation: Signal Quality, Decisions, and Task Success156
+No single metric captures the full task. SI-SDR compares an estimated waveform with a reference157
+after scale alignment; STOI estimates intelligibility changes; PESQ estimates perceptual speech158
+quality under telephone-network/codec conditions. Separation resources such as LibriMix, vehicle159
+acoustic resources such as CAVEMOVE and AISHELL-5, and vehicle-interior sound classification160
+provide different data conditions rather than interchangeable benchmarks [1, 2, 4, 6, 7, 22–24]. The161
+paper’s extraction score is therefore evidence about waveform reconstruction on its CAVEMOVE162
+split; the FSC intent score is evidence about the clean intent test split. Neither is an end-to-end163
+vehicle action-success rate.164
+Table 3: Evaluation measures and what they establish for this pipeline.
+Measure or corpus Measures / contains What it does not establish
+SI-SDR / SI-SDRi [22] Scale-aligned reconstruction and gain over mixture Correct target identity or command success
+STOI [23] Predicted intelligibility change Wake detection or mapped action correctness
+PESQ [24] Perceptual speech quality in telephony/codecs Full cabin acoustic robustness
+LibriMix / LibriSpeech [5, 6] Clean speech and synthetic mixtures Real vehicle microphone and noise effects
+CAVEMOVE / AISHELL-5 [1, 2] Simulated cabin conditions / real in-car multichannel speech A complete target-conditioned wake-to-action trial by themselves
+6
+\n--- PAGE 7 ---\nFor a presence classifier, with true positivesT P, false positivesF P, true negativesT N, and false165
+negativesF N, threshold-dependent metrics are166
+Recall = T P
+T P+F N ,Specificity = T N
+T N+F P ,
+FAR = F P
+F P+T N ,FRR = F N
+F N+T P ,
+BalancedAcc = Recall + Specificity
+2 .
+(3)
+For extraction, SI-SDRi = SI-SDR(ˆs, s)−SI-SDR(x, s). For command recognition, report top-1167
+accuracy and macro-F1; for activation, report recall with false accepts per unit of continuous audio.168
+The PDF’s current FA/hour values are estimates from independent one-second windows, not a169
+continuous-stream measurement. An eventual end-to-end test should measure the fraction of target-170
+speaker trials that both activate on the intended wake phrase and map the subsequent command to171
+the correct action, alongside false actions per hour and latency. That experiment should preserve172
+speaker identity across wake and command speech and use continuous vehicle recordings; the proxy173
+evaluation in the repository currently shows domain/speaker mismatch and should be described as174
+diagnostic rather than deployment validation.175
+3 Methodology176
+3.1 Dataset Information177
+The materials and methods section should provide sufficient information to allow replication of the178
+results. This section should be broken up by subheadings. Under exceptional circumstances, when a179
+particularly lengthy description is required, a portion of the materials and methods can be included180
+in the Supplementary Materials.181
+3.1.1 LibriSpeech182
+This dataset contains approximately 1000 hours of 16kHz samples English audiobooks, segmented183
+and aligned. There are several fields in this:184
+file:A path to the downloaded audio file in .flac format.185
+audio:A dictionary containing the path to the downloaded audio file, the decoded audio186
+array, and the sampling rate.187
+text:The transcription of the audio file.188
+id:Unique ID of the data sample.189
+speaker id:Unique ID of the speaker. The same speaker ID can be found for multiple data190
+samples.191
+chapter id:ID of the audiobook chapter which includes the transcription.192
+7
+\n--- PAGE 8 ---\nSplitting in this dataset was done using bootstrapping to pick subsets of the dataset, and picks193
+target and distractor speaker IDs.194
+3.1.2 LibriMix195
+LibriMix is an open-source speech-separation corpus generated from LibriSpeech. The recipe for196
+mixing involves number of speakers, sample rate, the upper and lower bounds for duration. The197
+mixing procedure is as follows: A target speaker and distractor speakers are taken, with random198
+utterance and crop, and the distractor gain is sampled from 0.7-1.3. Peak scaling is applied as199
+needed, and this generates 2-speaker fixed 4 second mono mixtures at 8kHz from clean LibriSpeech200
+data.201
+Additionally, for this model, multi channel data is generated with varying gains , and delays,202
+thus simulating multi mic conditions.203
+3.1.3 AISHELL-5204
+This dataset, though created on Chinese multi-speaker speech recorded in a car, it is used in this205
+pipeline for real-car cabin noise, and provides valuable domain related evaluation/adaptation and206
+speech-rich target-absent recordings with embedded noise.207
+3.1.4 CAVEMOVE208
+This dataset contains multichannel audio from 3 cars, including impulse recordings, and noise across209
+static and moving driving conditions, with several microphone configurations. This is used on top of210
+LibriSpeech derived clean mixtures to create more authentic multichannel cabin examples to train211
+and test the robustness of the model with. The noise is chosen to add to the mixtures using random212
+selection techniques based on SNR values ( -5 to 20 dB). *****213
+3.1.5 Google Speech Commands V2214
+This is a command corpus dataset, where short English, single word recordings are present. It has215
+105,829 WAV files and 35 word-folder classes in this release. It is used for the KWS task in the216
+pipeline.217
+3.1.6 Fluent Speech Commands218
+This is the dataset used for the 31 class intent mapping. It contains 30,043 English 16kHz samples219
+single-channel command utterances from 97 speakers, covering 248 phrasings, and exactly 31 intents,220
+and is used in stage 4 of the proposed pipeline. This however, is a smart-home command corpus221
+and is not a in-car corpus.222
+3.1.7 Vehicle Interior Sound Dataset223
+This contains 5,980 vehicle-only sound clips ranging from 3-5 seconds, sampled at 48 kHz WAV224
+files, with 8 vehicle classes. This is included in the CAVEMOVE cabin manifest builder and adds225
+8
+\n--- PAGE 9 ---\nrobustness to the trained model to help improve generalization.226
+Table 4: Datasets used for training and evaluation at each pipeline stage.
+Stage Dataset Role Reported split / size
+Stage 1: TSE LibriSpeech / LibriMix Clean speech and speaker mixtures 4,000 train; 400 val; 400 test triplets
+Stage 1: cabin adaptation CAVEMOVE Cabin impulse responses and noise 400 held-out test examples
+Stage 1: diagnostic AISHELL-5 Real multichannel cabin speech 144 aligned target-present windows
+Stage 2: presence CAVEMOVE, GSC, AISHELL-5 Target-present and target-absent examples 4,400 examples; 880-example val split
+Stage 3: KWS Speech Commands v2 Wake-word positives and non-wake speech Varies by candidate
+Stage 3: KWS Post-TSE hard-negative sets Challenging negative speech Up to 3,397 test examples
+Stage 4: intent Fluent Speech Commands 31-class intent classification 23,132 train; 3,118 val; 3,793 test
+3.2 End-to-End Voice to Intent Mapping Pipeline227
+The model consists of several stages, from target speaker extraction, presence gating, wake word228
+detection, to intent mapping. The block diagram is given in figure 6.229
+3.2.1 SpEx Target Speaker Extraction230
+Letx c[n] denote the signal from microphonec, and lete[n] be the enrolled target-speaker utterance.231
+The cabin front end estimates a residual ˆrc[n] for each channel and forms a corrected signal. It then232
+combines the channel mean with a learned spatial correction:233
+˜xc[n] =x c[n]−ˆrc[n],(4)
+u[n] = 1
+C
+C∑︂
+c=1
+xc[n] +g spatial
+(︁
+˜x1[n], . . . ,˜xC[n]
+)︁
+.(5)
+The signalu[n] and enrollment utterancee[n] are passed to the pretrained SpEx+ target-speaker234
+extractor. It produces three estimates, ˆs1,ˆs2,ˆs3, at different temporal resolutions.235
+For reference speechsand estimate ˆs, the scale-invariant signal-to-distortion ratio is236
+starget = ⟨ˆs, s⟩
+∥s∥2
+2 +ϵ s,(6)
+enoise = ˆs−starget,(7)
+SI-SDR(ˆs, s) = 10 log10
+∥starget∥2
+2
+∥enoise∥2
+2 +ϵ .(8)
+The multi-resolution training objective gives the primary estimate full weight and the other estimates237
+weight 0.1:238
+LTSE =−SI-SDR(ˆs1, s)−0.1 SI-SDR(ˆs2, s)−0.1 SI-SDR(ˆs3, s).(9)
+9
+\n--- PAGE 10 ---\nAlgorithm 2Target-speaker extraction
+Require:Multichannel mixturex, enrollment waveforme, optional playback referencer
+Ensure:Extracted target waveform ˆs 1
+1:Estimate per-channel residuals usingxandr, when available
+2:Apply the cabin front end to formx mono
+3:(ˆs1,ˆs2,ˆs3)←SpExPlus(x mono, e)
+4:returnˆs 1
+Figure 2: Stage 1 Diagram.
+3.2.2 Target Speaker Presence Gate239
+Stage 2 estimates whether the extracted waveform contains the enrolled speaker. A scalar head240
+maps ˆs1[n] to a logitz p. The presence probability and threshold decision are241
+pp =σ(z p) = 1
+1 + exp(−zp) , d p =1[p p ≥τ p],(10)
+whereτ p is the operating threshold. Training uses binary cross-entropy, with an additional energy242
+penalty on target-absent examples:243
+Lpresence =− 1
+B
+B∑︂
+i=1
+[yi logp i + (1−y i) log(1−p i)] +λ abs
+1
+|A|
+∑︂
+i∈A
+1
+T
+T∑︂
+t=1
+ˆs1,i[t]2,(11)
+10
+\n--- PAGE 11 ---\nwherey i ∈ {0,1}is the presence label,A={i:y i = 0}, andλ abs = 1. The energy term is taken as244
+zero when a minibatch contains no absent-target examples.245
+Algorithm 3Target-speech presence gating
+Require:Extracted waveform ˆs1, thresholdτ p, configured presence model
+Ensure:Presence decisiond p
+1:ifthe scalar presence head is configuredthen
+2:p←σ(PresenceHead(ˆs 1))
+3:else
+4:Compute frame probabilitiesp t ←σ(FramePresenceHead(ˆs1)t)
+5:p←MeanTopK(p t,fraction = 0.20)
+6:end if
+7:d p ←⊮[p≥τ p]
+8:returnd p
+Figure 3: Stage 2 Diagram.
+3.2.3 Wake-Word Detection246
+Stage 3 classifies one-second windows of extracted speech as wake-word or non-wake-word speech.247
+The waveform is converted to log-mel features. For STFT framemand mel bandr, let248
+X[m, k] =
+N−1∑︂
+n=0
+x[n+mH]w[n]e −j2πkn/N , F[m, r] = log
+(︄
+ϵ+
+∑︂
+k
+M[r, k]|X[m, k]| 2
+)︄
+,(12)
+11
+\n--- PAGE 12 ---\nwherew[n] is the analysis window,His the hop size, andM[r, k] is the mel filter bank. The classifier249
+applies three convolutional blocks with channel widths 32, 64, and 128, followed by global average250
+pooling and a two-class output layer.251
+For logitsz w and one-hot labely, the training loss is252
+LKWS =− 1
+B
+B∑︂
+i=1
+∑︂
+k∈{0,1}
+yik log softmax(zw,i)k.(13)
+At inference, the wake-class probability isq w = softmax(zw)wake. A threshold-hit rule over a finite253
+score history and a refractory interval are used to reduce repeated activations.254
+Algorithm 4Streaming wake-word detection
+Require:Accepted target-speech windows, thresholdτ w, score-history lengthL, required hit count
+K, refractory durationR
+Ensure:Wake decisiond w
+1:Initialize score historyQ ← ∅
+2:Initialize refractory counterr c ←0
+3:foreach accepted target-speech windowudo
+4:ifr c >0then
+5:Decrementr c
+6:continue
+7:end if
+8:Compute wake probabilityq w ←KWS(u) wake
+9:Appendq w toQand retain only the latestLscores
+10:if|{q∈ Q:q≥τ w}| ≥Kthen
+11:d w ←1
+12:ClearQand setr c ←R
+13:returnd w
+14:end if
+15:end for
+16:d w ←0
+17:returnd w
+3.2.4 Intent Classifier (Word2vec)255
+After wake detection, the next accepted target-speech segment is cropped or padded to two seconds256
+and normalized. A pretrained wav2vec 2.0 encoder maps the waveform to contextual statesH t ∈257
+R768. Mean pooling gives258
+¯H= 1
+T
+T∑︂
+t=1
+Ht.(14)
+12
+\n--- PAGE 13 ---\nFigure 4: Stage 3 Diagram.
+The pooled vector passes through LayerNorm, a 512-dimensional linear layer, GELU, dropout, and259
+a final linear layer producing 31 intent logitsz i. The predicted intent and smoothed cross-entropy260
+objective are261
+ˆc= arg max
+k∈{1,...,K}
+zi,k,(15)
+qk = (1−ϵ)1[k=y] + ϵ
+K ,(16)
+Lintent =−
+K∑︂
+k=1
+qk log softmax(zi)k, K= 31, ϵ= 0.03.(17)
+The selected class is converted to an action using the configured intent-to-action mapping.262
+Algorithm 5Intent classification and vehicle-action mapping
+Require:Accepted target-speech command windowu, intent modelf intent, mapping tableM
+Ensure:Intent class ˆcand mapped actiona
+1:Normalizeuwithout amplifying quiet samples
+2:z←f intent(u)
+3:ˆc←arg max k∈{1,...,31} zk
+4:a← M[ˆc]
+5:return(ˆc, a)
+13
+\n--- PAGE 14 ---\nFigure 5: Stage 4 Diagram.
+Algorithm 6Target-conditioned streaming voice-to-action pipeline
+Require:Incoming audio chunks, enrollment waveforme, thresholdsτ p andτ w, action mapM
+Ensure:Vehicle actions for accepted target-speaker commands
+1:Initialize wake-score history and set state toListening
+2:foreach incoming audio chunkx do
+3:ˆs 1 ←Extract(x, e)
+4:d p ←CheckTargetPresence(ˆs1, τp)
+5:ifd p = 0then
+6:Clear wake-score history
+7:continue
+8:end if
+9:ifstate isA waitingCommandthen
+10:Capture the next accepted target-speech command windowu
+11:(ˆc, a)←ClassifyAndMap(u,M)
+12:Execute actiona
+13:Set state toListening
+14:Clear wake-score history
+15:else
+16:d w ←UpdateWakeDetector(ˆs1, τw)
+17:ifd w = 1then
+18:Set state toA waitingCommand
+19:Clear wake-score history
+20:end if
+21:end if
+22:end for 14
+\n--- PAGE 15 ---\nFigure 6: Clickable overview of the target-speaker extraction and audio-to-intent pipeline. Select a
+stage to jump to its explanation.
+15
+\n--- PAGE 16 ---\n4 Results263
+The proposed architecture has several stages, and has attained comparable results on each stage264
+with fine-tuning ( except the word2vec model, which is used directly and hence is generalizable).265
+The stages are target speaker extraction, target speech detection, wake word detection, intent266
+classification. Each stage has their independent results and will thus be given independent analysis.267
+4.1 SpEx Target Speaker Extraction268
+The input to this model is 16kHz sampled audio at 3 seconds. There are 2 primary inputs, the269
+mixture and the target speaker. Using these inputs, the fine-tuned SpEx model attained 8.57 dB270
+on car cabin noise mixtures. Table 5 provides the full performance metrics of the proposed SpEx+271
+model. Table 6 provides a comparison with the current state of the art architectures utilizing TSE.272
+Table 5: Target-speaker extraction results on held-out CAVEMOVE mixtures.
+System SI-SDR input (dB) SI-SDR output (dB) SI-SDR improvement (dB) Test examples
+Mixture input -2.41 – – 400
+Clean transferred SpEx+ – – 10.73 400
+Cabin-noise mean-pool baseline – – 8.01 400
+SpEx+ with learned cabin front end -2.41 8.57 10.98 400
+Figure 7: TSE Metrics.
+4.2 Target Speaker Presence Gate273
+This stage, responsible for checking presence of target speaker in the extracted waveform, achieved274
+91.25% accuracy. However, it is to be noted that currently the presence gate is has a false accept275
+ratio of 0.9625, hence the pipeline is dependent on accurate speaker extraction than presence gates.276
+Table 7 contains the metrics for the presence gate model.277
+16
+\n--- PAGE 17 ---\nTable 6: Target-speaker extraction results compared with cited prior work.
+Model / study Evaluation set Reported result Parameters
+SpEx [4] WSJ0-2mix-extr SI-SDRi: 17.0 dB;
+SI-SDR: 16.6 dB
+10.8M
+SpEx+ (tied) [4] WSJ0-2mix-extr SI-SDRi: 17.6 dB;
+SI-SDR: 17.4 dB
+11.1M
+SpeakerBeam [16] WSJ0-2mix extraction
+comparison in SpEx+
+paper
+SDR: 12.01 dB
+(different gender);
+6.87 dB (same
+gender)
+Not reported here
+SpEx+ with learned cabin
+front end (this work)
+CAVEMOVE, 400 held-
+out examples
+SI-SDRi: 10.98
+dB; output SI-
+SDR: 8.57 dB
+10.73M
+The SpEx and SpEx+ results are from WSJ0-2mix-extr; the proposed cabin-adapted result is from CAVEMOVE.
+Because the datasets and evaluation conditions differ, these figures do not establish a head-to-head performance
+ranking. SI-SDRi for this work is 8.57−(−2.41) = 10.98 dB, using the reported mixture-input SI-SDR.
+Table 7: Target-speech presence results at selected decision thresholds.
+Model / threshold Accuracy (%) Recall (%) Specificity (%) FAR (%) FRR (%) Balanced accuracy (%)
+Scalar head, 0.50 91.25 100.00 3.75 96.25 0.00 –
+Scalar head, 0.90 – 91.13 82.50 17.50 8.88 90.34
+Hard-negative candidate, 0.95 – 86.38 88.75 11.25 13.62 –
+FAR is the false-accept rate; FRR is the false-reject rate. The reported validation split contains 800 target-present278
+and 80 target-absent examples, so accuracy should be interpreted with care.279
+4.3 Wake Word Detection280
+Using the ’Marvin’ keyword for our KWS task, the model in this stage predicts wake vs non wake. The results are281
+in Table 8. Table 9 also contains a detailed comparison of SOTA keyword spotting architectures with the proposed282
+model.283
+Table 8: Wake-word detection results for the “Marvin” keyword.
+Candidate Test examples Pos./Neg. Accuracy (%) Precision (%) Recall (%) F1 (%) FA/hour
+Original cabin KWS 1,147 195/952 84.22 52.29 82.05 63.87 –
+Hard-negative cabin KWS 3,147 195/2,952 88.69 32.91 79.49 46.55 –
+TSE-domain KWS 445 195/250 96.85 95.94 96.92 96.43 57.6
+TSE-domain KWS (high-precision operating point) 445 195/250 97.75 98.94 95.90 97.40 28.8
+Post-TSE hybrid KWS 3,397 195/3,202 97.79 84.48 75.38 79.67 30.4
+AISHELL-5-augmented KWS 4,551 195/4,356 98.40 83.15 78.46 80.74 25.6
+FA/hour is an estimate computed from independent one-second windows. It is not a continuous-stream false-284
+accept measurement.285
+4.4 Intent Classifier ( Word2vec)286
+The word2vec is a pretrained model fine- tuned for this task, and achieves 99.31% accuracy on Fluent Speech Com-287
+mands test split. Table 10 contains the full metric list of our intent classifier on different test sets, while table288
+11289
+17
+\n--- PAGE 18 ---\nFigure 8: Wake Word Metrics.
+Table 9: Keyword spotting and speaker-conditioned filtering results.
+Model / study Evaluation condition Reported result
+CNN keyword spotters [17] Small-footprint KWS
+benchmark
+27–44% relative false-reject-rate
+reduction versus DNN at 1 false
+alarm per hour
+VoiceFilter-Lite [18] LibriSpeech with added
+speech noise
+Filterbank model: 30.6% WER
+under additive speech noise;
+58.4% under reverberant speech
+noise
+VoiceFilter-Lite, no filtering [18] Same noisy LibriSpeech
+evaluation
+WER: 77.9% additive speech
+noise; 79.3% reverberant speech
+noise
+Hybrid Marvin KWS (this work) Post-TSE test, 3,397
+one-second windows
+Accuracy: 97.79%; F1: 79.67%;
+estimated 30.4 false activa-
+tions/hour
+AISHELL-5-augmented
+Marvin KWS (this work)
+Test, 4,551 one-second
+windows
+Accuracy: 98.40%; F1: 80.74%;
+estimated 25.6 false activa-
+tions/hour
+These are different tasks and protocols: the cited CNN study reports false-reject-rate reduction at a fixed false-
+alarm operating point; VoiceFilter-Lite reports ASR word error rate after filtering; this work reports Marvin
+wake-word classification and estimates false activations from independent windows. The values should not be
+ranked against one another.
+18
+\n--- PAGE 19 ---\nTable 10: Intent-classification results under clean and cabin-related conditions.
+Model Evaluation condition Examples Top-1 (%) Top-5 (%) Macro-F1 (%)
+Wav2vec, latest fine-tune FSC official validation 3,118 96.60 99.36 96.40
+Wav2vec, latest fine-tune FSC official test 3,793 99.31 99.89 99.24
+Wav2vec, latest fine-tune Local raw-cabin validation 2,314 90.71 97.84 91.05
+Wav2vec, latest fine-tune Local TSE-domain validation 2,314 90.49 98.01 90.13
+Table 11: Intent-classification results on Fluent Speech Commands (FSC).
+Model / study Evaluation set Result Parameters
+Lugosch et al., pretrained full pipeline
+[9]
+FSC test Accuracy: 98.8% 14.6M
+Lugosch et al., without pretraining [9] FSC test Accuracy: 96.4% 14.6M
+wav2vec 2.0 intent model (this
+work)
+FSC official test,
+3,793 examples
+Top-1 accuracy:
+99.31%; macro-F1:
+99.24%
+94.78M†
+†Sum of this work’s reported 94.37M wav2vec encoder and 0.41M intent head. The FSC test set is shared, making
+this a closer comparison than the extraction table; differences in model setup and training still apply.
+The following table 12 provides the full list of parameter counts and the respective latency values for each block.290
+Table 12: Model size and single-input forward-pass latency.
+Component Parameters (M) Checkpoint size (MB) GPU latency (ms)
+Stage 1: TSE + cabin front end 10.73 43.1 51.60
+Stage 2: scalar presence head 0.25 1.0 –
+Stage 3: hybrid KWS 0.09 0.4 1.92
+Stage 4: wav2vec encoder 94.37 377.6 –
+Stage 4: intent head 0.41 1.6 16.43
+Total model 105.85 423.7 69.95
+5 Discussion291
+This pipeline, while it reaches high accuracy in mixture to action mapping, only performs well for 3 second data, and292
+struggles on long term real time data.293
+The target speaker extraction stage performs well, attaining 8.57dB on the mixture and separating the target294
+speaker well. This stage requires only improvement in SI-SNR alone.295
+In the target presence stage, while the accuracy is high and the pipeline works well globally, it performs poorly296
+as the false accept ratio is 96.25% when the threshold is low, and rejects all voice tracks when threshold is high. The297
+reason that the pipeline still works is due to the fact that the target speaker block is working well. In future work, this298
+stage may be removed (as TSE focuses only on target speech after all) or may use a SNN based network to classify299
+presence of speaker in the given waveform.300
+In wake word detection, the word used currently is ’Marvin’, in future work a custom wake word dataset may be301
+used to train this stage. This stage achieved 96% F1 score and needn’t be improved upon as it is only a small task302
+19
+\n--- PAGE 20 ---\ncompared to the other stages. Future work may be focused on either removing this stage and combining with a future303
+or previous stage or decreasing the size of the model even further.304
+The 31 class intent mapper proves to be the biggest bottleneck in real-time pipelines as the model contains 96305
+million parameters. Real time systems require around 5-20 million parameters, and thus having such a large model306
+may easily cause large lag in production scenarios. Even though the performance of the model in accuracy is high,307
+the trade-off is the large processing time on edge devices, and the fact that it also requires large memory. Future work308
+will focus primarily on this stage, creating a smaller, efficient model whose performance in accuracy remains similar,309
+but whose memory and time performance will drastically improve.310
+There also exists a dataset limitation as datasets like AISHELL-5 is made in Chinese and only noise can be311
+extracted from it. Also the Fluent Speech Commands dataset is for smart-home command corpus, not in-car command312
+corpus. Hence datasets made for English, and made with the context of in-car situations would prove the working of313
+real-time car pipelines well.314
+Acknowledgments315
+Author Contributions316
+The author contributions are as follows:317
+Harreeshnarain S, Prawin Dillibabu, Umesh designed the experiments, conducted ablations and analysis.318
+Dr Balakrishnan R, and Dr. Mohanaprasad supervised the experiments.319
+All authors contributed equally to the writing of the manuscript.320
+Funding321
+This work was supported by School of Computer Science and Engineering VIT Chennai [grant numbers xxxx, yyyy];322
+and the Samsung Research Institute [grant number zzzz].323
+Data Availability324
+All datasets used in this work is publicly available. [1, 2, 5, 6, 8, 9] The nature of the data is audio for librispeech,325
+librimix, aishell5, cavemove; where they simulate voice recordings, and noise. For Speech Commands and Fluent326
+Commands, they are command corpora. They are accessible through open access websites, where they can be freely327
+downloaded for research use.328
+References329
+1. Dai Y, Wang H, Li X, et al. AISHELL-5: The First Open-Source In-Car Multi-Channel Multi-330
+Speaker Speech Dataset for Automatic Speech Diarization and Recognition. In:Proceedings of331
+Interspeech. 2025:5493–7.doi:10.21437/Interspeech.2025-1886. arXiv:2505.23036.332
+2. Stefanakis N, Kalaitzakis M, Symiakakis A, Papadakis S, and Pavlidi D. CAVEMOVE: An333
+Acoustic Database for the Study of Voice-Enabled Technologies inside Moving Vehicles. In:334
+Proceedings of Interspeech. 2025.doi:10.48550/arXiv.2508.19691. arXiv:2508.19691.335
+3. Medennikov I, Korenevsky M, Prisyach T, et al. Target-Speaker Voice Activity Detection: A336
+Novel Approach for Multi-Speaker Diarization in a Dinner Party Scenario. In:Proceedings of337
+Interspeech. 2020:274–8. arXiv:2005.07272.338
+20
+\n--- PAGE 21 ---\n4. Ge M, Xu C, Wang L, Chng ES, Dang J, and Li H. SpEx+: A Complete Time Domain339
+Speaker Extraction Network. In:Proceedings of Interspeech. 2020:1406–10.doi:10 . 21437 /340
+Interspeech.2020-1397. arXiv:2005.04686.341
+5. Panayotov V, Chen G, Povey D, and Khudanpur S. LibriSpeech: An ASR corpus based on342
+public domain audio books. 2015 IEEE International Conference on Acoustics, Speech and343
+Signal Processing (ICASSP) 2015:5206–10.344
+6. Cosentino J, Pariente M, Cornell S, Deleforge A, and Vincent E. LibriMix: An Open-Source345
+Dataset for Generalizable Speech Separation. 2020. arXiv:2005.11262 [eess.AS].346
+7. Akbal E, Tuncer T, and Dogan S. Vehicle Interior Sound Classification Based on Local Quin-347
+tet Magnitude Pattern and Iterative Neighborhood Component Analysis. Applied Artificial348
+Intelligence 2022;36:2137653.349
+8. Warden P. Speech Commands: A Dataset for Limited-Vocabulary Speech Recognition. 2018.350
+arXiv:1804.03209.351
+9. Lugosch L, Ravanelli M, Ignoto P, Tomar VS, and Bengio Y. Speech Model Pre-Training for352
+End-to-End Spoken Language Understanding. In:Proceedings of Interspeech. 2019:814–8.doi:353
+10.21437/Interspeech.2019-2396. arXiv:1904.03670.354
+10. Wang Q, Muckenhirn H, Wilson K, et al. VoiceFilter: Targeted Voice Separation by Speaker-355
+Conditioned Spectrogram Masking. In:Proceedings of Interspeech. 2019:2728–32.doi:10 .356
+21437/Interspeech.2019-1101.357
+11. Li G, Liang S, Nie S, et al. Direction-Aware Speaker Beam for Multi-Channel Speaker Extrac-358
+tion. In:Proceedings of Interspeech. 2019:2713–7.doi:10.21437/Interspeech.2019-1474.359
+12. Sato H, Ochiai T, Delcroix M, et al. Strategies to Improve Robustness of Target Speech Extrac-360
+tion to Enrollment Variations. In:Proceedings of Interspeech. 2022:996–1000.doi:10.21437/361
+Interspeech.2022-10767.362
+13. Borsdorf M, Xu C, Li H, and Schultz T. Universal Speaker Extraction in the Presence and363
+Absence of Target Speakers for Speech of One and Two Talkers. In:Proceedings of Interspeech.364
+2021:1469–73.doi:10.21437/Interspeech.2021-1939.365
+14. Delcroix M, Kinoshita K, Ochiai T, Zmolikova K, Sato H, and Nakatani T. Listen Only to Me!366
+How Well Can Target Speech Extraction Handle False Alarms? In:Proceedings of Interspeech.367
+2022:216–20.doi:10.21437/Interspeech.2022-11252.368
+15. Zhao Z, Yang D, Gu R, Zhang H, and Zou Y. Target Confusion in End-to-End Speaker Extrac-369
+tion: Analysis and Approaches. In:Proceedings of Interspeech. 2022:5333–7.doi:10.21437/370
+Interspeech.2022-176.371
+16. Delcroix M, Watanabe S, Ochiai T, et al. End-to-End SpeakerBeam for Single Channel Target372
+Speech Recognition. In:Proceedings of Interspeech. 2019:451–5.doi:10.21437/Interspeech.373
+2019-1856.374
+17. Sainath TN and Parada C. Convolutional Neural Networks for Small-Footprint Keyword Spot-375
+ting. In:Proceedings of Interspeech. 2015:1478–82.doi:10.21437/Interspeech.2015-352.376
+21
+\n--- PAGE 22 ---\n18. Wang Q, Lopez Moreno I, Saglam M, et al. VoiceFilter-Lite: Streaming Targeted Voice Sep-377
+aration for On-Device Speech Recognition. In:Proceedings of Interspeech. 2020:2677–81.doi:378
+10.21437/Interspeech.2020-1193.379
+19. Bastianelli E, Vanzo A, Swietojanski P, and Rieser V. SLURP: A Spoken Language Under-380
+standing Resource Package. In:Proceedings of the 2020 Conference on Empirical Methods in381
+Natural Language Processing (EMNLP). Association for Computational Linguistics, 2020:7252–382
+62.doi:10.18653/v1/2020.emnlp-main.588.383
+20. Kim S, Kim G, Shin S, and Lee S. Two-Stage Textual Knowledge Distillation for End-to-End384
+Spoken Language Understanding. In:2021 IEEE International Conference on Acoustics, Speech385
+and Signal Processing (ICASSP). 2021:7463–7.doi:10.1109/ICASSP39728.2021.9414619.386
+21. Baevski A, Zhou H, Mohamed A, and Auli M. wav2vec 2.0: A Framework for Self-Supervised387
+Learning of Speech Representations. arXiv preprint arXiv:2006.11477 2020.388
+22. Le Roux J, Wisdom S, Erdogan H, and Hershey JR. SDR – Half-Baked or Well Done? In:389
+2019 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP).390
+2019:626–30.doi:10.1109/ICASSP.2019.8683855.391
+23. Taal CH, Hendriks RC, Heusdens R, and Jensen J. An Algorithm for Intelligibility Prediction of392
+Time-Frequency Weighted Noisy Speech. IEEE Transactions on Audio, Speech, and Language393
+Processing 2011;19:2125–36.394
+24. Rix AW, Beerends JG, Hollier MP, and Hekstra AP. Perceptual Evaluation of Speech Quality395
+(PESQ) – A New Method for Speech Quality Assessment of Telephone Networks and Codecs.396
+In:2001 IEEE International Conference on Acoustics, Speech, and Signal Processing (ICASSP).397
+Vol. 2. 2001:749–52.doi:10.1109/ICASSP.2001.941023.398
+22

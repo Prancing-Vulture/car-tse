@@ -1,0 +1,3 @@
+Presence threshold,Target wakes,Trials,Correct intents,False wake events,False actions/hour,Wake recall (%),Correct intent rate (%)
+0.90,0,4,0,1,64.3,0.0,0.0
+0.50,1,4,0,1,64.3,25.0,0.0
