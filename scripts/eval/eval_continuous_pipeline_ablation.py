@@ -136,11 +136,21 @@ def evaluate_scene_ablation(
                 "intent_confidence": None,
             }
             extracted_by_index[int(row["window_index"])] = downstream
+            # Cache the same SpEx embedding similarity used by the production
+            # pipeline so identity gating can be replayed without another
+            # Stage-1 pass. This is a diagnostic score; thresholds must be
+            # selected on development speakers and frozen before test use.
+            similarity = pipeline.stage1.speaker_similarity(enrollment_tensor, extracted)
+            row["speaker_similarity"] = (
+                float(similarity.mean().detach().cpu()) if similarity is not None else None
+            )
+            intent_probabilities = torch.softmax(pipeline.intent(downstream), dim=-1)[0]
+            row["intent_probabilities"] = intent_probabilities.detach().cpu().tolist()
 
             if direct_command_row is None or abs(window_start - command_start) < abs(
                 direct_command_row["window_start_seconds"] - command_start
             ):
-                probabilities = torch.softmax(pipeline.intent(downstream), dim=-1)[0]
+                probabilities = intent_probabilities
                 predicted_id = str(int(probabilities.argmax().item()))
                 row["direct_intent_id"] = predicted_id
                 row["direct_intent"] = pipeline.label_map.get(predicted_id, predicted_id) if pipeline.label_map else predicted_id
@@ -287,6 +297,17 @@ def main() -> int:
     parser.add_argument("--cabin-snr-db", nargs="+", type=float, default=[0.0, -5.0])
     parser.add_argument("--passenger-snr-db", type=float, default=0.0)
     parser.add_argument("--presence-thresholds", nargs="+", type=float, default=[0.50, 0.90])
+    parser.add_argument(
+        "--speaker-thresholds",
+        nargs="+",
+        type=float,
+        default=None,
+        help=(
+            "Optional SpEx cosine-similarity thresholds for an identity-gate sweep. "
+            "Use a development split to choose a threshold; this script's test results "
+            "are diagnostic and must not be used to tune a publishable operating point."
+        ),
+    )
     parser.add_argument("--kws-threshold", type=float, default=0.29)
     parser.add_argument("--hop-seconds", type=float, default=1.0)
     args = parser.parse_args()
@@ -436,6 +457,7 @@ def main() -> int:
             ),
         },
         "full_pipeline_by_presence_threshold": threshold_summary,
+        "speaker_gate_sweep": {},
         "scenes_detail": scene_results,
         "limitation": (
             "Continuous cross-corpus proxy only. The target Marvin and target command clips are not verified to be "
@@ -443,6 +465,77 @@ def main() -> int:
             "not a production accuracy estimate."
         ),
     }
+    # Replay identical Stage-1/presence/KWS scores through the actual streaming
+    # state logic with optional speaker gates. The no-gate baseline is retained
+    # above. This makes the system trade-off (missed target vs rejected
+    # passenger) visible instead of reporting an isolated speaker metric.
+    if args.speaker_thresholds is not None:
+        for threshold in args.speaker_thresholds:
+            all_wakes = all_commands = false_events = 0
+            correct_intents = 0
+            for scene in scene_results:
+                selected_presence = float(args.presence_thresholds[-1])
+                rows = scene["windows"]
+                state = PipelineState()
+                wakes: list[dict[str, Any]] = []
+                commands: list[dict[str, Any]] = []
+                for row in rows:
+                    similarity = row.get("speaker_similarity")
+                    rejected = similarity is not None and float(similarity) < float(threshold)
+                    if float(row["presence_probability"]) < selected_presence or rejected:
+                        state.kws_scores.clear()
+                        if state.awaiting_command:
+                            state.command_wait_calls += 1
+                            if state.command_wait_calls >= int(pipeline.command_timeout_calls):
+                                state.awaiting_command = False
+                                state.command_wait_calls = 0
+                                state.kws_refractory_left = 0
+                        else:
+                            state.kws_refractory_left = 0
+                        continue
+                    if state.awaiting_command:
+                        probs = torch.as_tensor(row["intent_probabilities"])
+                        label_id = str(int(probs.argmax().item()))
+                        commands.append({**row, "intent": pipeline.label_map.get(label_id, label_id)})
+                        state.awaiting_command = False
+                        state.command_wait_calls = 0
+                        state.kws_scores.clear()
+                        continue
+                    if update_kws_state(
+                        state,
+                        float(row["wake_probability"]),
+                        float(args.kws_threshold),
+                        int(pipeline.kws_smoothing_window),
+                        int(pipeline.kws_required_hits),
+                        int(pipeline.kws_refractory_calls),
+                    ):
+                        state.awaiting_command = True
+                        state.command_wait_calls = 0
+                        state.kws_scores.clear()
+                        wakes.append(row)
+                truth = scene["truth"]
+                target_wake = [event for event in wakes if is_target_wake(event["window_center_seconds"], truth)]
+                target_command = [
+                    event for event in commands
+                    if float(truth["target_command_start_seconds"]) - 0.5
+                    <= event["window_center_seconds"]
+                    <= float(truth["target_command_end_seconds"]) + 3.0
+                ]
+                all_wakes += int(bool(target_wake))
+                all_commands += int(bool(target_command))
+                correct_intents += int(bool(target_command) and target_command[0]["intent"] == scene["expected_intent"])
+                false_events += sum(event not in target_wake for event in wakes)
+            n = max(1, len(scene_results))
+            duration_hours = sum(float(row["truth"]["duration_seconds"]) for row in scene_results) / 3600.0
+            report["speaker_gate_sweep"][str(float(threshold))] = {
+                "presence_threshold": float(args.presence_thresholds[-1]),
+                "target_wake_recall": all_wakes / n,
+                "target_command_capture_rate": all_commands / n,
+                "target_intent_accuracy": correct_intents / n,
+                "false_wake_events": false_events,
+                "false_wake_rate_per_hour": false_events / max(duration_hours, 1.0e-9),
+                "threshold_role": "diagnostic_only; choose on development data, then freeze before test",
+            }
     output = resolve_path(args.output)
     write_metrics(output, report)
     print(json.dumps({

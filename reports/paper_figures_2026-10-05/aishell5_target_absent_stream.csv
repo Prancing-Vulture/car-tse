@@ -1,0 +1,6 @@
+System / threshold,Smoothed events/hour
+"Prior hybrid KWS, 0.81",9
+"AISHELL-augmented KWS, 0.81",30
+"AISHELL-augmented KWS, 0.90",12
+"AISHELL-augmented KWS, 0.95",3
+"Presence-gated full path, 0.90",0
