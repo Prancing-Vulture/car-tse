@@ -121,17 +121,20 @@ def threshold_sweep(
     groups: np.ndarray,
     thresholds: np.ndarray,
 ) -> dict[str, list[float]]:
-    target_mask = (groups == "stage1_gsc_marvin_cabin") & (labels == 1)
-    gsc_negative_mask = (groups == "stage1_gsc_marvin_cabin") & (labels == 0)
-    aishell_mask = groups == "aishell5_real_cabin_target_absent"
-    nonwake_mask = groups == "stage1_target_kws_nonwake_hardneg"
-    return {
-        "thresholds": [float(value) for value in thresholds],
-        "gsc_positive_rate": [rate(scores, target_mask, float(t)) for t in thresholds],
-        "gsc_negative_rate": [rate(scores, gsc_negative_mask, float(t)) for t in thresholds],
-        "aishell_negative_rate": [rate(scores, aishell_mask, float(t)) for t in thresholds],
-        "nonwake_negative_rate": [rate(scores, nonwake_mask, float(t)) for t in thresholds],
+    output: dict[str, list[float]] = {
+        "thresholds": [float(value) for value in thresholds]
     }
+    for group in sorted(set(groups.tolist())):
+        mask = groups == group
+        output[f"group::{group}"] = [
+            rate(scores, mask, float(threshold)) for threshold in thresholds
+        ]
+        positive_mask = mask & (labels == 1)
+        if positive_mask.any():
+            output[f"positive::{group}"] = [
+                rate(scores, positive_mask, float(threshold)) for threshold in thresholds
+            ]
+    return output
 
 
 def main() -> int:

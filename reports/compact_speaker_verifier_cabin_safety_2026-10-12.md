@@ -149,6 +149,74 @@ Logs:
 - `logs/smart_speaker_command_negative_all_compact_cabin_aware_thr030_2026-10-12.json`
 - Config: `configs/eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_aware_thr030_2026-10-12.yaml`
 
+## Iteration 2: Smart-Speaker-augmented verifier
+
+The cabin-aware verifier was extended with the Smart Speaker negatives in its
+training data (merged manifest
+`stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker`):
+4,684 / 1,629 / 1,625 train/Dev/Eval1 pairs, 604 positives, 768 AISHELL and
+1,508 Smart Speaker negatives in train. New artifacts keep the previous
+checkpoint untouched:
+
+- Caches: `data/cache/compact_speaker_verifier_cabin_smart_2026-10-12/`,
+  `data/cache/wavlm_speaker_verifier_cabin_smart_2026-10-12/`
+- Checkpoint: `checkpoints/compact_speaker_verifier_cabin_smart_ft1/best.pt`
+- Training log: `logs/compact_speaker_verifier_cabin_smart_ft1_2026-10-12.json`
+  (early stop epoch 27, distillation weight 0.25)
+- Diagnostic: `logs/compact_speaker_verifier_cabin_smart_smartcache_diagnostic_2026-10-12.json`
+
+| Measure | Cabin-aware | Cabin+Smart |
+|---|---:|---:|
+| Dev AUC | 0.9061 | 0.9380 |
+| Eval1 AUC | 0.9547 | 0.9706 |
+| TPR at validation ~1% FPR | 0.680 | **0.797** |
+| FPR at that point | 0.0053 | 0.0053 |
+
+Expanded-cache pass rates (Eval1):
+
+| Threshold | Synthetic target present | AISHELL-5 | Smart Speaker | Non-wake |
+|---:|---:|---:|---:|---:|
+| 0.30 | 93.0% | 2.0% | 0.0% | 5.7% |
+| 0.50 | 87.5% | 0.9% | 0.0% | 0.3% |
+
+Cascade results with the new checkpoint at threshold 0.30:
+
+| Benchmark | Exposure | Full-path events | Rate | KWS-only | Verdict |
+|---|---:|---:|---:|---:|---|
+| AISHELL-5 Eval2, target absent | 3.889 h | 0 | 0.00/h (95% UB 0.95) | 96.69/h | Held |
+| Smart Speaker all-file | 3.193 h | 11 | 3.45/h | 93.97/h | Same as cabin-only, 0 false actions |
+
+The Smart Speaker @0.50 replay was not completed (interrupted, no partial log);
+the @0.30 result already reproduces the cabin-only safety level, so this was
+left as an optional check. The new checkpoint improves positive-side pass
+rates at every threshold without sacrificing the safety result, so it
+supersedes the cabin-only candidate as the recommended research verifier.
+
+### Cost of the compact gate (RTX 4080 / same config)
+
+| Stage | Without compact | With compact |
+|---|---:|---:|
+| GPU FP16 wake stage, mean | 48.55 ms | 56.99 ms |
+| GPU FP16 post-wake command stage, mean | 62.34 ms | 76.21 ms |
+| CPU FP32 wake stage, mean | 522.22 ms | 561.1 ms |
+| CPU FP32 post-wake command stage, mean | 641.67 ms | 679.6 ms |
+| Complete checkpoint size | 424.49 MB | 425.24 MB |
+
+The verifier itself is 176,579 parameters (~5 ms for two 1-second waveforms on
+GPU) and adds ~0.75 MB. The gate is only evaluated on presence-passing windows.
+These remain development-GPU measurements, not an automotive target benchmark.
+
+### Readiness audit refresh
+
+`reports/production_readiness_snapshot_compact_cabin_smart_2026-10-12.md`
+(machine-readable:
+`logs/production_readiness_snapshot_compact_cabin_smart_2026-10-12.json`)
+records the new candidate. Status remains `research_engineering_preview`,
+`production_ready=false`: same-driver continuity, passenger rejection, study
+size, capture-hardware match, frozen split, threshold freeze, and reproducible
+release state remain blocked. A capture preflight on 2026-10-12 still finds
+only a single-channel interface, so the pilot cannot be recorded on this host.
+
 ## Positive-proxy caveat
 
 The retained 8-scene same-speaker proxy
@@ -214,6 +282,15 @@ Logs:
 - `data/cache/wavlm_speaker_verifier_cabin_aware_2026-10-12/`
 - `logs/compact_speaker_verifier_cabin_cache_diagnostic_2026-10-12.json`
 - `logs/compact_speaker_verifier_cabin_aware_cache_diagnostic_2026-10-12.json`
+- `checkpoints/compact_speaker_verifier_cabin_smart_ft1/best.pt` (iteration 2)
+- `logs/compact_speaker_verifier_cabin_smart_ft1_2026-10-12.json`
+- `logs/compact_speaker_verifier_cabin_smart_smartcache_diagnostic_2026-10-12.json`
+- `logs/aishell5_target_absent_compact_cabin_smart_thr030_all18_2026-10-12.json`
+- `logs/smart_speaker_command_negative_all_compact_cabin_smart_thr030_2026-10-12.json`
+- `logs/full_pipeline_latency_compact_cabin_smart_gpu_2026-10-12.json`
+- `logs/full_pipeline_latency_compact_cabin_smart_cpu_2026-10-12.json`
+- `reports/production_readiness_snapshot_compact_cabin_smart_2026-10-12.md`
+- `configs/eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml`
 
 ## Reproduction
 
