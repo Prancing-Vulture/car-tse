@@ -1,0 +1,74 @@
+{
+  "description": "Validated positive full pipeline using real Marvin and FSC clips plus synthetic cabin rendering.",
+  "positive_definition": {
+    "wake_word": "marvin",
+    "wake_ground_truth": true,
+    "intent_ground_truth": "decrease|heat|kitchen",
+    "intent_prediction_matches": true
+  },
+  "construction": {
+    "wake_clip": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\27c30960_nohash_0.wav",
+    "command_clip": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\xwzgmmv5ZOiVaxXz\\b31df4f0-453c-11e9-b1e4-e5985dca719e.wav",
+    "passenger_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\..\\processed\\Libri2Mix\\test\\wav8k\\min\\mix_both\\1089_000000.wav",
+    "cabin_noise_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\cavemove\\extracted\\cavemove_dataset\\Volkswagen_Golf\\distributed\\noise\\s100_w3_ver1.wav",
+    "cabin_noise_vehicle": "Volkswagen_Golf",
+    "cabin_noise_snr_db": 15.0,
+    "passenger_snr_db": 15.0,
+    "enrollment": "first 1.5 seconds of the assembled Marvin+command target",
+    "sample_rate": 16000
+  },
+  "pipeline": {
+    "presence_probability": 0.999271810054779,
+    "presence_passed": true,
+    "wake_probability": 0.6020498275756836,
+    "wake_detected": true,
+    "predicted_intent": "decrease|heat|kitchen",
+    "expected_intent": "decrease|heat|kitchen",
+    "intent_confidence": 0.2720455825328827,
+    "all_positive_checks_passed": true
+  },
+  "tse_metrics": {
+    "input_si_sdr_db": 12.408661842346191,
+    "extracted_si_sdr_db": 12.569099426269531,
+    "si_sdri_db": 0.16043758392333984
+  },
+  "audio": {
+    "cabin_input_4ch": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\01_cabin_input_4ch_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\01_cabin_input_4ch_listen.wav"
+    },
+    "cabin_input_mean": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\02_cabin_input_mean_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\02_cabin_input_mean_listen.wav"
+    },
+    "target_wake_plus_command": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\03_target_wake_plus_command_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\03_target_wake_plus_command_listen.wav"
+    },
+    "passenger_interference": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\04_passenger_interference_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\04_passenger_interference_listen.wav"
+    },
+    "cabin_noise_4ch": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\05_cabin_noise_4ch_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\05_cabin_noise_4ch_listen.wav"
+    },
+    "target_enrollment": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\06_target_enrollment_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\06_target_enrollment_listen.wav"
+    },
+    "stage1_extracted": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\07_stage1_extracted_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\07_stage1_extracted_listen.wav"
+    },
+    "stage1_downstream_normalized": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\08_stage1_downstream_normalized_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\08_stage1_downstream_normalized_listen.wav"
+    },
+    "kws_input_1s": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\09_kws_input_1s_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_positive\\09_kws_input_1s_listen.wav"
+    }
+  },
+  "note": "This is an end-to-end positive engineering demo. The wake-word and command come from separate public corpora because no same-speaker Marvin+command recording is present. The assembled target/enrollment is therefore a cross-clip validation, not a natural-recording benchmark. *_listen.wav files are peak-normalized."
+}

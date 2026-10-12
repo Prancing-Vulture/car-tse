@@ -1,0 +1,45 @@
+name: eval_end_to_end_cavemove_kws_fusion_mean_candidate
+sample_rate: 16000
+segment_seconds: 3.0
+manifest: stage1_cavemove_cabin.jsonl
+split: test
+stage1_config: configs/stage1_spex_transfer_mc_cavemove.yaml
+presence_type: frame
+presence_sample_rate: 16000
+presence_n_mels: 40
+presence_hidden: 64
+presence_n_fft: 512
+presence_hop: 160
+presence_top_fraction: 0.20
+presence_threshold: 0.70
+kws_threshold: 0.20
+kws_input_seconds: 1.0
+kws_smoothing_window: 2
+kws_required_hits: 1
+kws_refractory_calls: 2
+kws_fusion_mode: mean
+kws_fusion_alpha: 0.5
+wake_class_id: 1
+kws_num_classes: 2
+intent_input_seconds: 2.0
+command_timeout_calls: 4
+command_presence_threshold: 0.40
+intent_type: wav2vec
+intent_encoder: facebook/wav2vec2-base-960h
+intent_encoder_checkpoint: stage4_intent_wav2vec_ft8_resume_tse_domain/encoder_best.pt
+intent_num_classes: 31
+output: logs/continuous_full_pipeline_proxy_kws_fusion_mean.json
+
+cabin_noise: true
+num_mics: 4
+cabin_noise_channels: [0, 2, 4, 6]
+cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
+cabin_noise_cache_size: 32
+cabin_noise_cache_dir: data/cache/cavemove_16k_mc
+
+checkpoints:
+  spex: stage1_spex_transfer_mc_cavemove_cabin/best.pt
+  presence: stage2_frame_presence_gsc_aishell_ft1/best.pt
+  kws: stage3_kws_tse_morepos_aishell_ft1/best.pt
+  kws_secondary: stage3_kws_tse_hybrid_ft1/best.pt
+  intent: stage4_intent_wav2vec_ft8_resume_tse_domain/best.pt

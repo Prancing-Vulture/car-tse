@@ -1,0 +1,27 @@
+name: stage3_kws_tse_morepos_source
+sample_rate: 16000
+segment_seconds: 1.0
+wake_word: marvin
+manifest_train: stage3_kws_tse_morepos_train.jsonl
+manifest_val: stage3_kws_tse_morepos_val.jsonl
+manifest_eval: stage3_kws_tse_morepos_test.jsonl
+cabin_noise: false
+audio_cache_size: 0
+waveform_cache_dir: data/cache/stage3_kws_tse_morepos_16k
+waveform_cache_includes_cabin_noise: true
+
+model:
+  n_mels: 40
+  channels: [32, 64, 128]
+  num_classes: 2
+
+train:
+  batch_size: 512
+  val_batch_size: 512
+  max_epochs: 12
+  patience: 3
+  lr: 3.0e-4
+  grad_clip: 5.0
+  amp: true
+  balanced_sampler: true
+  num_workers: 2

@@ -1,0 +1,19 @@
+% Insert paragraph 1 after Methods subsection 2.1 (SpEx Target Speaker Extraction).
+% Insert paragraph 2 after Methods subsection 2.4 (Intent Classifier).
+% Use paragraphs 3--5 to replace the generic Discussion prompt.
+% With citation-order numbering, the manuscript's current references [1]--[9] stay first.
+
+\paragraph{Position relative to target-speaker extraction.}
+Speaker-conditioned separation uses an enrollment representation to guide extraction; VoiceFilter, for example, combines a target-speaker embedding with a mixture spectrogram to estimate a target mask \cite{voicefilter}. The present system uses the time-domain SpEx+ architecture \cite{spexplus} and evaluates its adaptation to cabin acoustics together with target-presence, wake-word, and intent stages. This places the contribution in domain adaptation and pipeline integration, rather than in proposing speaker-conditioned extraction as a new task.
+
+\paragraph{Intent encoder.}
+The intent stage uses a wav2vec 2.0 encoder initialized from \texttt{facebook/wav2vec2-base-960h} and fine-tuned for the 31 Fluent Speech Commands intents; it is not a Word2vec model. Wav2vec 2.0 learns speech representations from audio that can be fine-tuned for downstream tasks \cite{wav2vec2}, and Fluent Speech Commands provides the task corpus used here \cite{fluentcommands}. The reported 99.31\% top-1 score is from the official clean test split, whereas 90.49\% is from the local TSE-domain validation set; these results describe different conditions and are interpreted separately.
+
+\paragraph{Target-presence gating and false accepts.}
+An extracted waveform is a target-conditioned estimate, not independent confirmation that the enrolled person produced the signal. Ambiguous speaker guidance can cause target confusion in end-to-end extraction \cite{targetconfusion}. On the stated validation split, the scalar presence head has a 96.25\% false-accept rate at threshold 0.50; threshold 0.90 reduces this to 17.50\% with 91.13\% recall. Since the split contains only 80 target-absent examples, these results show a threshold trade-off on this validation set, not robust passenger rejection in real cabin audio.
+
+\paragraph{Interpreting extraction scores.}
+The reported 10.98 dB SI-SDR improvement is evidence of signal-level enhancement, but does not establish that commands remain intelligible or that the correct intent survives extraction. SI-SDR is a signal reconstruction measure, while STOI was developed to predict intelligibility changes in processed noisy speech \cite{leroux2019sdr,taal2011stoi}. Reporting these measures alongside target-confusion counts and downstream command or intent outcomes on the same held-out mixtures would give a broader evaluation; the current CAVEMOVE result supports a signal-level claim only.
+
+\paragraph{Continuous-stream evaluation and deployment.}
+The reported wake-word false-accept rate per hour is estimated from independent one-second windows, rather than a continuous stream. The 69.95 ms GPU figure is likewise the sum of selected model forward-pass times, not end-to-end streaming latency. Streaming targeted separation systems such as VoiceFilter-Lite are designed for frame-by-frame operation with explicit CPU, memory, and latency constraints \cite{voicefilterlite}. Continuous recordings with enrolled-driver wake positives and passenger or non-wake negatives, together with end-to-end latency and memory measurements on the intended hardware, remain necessary to substantiate deployment claims.

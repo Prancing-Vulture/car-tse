@@ -1,0 +1,66 @@
+name: stage1_spex_transfer_mc_cavemove_cabin
+sample_rate: 16000
+segment_seconds: 3.0
+multichannel: true
+use_cabin_frontend: true
+num_mics: 4
+cabin_noise: true
+cabin_noise_channels: [0, 2, 4, 6]
+cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
+cabin_noise_cache_size: 32
+spex_backend: transfer_spexplus_16k
+
+# Existing clean 16 kHz SpEx+ model; only the cabin front end and extraction
+# adaptation are trained here.
+pretrained_checkpoint: "E:/prawin/snn/runs/spexplus_no_jepa_30/best.pt"
+
+spex:
+  L1_ms: 1.25
+  L2_ms: 5.0
+  L3_ms: 10.0
+  N: 256
+  B: 8
+  O: 256
+  P: 512
+  Q: 3
+  num_spks: 251
+  spk_embed_dim: 256
+  causal: false
+
+frontend:
+  ec_hidden: 128
+  spatial_channels: 64
+
+loss:
+  alpha: 0.1
+  beta: 0.1
+  gamma: 0.0
+
+train:
+  batch_size: 4
+  max_epochs: 10
+  grad_clip: 5.0
+  amp: true
+  manifest: stage1_cavemove_cabin.jsonl
+  val_manifest: stage1_cavemove_cabin.jsonl
+  val_limit: 400
+  val_batch_size: 4
+  num_workers: 2
+  schedule:
+    - epochs: [1, 2]
+      freeze_spex: true
+      lr_encoder: 0.0
+      lr_rest: 0.0
+      lr_frontend: 5.0e-5
+    - epochs: [3, 5]
+      freeze_spex: false
+      freeze_encoder: true
+      lr_encoder: 0.0
+      lr_rest: 1.0e-5
+      lr_frontend: 2.0e-5
+    - epochs: [6, 10]
+      freeze_spex: false
+      freeze_encoder: false
+      lr_encoder: 5.0e-7
+      lr_rest: 5.0e-6
+      lr_frontend: 2.0e-5

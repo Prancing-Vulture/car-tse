@@ -57,6 +57,22 @@ Place `best.pt.tar` in `checkpoints/spex_pretrained/`.
 .\scripts\orchestration\run_full_study.ps1
 ```
 
+For the downloaded workspace bootstrap set, use the smaller reproducible
+preparation and staged runs:
+
+```powershell
+.\scripts\orchestration\prepare_local_bootstrap.ps1
+.\scripts\orchestration\start_bootstrap_training.ps1
+.\scripts\orchestration\start_mc_bootstrap_training.ps1
+.\scripts\orchestration\start_presence_bootstrap_training.ps1
+# Optional longer cabin fine-tune initialized from the MC bootstrap checkpoint
+.\scripts\orchestration\start_mc_finetune.ps1
+```
+
+The local bootstrap generator avoids the full multi-hundred-GB LibriMix
+expansion while preserving paired mixture/target/enrollment paths. Dataset
+provenance and acquisition status are recorded in `data/sources.json`.
+
 Individual stages:
 
 ```powershell

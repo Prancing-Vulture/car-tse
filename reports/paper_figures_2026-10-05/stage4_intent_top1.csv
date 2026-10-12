@@ -1,0 +1,5 @@
+Condition,Top-1 accuracy
+"FSC official validation (n=3,118)",96.6
+"FSC official test (n=3,793)",99.31
+"Local raw-cabin validation (n=2,314)",90.71
+"Local TSE-domain validation (n=2,314)",90.49

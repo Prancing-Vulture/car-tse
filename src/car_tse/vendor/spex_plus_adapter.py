@@ -49,6 +49,17 @@ def load_pretrained_spex(
     if ckpt_path.exists():
         cpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         state = cpt.get("model_state_dict", cpt)
+        # Stage-1 checkpoints wrap the vendor network under ``spex.nnet``;
+        # accept both those checkpoints and raw vendor ``best.pt.tar`` files.
+        if state and not any(key in state for key in nnet.state_dict()):
+            prefixed = "spex.nnet."
+            wrapped = {
+                key[len(prefixed) :]: value
+                for key, value in state.items()
+                if key.startswith(prefixed)
+            }
+            if wrapped:
+                state = wrapped
         nnet.load_state_dict(state, strict=strict)
     return nnet
 
