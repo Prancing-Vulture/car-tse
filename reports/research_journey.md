@@ -1672,3 +1672,124 @@ Artifacts:
 - `tests/test_real_driver_session_validation.py`
 - `reports/production_readiness_gates.md`
 - `logs/real_driver_pipeline_evaluation_ratefix_empty.json`
+
+### E-2026-10-12-smart-speaker-command-negative-audit
+
+The external University of Rochester Smart Speaker Command Dataset was
+re-audited as an existing hard-negative resource rather than a merely
+potential dataset. It contains approximately 2,110 clean 48-kHz mono clips
+from seven speakers, each scripted as `Hey Alexa, <command>`. Because the
+current system listens for `Marvin`, these clips are negative for wake-word
+evaluation while still exercising continuous wake-like speech followed by a
+command. The repository already contains a cache builder and evaluator for
+this corpus.
+
+On the same 250-file Speaker1 subset, the current split-gate target-KWS
+candidate reduced full-path false wakes from 728.09/hour to 17.90/hour and
+reduced KWS-only false wakes from 1,817.23/hour to 50.73/hour. A 14-file,
+68.02-second sequential action sample produced two false actions for the
+earlier baseline and zero for the candidate. This is a useful safety/debugging
+gain, but it is clean single-channel studio audio with duplicated channels,
+one source speaker, no cabin noise, and no positive `Marvin` examples; it is
+not real-driver or production FAR evidence.
+
+The full 2,110-file all-speaker diagnostic was started separately and is
+pending completion. No checkpoint was overwritten and no training was started
+for this audit.
+
+Artifacts:
+
+- `reports/smart_speaker_command_dataset_audit_2026-10-11.md`
+- `scripts/eval/eval_smart_speaker_command_negative.py`
+- `scripts/data/build_target_kws_smart_speaker_negative_cache.py`
+- `logs/smart_speaker_command_negative_250_dedup_baseline_2026-10-11.json`
+- `logs/smart_speaker_command_negative_250_dedup_candidate_2026-10-11.json`
+- `logs/smart_speaker_command_negative_all_2026-10-12.json` (pending)
+
+### E-2026-10-12-compact-cabin-verifier-safety
+
+The retained SpEx speaker gate is nearly uninformative as an identity score
+(AUC ~0.5). The cabin-aware target-KWS cache now contains 768 real AISHELL-5
+target-absent windows per train/Dev/Eval1 split, which makes it possible to
+test an independent identity veto on real cabin data. The existing compact
+verifier (176,579 parameters) was evaluated on that cache with restored
+enrollment waveforms and the cached Stage 1 ft1 extractions.
+
+Standalone separation is strong on the negative side: AUC 0.9555 (Dev) and
+0.9764 (Eval1); the AISHELL windows have mean score 0.059 and a 0.0-5.6%
+pass rate over thresholds 0.2-0.9, while synthetic same-speaker target pairs
+pass at 84-96% over 0.2-0.5. The earlier cascade failure used a 1%-FPR
+threshold (0.9079) that retains only ~52% of synthetic positives; the sweep
+provides a usable diagnostic range instead.
+
+The AISHELL evaluator gained an opt-in compact speaker-gate backend (default
+behavior unchanged; the SpEx 0.24 regression replay reproduces 3.0/hour and
+60.0/hour exactly). Over all 18 Eval2 sessions (3.889 hours), the compact gate
+reduced full-path smoothed false accepts from 18 events / 4.628 per hour
+(reference) to 7 events / 1.80 per hour at threshold 0.50 (one-sided Poisson
+p = 0.003) and 11 events / 2.83 per hour at threshold 0.20 (p = 0.055), with
+the KWS-only rate unchanged at 96.69 per hour.
+
+The positive 8-scene cross-corpus proxy drops to 37.5% wake recall at both
+thresholds because its Marvin wake clip is not verified to match the
+enrollment speaker; a functioning identity gate is expected to reject those
+wakes, so the proxy cannot measure this gate's recall. Speaker-consistent
+driver recall remains unmeasured and requires the consented pilot. No
+checkpoint or default configuration was changed; the compact threshold is not
+frozen.
+
+Artifacts:
+
+- `reports/compact_speaker_verifier_cabin_safety_2026-10-12.md`
+- `scripts/eval/eval_compact_speaker_verifier_cabin_cache.py`
+- `scripts/eval/eval_aishell5_continuous_kws.py`
+- `configs/eval_end_to_end_cavemove_target_kws_dual_domain_stage2_hardneg_aishell5_compact_cabin_safety_candidate_2026-10-12.yaml`
+- `configs/eval_end_to_end_cavemove_target_kws_dual_domain_stage2_hardneg_aishell5_compact_cabin_thr020_candidate_2026-10-12.yaml`
+- `logs/compact_speaker_verifier_cabin_cache_diagnostic_2026-10-12.json`
+- `logs/aishell5_target_absent_compact_verifier_thr050_all18_2026-10-12.json`
+- `logs/aishell5_target_absent_compact_verifier_thr020_all18_2026-10-12.json`
+- `logs/aishell5_target_absent_spex_splitgate_regression_1200s_2026-10-12.json`
+- `logs/continuous_full_pipeline_proxy_compact_cabin_thr050_same_speaker_p10_2026-10-12.json`
+- `logs/continuous_full_pipeline_proxy_compact_cabin_thr020_same_speaker_p10_2026-10-12.json`
+
+### E-2026-10-12-cabin-aware-compact-verifier-retrain
+
+The GSC-trained compact verifier had never seen real cabin negatives, so it
+was retrained on a cabin-aware cache built from the same manifests used for
+target-KWS adaptation: 3,176/1,328/1,324 train/Dev/Eval1 pairs with 768 real
+AISHELL-5 target-absent windows per split, plus the synthetic positive and
+non-wake hard-negative rows. Enrollment waves use the source-manifest
+enrollment clips with a fixed-enrollment fallback for the AISHELL pseudo-row
+manifests; the frozen WavLM relation head provided distillation targets on
+fresh WavLM embeddings.
+
+The retrained checkpoint `compact_speaker_verifier_cabin_aware_ft1`
+(176,579 parameters) trades a small amount of aggregate AUC for a better
+operating region: Eval1 TPR at the validation-selected ~1% FPR point rises
+from 51.6% to 66.4%, and the real-cabin pass rate at threshold 0.30 falls
+from 3.6% to 2.5% while synthetic target pass moves from 94.5% to 88.3%.
+In the full cascade over all 18 AISHELL-5 Eval2 sessions (3.889 hours,
+target-absent, KWS-only 96.69/hour in every run), the cabin-aware gate
+produced zero smoothed full-path events at both 0.30 and 0.50, versus 7 for
+the GSC checkpoint at 0.50 and 18 for the SpEx reference. Per standing rules
+this zero count is only a bound (95% Poisson upper limit 0.95/hour), not a
+reliable FAR.
+
+The cross-corpus positive proxy stays at 37.5% wake recall for every compact
+variant because its Marvin wake clip is not verified to match the enrollment
+speaker; that proxy cannot measure this gate's recall. Speaker-consistent
+driver evaluation remains blocked on a consented pilot. No existing
+checkpoint was modified and no threshold was frozen.
+
+Artifacts:
+
+- `scripts/data/build_cabin_compact_verifier_cache.py`
+- `checkpoints/compact_speaker_verifier_cabin_aware_ft1/best.pt`
+- `logs/compact_speaker_verifier_cabin_aware_ft1_2026-10-12.json`
+- `logs/compact_speaker_verifier_cabin_aware_cache_diagnostic_2026-10-12.json`
+- `logs/aishell5_target_absent_compact_cabin_aware_thr030_all18_2026-10-12.json`
+- `logs/aishell5_target_absent_compact_cabin_aware_thr050_all18_2026-10-12.json`
+- `configs/eval_end_to_end_cavemove_target_kws_dual_domain_stage2_hardneg_aishell5_compact_cabin_aware_thr030_candidate_2026-10-12.yaml`
+- `logs/continuous_full_pipeline_proxy_compact_cabin_aware_thr030_same_speaker_p10_2026-10-12.json`
+- `data/cache/compact_speaker_verifier_cabin_aware_2026-10-12/`
+- `data/cache/wavlm_speaker_verifier_cabin_aware_2026-10-12/`

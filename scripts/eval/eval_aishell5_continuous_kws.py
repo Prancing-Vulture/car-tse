@@ -31,6 +31,7 @@ from car_tse.models.presence_head import (
     PersonalFramePresenceHead,
     PresenceHead,
 )
+from car_tse.models.speaker_verifier import CompactSpeakerVerifier
 from car_tse.models.stage1_system import Stage1System
 from car_tse.pipeline.in_car_pipeline import PipelineState, normalize_extracted_waveform, update_kws_state
 from car_tse.train.utils import get_device, load_checkpoint, write_metrics
@@ -252,6 +253,7 @@ def evaluate_stream(
     speaker_fusion_alpha: float = 0.5,
     presence_activity_margin_threshold: float | None = None,
     presence_activity_margin_mode: str = "independent_top",
+    compact_speaker_verifier: CompactSpeakerVerifier | None = None,
 ) -> dict[str, Any]:
     sample_rate = 16000
     window_samples = int(round(stage1_seconds * sample_rate))
@@ -262,6 +264,14 @@ def evaluate_stream(
     activity_margin_scores: list[float] = []
     kws_scores: list[float] = []
     speaker_scores: list[float] = []
+    compact_enrollment = None
+    if compact_speaker_verifier is not None:
+        enrollment_array = np.asarray(enrollment, dtype=np.float32).reshape(-1)
+        if enrollment_array.shape[0] >= sample_rate:
+            enrollment_array = enrollment_array[:sample_rate]
+        else:
+            enrollment_array = np.pad(enrollment_array, (0, sample_rate - enrollment_array.shape[0]))
+        compact_enrollment = torch.from_numpy(enrollment_array.copy()).to(device)
     with torch.inference_mode():
         for start in range(0, count, max(1, int(batch_size))):
             batch_mc = torch.from_numpy(windows[start : start + batch_size]).to(device)
@@ -269,7 +279,21 @@ def evaluate_stream(
             batch_enroll = torch.from_numpy(np.repeat(enrollment[None, :], batch_mc.shape[0], axis=0)).to(device)
             extracted, _, _, _ = stage1(batch_mix, batch_enroll, multichannel=batch_mc)
             if speaker_gate_threshold is not None or str(speaker_fusion_mode).lower() != "none":
-                similarity = stage1.speaker_similarity(batch_enroll, extracted)
+                if compact_speaker_verifier is not None:
+                    compact_extracted = normalize_extracted_waveform(extracted)
+                    if compact_extracted.shape[-1] >= sample_rate:
+                        compact_extracted = compact_extracted[..., :sample_rate]
+                    else:
+                        compact_extracted = torch.nn.functional.pad(
+                            compact_extracted, (0, sample_rate - compact_extracted.shape[-1])
+                        )
+                    compact_logits, _, _ = compact_speaker_verifier(
+                        compact_enrollment.unsqueeze(0).repeat(batch_mc.shape[0], 1),
+                        compact_extracted,
+                    )
+                    similarity = torch.sigmoid(compact_logits)
+                else:
+                    similarity = stage1.speaker_similarity(batch_enroll, extracted)
                 if similarity is None:
                     raise RuntimeError("Speaker scoring requested but Stage 1 has no speaker embedding")
                 speaker_scores.extend(similarity.cpu().tolist())
@@ -448,6 +472,10 @@ def main() -> int:
         default="independent_top",
     )
     parser.add_argument("--speaker-gate-threshold", type=float, default=None)
+    parser.add_argument("--speaker-gate-backend", choices=("spex", "compact"), default="spex")
+    parser.add_argument("--compact-speaker-verifier-checkpoint", type=Path, default=None)
+    parser.add_argument("--compact-speaker-verifier-embedding-dim", type=int, default=128)
+    parser.add_argument("--compact-speaker-verifier-hidden", type=int, default=128)
     parser.add_argument("--kws-threshold", type=float, default=0.29)
     parser.add_argument("--kws-thresholds", nargs="+", type=float, default=None, help="Optional score thresholds to replay without recomputing Stage 1/KWS")
     parser.add_argument("--presence-thresholds", nargs="+", type=float, default=None, help="Optional presence thresholds to replay without recomputing Stage 1/KWS")
@@ -535,6 +563,19 @@ def main() -> int:
             load_checkpoint(target_kws_secondary_checkpoint, target_kws_secondary)
             target_kws_secondary.eval()
 
+    compact_speaker_verifier = None
+    if args.compact_speaker_verifier_checkpoint is not None:
+        compact_speaker_verifier = CompactSpeakerVerifier(
+            embedding_dim=int(args.compact_speaker_verifier_embedding_dim),
+            hidden=int(args.compact_speaker_verifier_hidden),
+            sample_rate=16000,
+            n_mels=40,
+            n_fft=400,
+            hop=160,
+        ).to(device)
+        load_checkpoint(resolve_path(args.compact_speaker_verifier_checkpoint), compact_speaker_verifier)
+        compact_speaker_verifier.eval()
+
     enrollment, _ = read_mono(resolve_path(args.enrollment_wav), 16000)
     enrollment = segment_waveform(enrollment, 24000, training=False)
     aishell_root = resolve_path(Path("data/raw/aishell5/extracted") / args.split)
@@ -566,6 +607,7 @@ def main() -> int:
                 else None
             ),
             presence_activity_margin_mode=str(args.presence_activity_margin_mode),
+            compact_speaker_verifier=compact_speaker_verifier,
         )
         row = {**metadata, **metrics}
         session_results.append(row)
@@ -664,6 +706,12 @@ def main() -> int:
         ),
         "presence_activity_margin_mode": str(args.presence_activity_margin_mode),
         "speaker_gate_threshold": float(args.speaker_gate_threshold) if args.speaker_gate_threshold is not None else None,
+        "speaker_gate_backend": str(args.speaker_gate_backend),
+        "compact_speaker_verifier_checkpoint": (
+            str(resolve_path(args.compact_speaker_verifier_checkpoint))
+            if args.compact_speaker_verifier_checkpoint is not None
+            else None
+        ),
         "kws_threshold": float(args.kws_threshold),
         "kws_thresholds": [float(value) for value in args.kws_thresholds] if args.kws_thresholds else None,
         "kws_input_seconds": float(args.kws_input_seconds),

@@ -333,7 +333,10 @@ The active Git repository is nested at `D:/Prawin_New/tse/car-tse-main`, but sev
   - source audio is 48 kHz, 16-bit, mono;
   - the command set contains smart-speaker tasks such as lights, timers, music, reminders, and calls;
   - documentation PDFs are under `SmartSpeakerCommandDataset_RutowskiEtAl_2023/`;
-  - this may help study same-speaker wake-to-command structure and speaker consistency, but its wake phrase is `Hey Alexa`, not `Marvin`; verify registration/licensing/terms before using it for training or redistribution.
+  - it is already integrated into the repository’s diagnostic path via `scripts/eval/eval_smart_speaker_command_negative.py` and `scripts/data/build_target_kws_smart_speaker_negative_cache.py`;
+  - on the evaluated 250-file Speaker1 subset, the current candidate reduced full-path false wakes from 728.09/hour to 17.90/hour and the 14-file action sample had zero false actions; this is clean single-channel negative evidence only, not a production result;
+  - a full all-speaker evaluation was started as `logs/smart_speaker_command_negative_all_2026-10-12.json` and must be completed before using an all-speaker result;
+  - this may help study same-speaker wake-to-command structure and speaker consistency, but its wake phrase is `Hey Alexa`, not `Marvin`; verify registration/licensing/terms before any new training or redistribution.
 - `D:/datasets/precise_community_data/`
   - a Git checkout of Mycroft Precise Community Data;
   - includes a pre-trained `Marvin` Precise model at `marvin/models/marvin-en-0.3.0-20190817-jarbas.tar.gz`;
