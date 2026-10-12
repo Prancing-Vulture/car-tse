@@ -2,6 +2,7 @@ import torch
 
 from car_tse.frontend.cabin_frontend import CabinFrontend
 from scripts.eval.eval_stage1_input_scale_sweep import scale_batch
+from scripts.train.train_stage1_spex import collate
 
 
 def test_mix_rms_mode_reaches_requested_batch_scale():
@@ -50,3 +51,15 @@ def test_cabin_frontend_input_rms_target_scales_playback_consistently():
     # this verifies the configured input normalization without depending on
     # learned frontend residual weights.
     assert torch.allclose(output, torch.full_like(output, 0.1), atol=1.0e-6)
+
+
+def test_stage1_collate_omits_mixed_optional_speaker_labels():
+    batch = [
+        {"mixture": torch.zeros(4), "speaker_id": "aishell"},
+        {"mixture": torch.ones(4), "speaker_id": "libri", "speaker_label": 3},
+    ]
+
+    output = collate(batch)
+
+    assert "speaker_label" not in output
+    assert output["mixture"].shape == (2, 4)

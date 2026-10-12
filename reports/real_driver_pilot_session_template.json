@@ -1,0 +1,27 @@
+{
+  "session_id": "D01_S01",
+  "split": "tuning",
+  "driver_id": "D01",
+  "audio_path": "audio.wav",
+  "recorded_at_local": "YYYY-MM-DDThh:mm:ss+05:30",
+  "recording_sample_rate_hz": 16000,
+  "channel_count": 4,
+  "channel_map": ["front_left", "front_right", "rear_left", "rear_right"],
+  "microphone_setup": "describe positions, orientation, and distances",
+  "vehicle": {
+    "make_model": "redacted-or-description",
+    "parked_or_moving": "parked",
+    "hvac": "off",
+    "road_surface": "not_applicable",
+    "playback": "off",
+    "passenger_count": 0
+  },
+  "consent": {
+    "permission_to_use": false,
+    "consent_record_id": "replace-with-consent-record",
+    "owner": "replace-with-owner",
+    "permitted_purpose": "research evaluation",
+    "license_or_agreement": "replace-with-recorded-permission"
+  },
+  "notes": "Replace every placeholder before evaluation."
+}

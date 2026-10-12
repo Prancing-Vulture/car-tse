@@ -1,0 +1,43 @@
+name: eval_end_to_end_cavemove_target_kws_dual_domain_ft2_stage1_consistent_pos_presence_candidate
+sample_rate: 16000
+segment_seconds: 3.0
+manifest: stage1_cavemove_cabin.jsonl
+stage1_config: configs/stage1_spex_dual_domain_rms010_ft2.yaml
+presence_type: frame
+presence_sample_rate: 16000
+presence_n_mels: 40
+presence_hidden: 64
+presence_n_fft: 512
+presence_hop: 160
+presence_top_fraction: 0.20
+presence_threshold: 0.35
+command_presence_threshold: 0.10
+intent_confidence_threshold: 0.53
+speaker_gate_threshold: 0.24
+command_speaker_gate_threshold: 0.22
+speaker_gate_backend: spex
+intent_type: wav2vec
+intent_encoder: facebook/wav2vec2-base-960h
+intent_encoder_checkpoint: stage4_intent_wav2vec_dual_domain_ft2_head_v1/encoder_best.pt
+kws_threshold: 0.50
+kws_input_seconds: 1.0
+kws_smoothing_window: 2
+kws_required_hits: 2
+kws_num_classes: 2
+intent_input_seconds: 2.0
+command_timeout_calls: 4
+label_map: configs/labels_fsc.json
+
+cabin_noise: true
+num_mics: 4
+cabin_noise_channels: [0, 2, 4, 6]
+cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
+cabin_noise_cache_size: 32
+cabin_noise_cache_dir: data/cache/cavemove_16k_mc
+
+checkpoints:
+  spex: stage1_spex_dual_domain_rms010_ft2/best.pt
+  presence: stage2_frame_presence_dual_domain_nonwake_ft2_stage1/best.pt
+  kws: stage3_kws_gsc_marvin_tse_ft2/best.pt
+  target_kws: stage3_target_kws_gsc_marvin_hardneg_aishell5_ft2_stage1_pos/best.pt
+  intent: stage4_intent_wav2vec_dual_domain_ft2_head_v1/best.pt

@@ -29,6 +29,27 @@
       ]
     },
     {
+      "name": "ANIR Corpus - V class",
+      "role": "automotive impulse responses for future spatial/cabin augmentation; not speech or wake-word supervision",
+      "source": "https://dss-kiel.de/index.php/media-center/data-bases/anir-corpus",
+      "download": "https://dss-downloads.de/anir/v_class/v_class_impulse_responses.zip",
+      "license": "Official page describes the download as free and requests notification/citation; verify terms before redistribution",
+      "local_root": "D:/datasets/anir",
+      "archives": [
+        {"file": "v_class_impulse_responses.zip", "bytes": 14951505, "sha256": "934F9B1F026DE9ADDD77FBB0EB5190169CF58AB7B18ADDDB6D83F6CF702148D1", "status": "complete_verified"},
+        {"file": "v_class_noise_files.zip", "bytes": 6799366612, "sha256": "8CC71CA50F89909D475798761669ABEA788C6C2CA5F1E022480EB63F5022A441", "status": "complete_verified"}
+      ],
+      "extracted_files": 682,
+      "noise_extracted_files": 1302,
+      "noise_conditions": 42,
+      "sample_rate_hz": 48000,
+      "noise_manifest": "D:/datasets/anir/anir_v_class_noise_manifest.json",
+      "derived_multichannel_cache": "D:/datasets/anir/v_class_noise_16k_mc",
+      "derived_multichannel_manifest": "data/manifests/external/anir_v_class_noise_16k_mc.json",
+      "derived_sample_rate_hz": 16000,
+      "derived_microphones": [0, 1, 2, 3]
+    },
+    {
       "name": "LibriSpeech",
       "role": "clean enrollment and target speech for speaker-disjoint extraction training",
       "source": "https://www.openslr.org/12/",
@@ -76,6 +97,18 @@
       "archives": [
         {"file": "VISC_Dataset_SON_full.rar", "bytes": 1228671997, "md5": "a5b26d20784de4e1bfed71fa89a99987", "status": "complete_verified"}
       ]
+    },
+    {
+      "name": "ReMASC",
+      "role": "English multichannel voice-command and replay-attack stress data; supplemental only, not same-driver wake/command evidence",
+      "source": "https://github.com/YuanGongND/ReMASC",
+      "download": "https://drive.google.com/file/d/1RYHaaHnwuTb7Mx-jlVynQBaIJ-qQ80my/view?usp=drive_open",
+      "license": "Repository README states the corpus is free for academic and commercial use; cite the ReMASC paper",
+      "local_root": "D:/datasets/remasc",
+      "archives": [
+        {"file": "sample_v2.zip", "bytes": 10867475, "sha256": "CEA61DBFDD35874C64E2475BF8A9CC98363196509E32C43771691F09795643D8", "status": "sample_complete_verified"}
+      ],
+      "full_set": {"approximate_bytes": 92300000000, "status": "not_downloaded_requires_free_IEEE_DataPort_account"}
     }
   ],
   "not_downloaded": [
@@ -88,6 +121,43 @@
       "name": "Nexdata 531-Hours In-Car Noise",
       "source": "https://github.com/Nexdata-AI/531-Hours-In-Car-Noise-Data-by-Microphone-and-Mobile-Phone",
       "reason": "commercial dataset; public repository/sample retained only"
+    },
+    {
+      "name": "iCarB-Voice",
+      "source": "https://zenodo.org/records/14217012",
+      "reason": "files are restricted (121.7 GB) and require an approved non-commercial research EULA; no access was assumed"
+    }
+  ],
+  "reviewed_not_added": [
+    {
+      "name": "ICMC-ASR / AISHELL-5 public in-car corpus",
+      "source": "https://icmcasr.org/",
+      "role": "real multichannel in-car speech and far-field noise diagnostics",
+      "reason": "Mandarin and no continuous English same-driver Marvin protocol; challenge/data-agreement constraints require separate compliance tracking"
+    },
+    {
+      "name": "ICSRC 2022 intelligent-cockpit corpus",
+      "source": "https://iscslp2022-icsrc.org/",
+      "role": "real in-car Mandarin command/non-command and changing driving conditions",
+      "reason": "Mandarin, challenge-partition restrictions, and no personalized English wake-word sequence"
+    },
+    {
+      "name": "SPID spontaneous in-car dialogues",
+      "source": "https://dss-kiel.de/index.php/media-center/data-bases/spid-corpus",
+      "role": "controlled passenger dialogue, Lombard speech, and simulated driving-noise research",
+      "reason": "German, non-commercial research access, and no Marvin/enrollment/action labels"
+    },
+    {
+      "name": "CENSREC-3",
+      "source": "https://research.nii.ac.jp/src/en/CENSREC-3.html",
+      "role": "isolated driver words across speed and cabin-noise conditions",
+      "reason": "Not continuous personalized interaction; research/development distribution and remote-mic access conditions require review"
+    },
+    {
+      "name": "CI-AVSR",
+      "source": "https://github.com/HLTCHKUST/CI-AVSR",
+      "role": "Cantonese in-car commands with clean/noisy/OOD-noisy and audio-visual data",
+      "reason": "Language/input mismatch and repository license does not by itself establish asset-level terms for every processed file"
     }
   ]
 }

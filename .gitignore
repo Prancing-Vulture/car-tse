@@ -15,6 +15,9 @@ data/processed/
 # Large generated audio artifacts are local inspection outputs; keep their
 # JSON/Markdown metadata versioned.
 reports/artifacts/**/*.wav
+# Generated showcase audio and PDF-review scratch images stay local.
+output/artifacts/**/*.wav
+tmp/
 *.DS_Store
 *.pt
 *.pt.tar

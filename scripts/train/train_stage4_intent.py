@@ -170,6 +170,7 @@ def main() -> int:
         cfg["model"]["hidden"],
         cfg["model"]["num_layers"],
         num_classes,
+        bool(cfg["model"].get("normalize_input", False)),
     ).to(device)
     pretrained_checkpoint = cfg.get("pretrained_checkpoint")
     if pretrained_checkpoint:

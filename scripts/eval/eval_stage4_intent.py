@@ -124,6 +124,7 @@ def main() -> int:
         cfg["model"]["hidden"],
         cfg["model"]["num_layers"],
         num_classes,
+        bool(cfg["model"].get("normalize_input", False)),
     ).to(device)
     checkpoint = args.checkpoint or (Path(paths["checkpoint_root"]) / cfg["name"] / "best.pt")
     if not checkpoint.is_absolute():

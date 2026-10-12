@@ -230,6 +230,13 @@ class TripletExtractionDataset(Dataset):
             "enrollment": torch.from_numpy(enroll),
             "target": torch.from_numpy(aligned_map["target"]),
             "target_present": float(row.get("target_present", 1)),
+            # Binary presence manifests predate the personal-activity head.
+            # Keep their behavior (present -> target class 1, absent -> class
+            # 0) while allowing new manifests to distinguish target speech
+            # (1), non-target speech (2), and non-speech (0).
+            "target_activity_class": int(
+                row.get("target_activity_class", 1 if row.get("target_present", 1) else 0)
+            ),
             "speaker_id": row.get("speaker_id", ""),
         }
         if "speaker_label" in row:

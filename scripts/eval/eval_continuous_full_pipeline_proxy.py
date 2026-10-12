@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 import numpy as np
 import soundfile as sf
 import torch
+import torch.nn.functional as F
 
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.io.audio import read_mono, read_multichannel
@@ -141,6 +142,18 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         target_kws_checkpoint = resolve_path(
             Path(paths["checkpoint_root"]) / target_kws_checkpoint
         )
+    target_kws_secondary_checkpoint = cfg.get("checkpoints", {}).get("target_kws_secondary")
+    if target_kws_secondary_checkpoint:
+        target_kws_secondary_checkpoint = resolve_path(
+            Path(paths["checkpoint_root"]) / target_kws_secondary_checkpoint
+        )
+    compact_speaker_verifier_checkpoint = cfg.get("checkpoints", {}).get(
+        "compact_speaker_verifier"
+    )
+    if compact_speaker_verifier_checkpoint:
+        compact_speaker_verifier_checkpoint = resolve_path(
+            Path(paths["checkpoint_root"]) / compact_speaker_verifier_checkpoint
+        )
 
     pipeline = InCarPipeline.from_checkpoints(
         stage1,
@@ -151,6 +164,10 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         kws_num_classes=int(cfg.get("kws_num_classes", 2)),
         intent_sample_rate=int(cfg["sample_rate"]),
         intent_type=str(cfg.get("intent_type", "crnn")),
+        intent_normalize_input=bool(cfg.get("intent_normalize_input", False)),
+        intent_n_mels=int(cfg.get("model", {}).get("n_mels", cfg.get("intent_n_mels", 80))),
+        intent_hidden=int(cfg.get("model", {}).get("hidden", cfg.get("intent_hidden", 256))),
+        intent_num_layers=int(cfg.get("model", {}).get("num_layers", cfg.get("intent_num_layers", 2))),
         intent_encoder=str(cfg.get("intent_encoder", "facebook/wav2vec2-base-960h")),
         intent_encoder_checkpoint=encoder_checkpoint,
         intent_num_classes=int(cfg.get("intent_num_classes", 31)),
@@ -158,6 +175,21 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         kws_threshold=float(cfg.get("kws_threshold", 0.5)),
         kws_secondary_checkpoint=secondary_kws_checkpoint,
         target_kws_checkpoint=target_kws_checkpoint,
+        target_kws_secondary_checkpoint=target_kws_secondary_checkpoint,
+        compact_speaker_verifier_checkpoint=compact_speaker_verifier_checkpoint,
+        compact_speaker_verifier_embedding_dim=int(
+            cfg.get("compact_speaker_verifier_embedding_dim", 128)
+        ),
+        compact_speaker_verifier_hidden=int(
+            cfg.get("compact_speaker_verifier_hidden", 128)
+        ),
+        compact_speaker_verifier_input_seconds=float(
+            cfg.get("compact_speaker_verifier_input_seconds", 1.0)
+        ),
+        compact_speaker_verifier_sample_rate=int(
+            cfg.get("compact_speaker_verifier_sample_rate", 16000)
+        ),
+        target_kws_fusion_mode=str(cfg.get("target_kws_fusion_mode", "min")),
         kws_fusion_mode=str(cfg.get("kws_fusion_mode", "mean")),
         kws_fusion_alpha=float(cfg.get("kws_fusion_alpha", 0.5)),
         wake_class_id=int(cfg.get("wake_class_id", 1)),
@@ -167,9 +199,21 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         kws_refractory_calls=int(cfg.get("kws_refractory_calls", 0)),
         intent_input_seconds=float(cfg.get("intent_input_seconds", 2.0)),
         command_timeout_calls=int(cfg.get("command_timeout_calls", 4)),
+        command_delay_calls=int(cfg.get("command_delay_calls", 0)),
         command_presence_threshold=(
             float(cfg["command_presence_threshold"])
             if cfg.get("command_presence_threshold") is not None
+            else None
+        ),
+        presence_activity_margin_threshold=(
+            float(cfg["presence_activity_margin_threshold"])
+            if cfg.get("presence_activity_margin_threshold") is not None
+            else None
+        ),
+        presence_activity_margin_mode=str(cfg.get("presence_activity_margin_mode", "independent_top")),
+        intent_confidence_threshold=(
+            float(cfg["intent_confidence_threshold"])
+            if cfg.get("intent_confidence_threshold") is not None
             else None
         ),
         speaker_gate_threshold=(
@@ -177,13 +221,23 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
             if cfg.get("speaker_gate_threshold") is not None
             else None
         ),
+        command_speaker_gate_threshold=(
+            float(cfg["command_speaker_gate_threshold"])
+            if cfg.get("command_speaker_gate_threshold") is not None
+            else None
+        ),
         speaker_gate_backend=str(cfg.get("speaker_gate_backend", "spex")),
+        speaker_fusion_mode=str(cfg.get("speaker_fusion_mode", "none")),
+        speaker_fusion_center=float(cfg.get("speaker_fusion_center", 0.0)),
+        speaker_fusion_scale=float(cfg.get("speaker_fusion_scale", 0.10)),
+        speaker_fusion_alpha=float(cfg.get("speaker_fusion_alpha", 0.5)),
         presence_type=str(cfg.get("presence_type", "scalar")),
         presence_sample_rate=int(cfg.get("presence_sample_rate", cfg["sample_rate"])),
         presence_n_mels=int(cfg.get("presence_n_mels", 40)),
         presence_hidden=int(cfg.get("presence_hidden", 64)),
         presence_n_fft=int(cfg.get("presence_n_fft", 512)),
         presence_hop=int(cfg.get("presence_hop", 160)),
+        presence_speaker_embedding_dim=int(cfg.get("presence_speaker_embedding_dim", 256)),
         presence_top_fraction=float(cfg.get("presence_top_fraction", 0.20)),
         label_map=label_map,
         device=device,
@@ -263,10 +317,11 @@ def evaluate_scene(
     stage1_seconds: float,
     hop_seconds: float,
     device: torch.device,
+    reference_speaker_embedding: torch.Tensor | None = None,
 ) -> dict[str, Any]:
     window_samples = int(round(stage1_seconds * sample_rate))
     hop_samples = max(1, int(round(hop_seconds * sample_rate)))
-    state = PipelineState()
+    state = PipelineState(reference_speaker_embedding=reference_speaker_embedding)
     windows: list[dict[str, Any]] = []
     wake_events: list[dict[str, Any]] = []
     command_events: list[dict[str, Any]] = []
@@ -286,7 +341,12 @@ def evaluate_scene(
             presence_probability = float(
                 output.presence_probability
                 if output.presence_probability is not None
-                else pipeline.presence_probability(output.s1).mean().cpu()
+                else pipeline.presence_probability(
+                    output.s1,
+                    pipeline.stage1.speaker_embedding(enrollment_tensor.unsqueeze(0))
+                    if getattr(pipeline.presence, "requires_enrollment", False)
+                    else None,
+                ).mean().cpu()
             )
             wake_probability = output.wake_probability
         window_start = start / sample_rate
@@ -295,12 +355,15 @@ def evaluate_scene(
             "window_start_seconds": window_start,
             "window_center_seconds": window_center,
             "presence_probability": presence_probability,
+            "presence_non_target_probability": output.presence_non_target_probability,
+            "presence_activity_margin": output.presence_activity_margin,
             "speaker_similarity": output.speaker_similarity,
             "wake_probability": wake_probability,
             "accepted": bool(output.accepted),
             "wake_detected": bool(output.wake_detected),
             "command_pending": bool(output.command_pending),
             "intent_ready": bool(output.intent_ready),
+            "command_suppressed": bool(output.command_suppressed),
             "intent": None,
             "intent_confidence": None,
             "action": None,
@@ -378,7 +441,39 @@ def main() -> int:
     parser.add_argument("--passenger-snr-db", type=float, default=0.0)
     parser.add_argument("--hop-seconds", type=float, default=1.0)
     parser.add_argument("--presence-threshold", type=float, default=None)
+    parser.add_argument("--presence-activity-margin-threshold", type=float, default=None)
+    parser.add_argument(
+        "--presence-activity-margin-mode",
+        choices=("independent_top", "target_top", "framewise_top", "mean"),
+        default=None,
+    )
     parser.add_argument("--kws-threshold", type=float, default=None)
+    parser.add_argument("--intent-confidence-threshold", type=float, default=None)
+    parser.add_argument("--command-delay-calls", type=int, default=None)
+    parser.add_argument("--speaker-fusion-mode", choices=("none", "min", "product", "mean"), default=None)
+    parser.add_argument("--speaker-fusion-center", type=float, default=None)
+    parser.add_argument("--speaker-fusion-scale", type=float, default=None)
+    parser.add_argument("--speaker-fusion-alpha", type=float, default=None)
+    parser.add_argument(
+        "--enrollment-source",
+        choices=("wake", "command", "same_speaker_other"),
+        default="wake",
+        help=(
+            "Diagnostic enrollment source. 'wake' is the cross-corpus proxy; "
+            "'command' reuses the command clip; 'same_speaker_other' uses a "
+            "different FSC utterance from the command speaker."
+        ),
+    )
+    parser.add_argument(
+        "--enrollment-bank-size",
+        type=int,
+        default=1,
+        help=(
+            "Number of short same-speaker utterances used to build the optional "
+            "SpEx reference embedding bank. The first utterance still conditions "
+            "Stage 1 extraction; values above 1 affect speaker-conditioned gates/KWS."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=20261004)
     args = parser.parse_args()
 
@@ -387,8 +482,24 @@ def main() -> int:
     cfg = load_stage_config(args.config, args.paths)
     if args.presence_threshold is not None:
         cfg["presence_threshold"] = float(args.presence_threshold)
+    if args.presence_activity_margin_threshold is not None:
+        cfg["presence_activity_margin_threshold"] = float(args.presence_activity_margin_threshold)
+    if args.presence_activity_margin_mode is not None:
+        cfg["presence_activity_margin_mode"] = str(args.presence_activity_margin_mode)
     if args.kws_threshold is not None:
         cfg["kws_threshold"] = float(args.kws_threshold)
+    if args.intent_confidence_threshold is not None:
+        cfg["intent_confidence_threshold"] = float(args.intent_confidence_threshold)
+    if args.command_delay_calls is not None:
+        cfg["command_delay_calls"] = int(args.command_delay_calls)
+    if args.speaker_fusion_mode is not None:
+        cfg["speaker_fusion_mode"] = str(args.speaker_fusion_mode)
+    if args.speaker_fusion_center is not None:
+        cfg["speaker_fusion_center"] = float(args.speaker_fusion_center)
+    if args.speaker_fusion_scale is not None:
+        cfg["speaker_fusion_scale"] = float(args.speaker_fusion_scale)
+    if args.speaker_fusion_alpha is not None:
+        cfg["speaker_fusion_alpha"] = float(args.speaker_fusion_alpha)
     device = get_device()
     pipeline = load_pipeline(cfg, cfg["paths"], device)
     sample_rate = int(cfg["sample_rate"])
@@ -410,9 +521,9 @@ def main() -> int:
         row for row in wake_rows if speaker_key(resolve_path(row["wav"])) != speaker_key(resolve_path(target_wake_rows[0]["wav"]))
     )
 
-    intent_rows = load_jsonl(resolve_path(args.intent_manifest))
+    all_intent_rows = load_jsonl(resolve_path(args.intent_manifest))
     by_intent: dict[str, dict[str, Any]] = {}
-    for row in intent_rows:
+    for row in all_intent_rows:
         by_intent.setdefault(str(row["intent"]), row)
     intent_rows = [by_intent[key] for key in sorted(by_intent)]
     if not intent_rows:
@@ -442,7 +553,56 @@ def main() -> int:
         target_command = fit_start(target_command, 2 * sample_rate)
         passenger_wake = fit_start(passenger_wake, sample_rate)
         passenger_nonwake = fit_start(passenger_nonwake, int(1.5 * sample_rate))
-        enrollment = fit_start(target_wake, int(round(stage1_seconds * sample_rate / 2.0)))
+        enrollment_source_path = str(resolve_path(wake_row["wav"]))
+        enrollment_bank_paths: list[str] = []
+        enrollment_bank_waveforms: list[np.ndarray] = []
+        if args.enrollment_source == "wake":
+            enrollment_source = target_wake
+            enrollment_bank_waveforms = [target_wake]
+            enrollment_bank_paths = [enrollment_source_path]
+        elif args.enrollment_source == "command":
+            enrollment_source = target_command
+            enrollment_source_path = str(resolve_path(intent_row["wav"]))
+            enrollment_bank_waveforms = [target_command]
+            enrollment_bank_paths = [enrollment_source_path]
+        else:
+            command_speaker_id = str(intent_row.get("speaker_id", ""))
+            candidates = [
+                row for row in all_intent_rows
+                if str(row.get("speaker_id", "")) == command_speaker_id
+                and str(row.get("wav", "")) != str(intent_row.get("wav", ""))
+            ]
+            if not candidates:
+                raise RuntimeError(
+                    f"No different-utterance enrollment found for command speaker {command_speaker_id!r}"
+                )
+            candidates.sort(key=lambda row: str(row.get("wav", "")))
+            selected_candidates = candidates[: max(1, int(args.enrollment_bank_size))]
+            enrollment_source_path = str(resolve_path(selected_candidates[0]["wav"]))
+            enrollment_bank_paths = [str(resolve_path(row["wav"])) for row in selected_candidates]
+            enrollment_bank_waveforms = [
+                read_mono(resolve_path(row["wav"]), sample_rate)[0]
+                for row in selected_candidates
+            ]
+            enrollment_source = enrollment_bank_waveforms[0]
+        enrollment = fit_start(enrollment_source, int(round(stage1_seconds * sample_rate / 2.0)))
+        enrollment_bank_waveforms = [
+            fit_start(waveform, int(round(stage1_seconds * sample_rate / 2.0)))
+            for waveform in (enrollment_bank_waveforms or [enrollment])
+        ]
+        with torch.inference_mode():
+            bank_embeddings: list[torch.Tensor] = []
+            for waveform in enrollment_bank_waveforms:
+                embedding = pipeline.stage1.speaker_embedding(
+                    torch.from_numpy(waveform).to(device).unsqueeze(0)
+                )
+                if embedding is not None:
+                    bank_embeddings.append(embedding)
+            reference_speaker_embedding = None
+            if bank_embeddings:
+                reference_speaker_embedding = F.normalize(
+                    torch.stack(bank_embeddings, dim=0).mean(dim=0), dim=-1
+                )
 
         for snr_index, cabin_snr_db in enumerate(args.cabin_snr_db):
             noise_path = noise_files[(scene_index + snr_index) % len(noise_files)]
@@ -464,10 +624,21 @@ def main() -> int:
             truth["passenger_wake_source"] = str(resolve_path(passenger_wake_row["wav"]))
             truth["passenger_nonwake_source"] = str(resolve_path(passenger_nonwake_row["wav"]))
             truth["noise_source"] = str(noise_path)
-            truth["speaker_consistent"] = False
+            truth["enrollment_source"] = args.enrollment_source
+            truth["enrollment_source_wav"] = enrollment_source_path
+            truth["enrollment_bank_size"] = len(enrollment_bank_paths)
+            truth["enrollment_bank_wavs"] = enrollment_bank_paths
+            truth["speaker_consistent"] = args.enrollment_source in ("command", "same_speaker_other")
             truth["speaker_consistency_note"] = (
-                "The target wake clip and target command come from different public corpora; "
-                "the command speaker is not verified to be the Marvin speaker."
+                "Diagnostic same-speaker enrollment only: a different FSC utterance from the command speaker "
+                "is used, but the Marvin wake clip is not verified to be from that speaker; this is not a "
+                "real-driver evaluation."
+                if args.enrollment_source == "same_speaker_other"
+                else "Diagnostic enrollment reuses the command clip and is leakage-prone; this is not a "
+                "deployable evaluation."
+                if args.enrollment_source == "command"
+                else "The target wake clip and target command come from different public corpora; the command "
+                "speaker is not verified to be the Marvin speaker."
             )
             metrics = evaluate_scene(
                 pipeline,
@@ -479,6 +650,7 @@ def main() -> int:
                 stage1_seconds,
                 float(args.hop_seconds),
                 device,
+                reference_speaker_embedding=reference_speaker_embedding,
             )
             metrics.update({"scene_index": scene_index, "snr_db": float(cabin_snr_db)})
             results.append(metrics)
@@ -515,7 +687,21 @@ def main() -> int:
         "stage1_context_seconds": stage1_seconds,
         "hop_seconds": float(args.hop_seconds),
         "effective_presence_threshold": float(cfg.get("presence_threshold", 0.5)),
+        "effective_presence_activity_margin_threshold": cfg.get("presence_activity_margin_threshold"),
+        "effective_presence_activity_margin_mode": cfg.get("presence_activity_margin_mode", "independent_top"),
         "effective_kws_threshold": float(cfg.get("kws_threshold", 0.5)),
+        "effective_command_presence_threshold": float(cfg.get("command_presence_threshold", cfg.get("presence_threshold", 0.5))),
+        "effective_command_delay_calls": int(cfg.get("command_delay_calls", 0)),
+        "effective_speaker_gate_threshold": cfg.get("speaker_gate_threshold"),
+        "effective_command_speaker_gate_threshold": cfg.get("command_speaker_gate_threshold"),
+        "effective_speaker_fusion_mode": cfg.get("speaker_fusion_mode", "none"),
+        "effective_speaker_fusion_center": cfg.get("speaker_fusion_center", 0.0),
+        "effective_speaker_fusion_scale": cfg.get("speaker_fusion_scale", 0.10),
+        "effective_speaker_fusion_alpha": cfg.get("speaker_fusion_alpha", 0.5),
+        "effective_intent_confidence_threshold": cfg.get("intent_confidence_threshold"),
+        "effective_target_kws_fusion_mode": cfg.get("target_kws_fusion_mode") if cfg.get("checkpoints", {}).get("target_kws_secondary") else None,
+        "enrollment_source": args.enrollment_source,
+        "enrollment_bank_size": max(1, int(args.enrollment_bank_size)),
         "scenes": target_count,
         "duration_seconds": total_duration,
         "duration_hours": total_duration / 3600.0,
@@ -531,12 +717,22 @@ def main() -> int:
         "false_action_rate_per_hour": false_actions * 3600.0 / max(total_duration, 1.0e-6),
         "target_wake_latency_mean_seconds": float(np.mean(latencies)) if latencies else None,
         "target_wake_latency_p95_seconds": float(np.percentile(latencies, 95)) if latencies else None,
-        "speaker_consistent": False,
+        "speaker_consistent": args.enrollment_source in ("command", "same_speaker_other"),
         "production_valid": False,
         "limitation": (
-            "This is a continuous full-cascade engineering proxy. It uses the same runtime path and includes "
-            "target wake, labelled command, passenger wake, passenger non-wake speech, and multichannel CAVEMOVE "
-            "noise, but the target wake and command are cross-corpus clips rather than a natural same-speaker pair."
+            (
+                "Diagnostic same-speaker enrollment only: a different FSC utterance from the command speaker is "
+                "used, but the Marvin wake clip is not verified to be from that speaker; this is not a real-driver "
+                "evaluation."
+                if args.enrollment_source == "same_speaker_other"
+                else "Diagnostic enrollment reuses the command clip and is leakage-prone; this is not a deployable "
+                "evaluation."
+                if args.enrollment_source == "command"
+                else "This is a continuous full-cascade engineering proxy. It uses the same runtime path and "
+                "includes target wake, labelled command, passenger wake, passenger non-wake speech, and multichannel "
+                "CAVEMOVE noise, but the target wake and command are cross-corpus clips rather than a natural "
+                "same-speaker pair."
+            )
         ),
         "scenes_detail": results,
         "artifacts": {

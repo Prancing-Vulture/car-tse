@@ -145,6 +145,7 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "stage4_intent_tse_domain.yaml")
     parser.add_argument("--paths", type=Path, default=REPO_ROOT / "configs" / "paths.yaml")
     parser.add_argument("--encoder", default="facebook/wav2vec2-base-960h")
+    parser.add_argument("--encoder-checkpoint", type=Path, default=None, help="Optional encoder state used by the frozen feature extractor.")
     parser.add_argument("--batch-size", type=int, default=24)
     parser.add_argument("--feature-batch-size", type=int, default=24)
     parser.add_argument("--max-epochs", type=int, default=40)
@@ -152,6 +153,9 @@ def main() -> int:
     parser.add_argument("--lr", type=float, default=1.0e-3)
     parser.add_argument("--head-hidden", type=int, default=512)
     parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--feature-dir", type=Path, default=REPO_ROOT / "data" / "cache" / "stage4_intent_wav2vec_tse_domain")
+    parser.add_argument("--run-name", default="stage4_intent_wav2vec_tse_domain")
+    parser.add_argument("--init-checkpoint", type=Path, default=None, help="Optional existing intent-head checkpoint to continue from.")
     parser.add_argument("--amp", action="store_true")
     args = parser.parse_args()
 
@@ -196,10 +200,19 @@ def main() -> int:
         raise RuntimeError(f"Missing TSE-domain intent data: train={len(train_audio)} val={len(val_audio)}")
 
     encoder = AutoModel.from_pretrained(args.encoder).to(device)
+    if args.encoder_checkpoint is not None:
+        encoder_checkpoint = args.encoder_checkpoint
+        if not encoder_checkpoint.is_absolute():
+            encoder_checkpoint = REPO_ROOT / encoder_checkpoint
+        encoder_state = torch.load(encoder_checkpoint, map_location="cpu", weights_only=False)
+        encoder.load_state_dict(encoder_state["model_state_dict"], strict=True)
+        print(f"initialized_encoder={encoder_checkpoint} epoch={encoder_state.get('epoch', 'unknown')}", flush=True)
     for parameter in encoder.parameters():
         parameter.requires_grad = False
     encoder.eval()
-    feature_dir = REPO_ROOT / "data" / "cache" / "stage4_intent_wav2vec_tse_domain"
+    feature_dir = args.feature_dir
+    if not feature_dir.is_absolute():
+        feature_dir = REPO_ROOT / feature_dir
     train_features = feature_dir / "train_features.npy"
     val_features = feature_dir / "val_features.npy"
     hidden = cache_features(encoder, train_audio, train_features, device, args.feature_batch_size, args.amp and device.type == "cuda")
@@ -215,10 +228,18 @@ def main() -> int:
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=device.type == "cuda")
 
     model = IntentHead(hidden, args.head_hidden, num_classes, args.dropout).to(device)
+    if args.init_checkpoint is not None:
+        init_checkpoint = args.init_checkpoint
+        if not init_checkpoint.is_absolute():
+            init_checkpoint = REPO_ROOT / init_checkpoint
+        loaded = torch.load(init_checkpoint, map_location="cpu", weights_only=False)
+        state = loaded.get("model_state_dict", loaded)
+        model.load_state_dict(state, strict=True)
+        print(f"initialized_head={init_checkpoint} epoch={loaded.get('epoch', 'unknown')}", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1.0e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.max_epochs)
-    out_dir = Path(paths["checkpoint_root"]) / "stage4_intent_wav2vec_tse_domain"
-    log_dir = Path(paths["log_root"]) / "stage4_intent_wav2vec_tse_domain"
+    out_dir = Path(paths["checkpoint_root"]) / args.run_name
+    log_dir = Path(paths["log_root"]) / args.run_name
     best_f1 = float("-inf")
     bad_epochs = 0
     print(f"device={device} encoder={args.encoder} hidden={hidden} train={len(train_ds)} val={len(val_ds)} classes={num_classes}", flush=True)
@@ -260,6 +281,9 @@ def main() -> int:
             bad_epochs = 0
             metrics["best_macro_f1"] = best_f1
             save_checkpoint(out_dir / "best.pt", model, epoch, metrics)
+            # Keep the exact frozen encoder state next to the head so the
+            # candidate can be loaded without relying on an unrelated run.
+            torch.save({"model_state_dict": encoder.state_dict(), "epoch": epoch}, out_dir / "encoder_best.pt")
         else:
             bad_epochs += 1
             if bad_epochs >= args.patience:

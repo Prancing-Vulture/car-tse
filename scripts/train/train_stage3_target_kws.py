@@ -138,11 +138,49 @@ def main() -> int:
     init_checkpoint = args.init_checkpoint or cfg.get("init_checkpoint")
     if init_checkpoint:
         init_path = init_checkpoint if Path(init_checkpoint).is_absolute() else REPO_ROOT / init_checkpoint
-        # Warm-start only the acoustic branch from the ordinary KWS model.
-        load_checkpoint(init_path, model.audio)
-        print(f"initialized_audio_checkpoint={init_path}", flush=True)
+        if bool(cfg.get("init_full_model", False)):
+            # Target-speaker checkpoints contain both audio.* and the
+            # enrollment/extracted relation classifier.  Loading them into
+            # model.audio would silently match nothing because of the prefix.
+            load_checkpoint(init_path, model)
+            print(f"initialized_full_target_kws_checkpoint={init_path}", flush=True)
+        else:
+            # Warm-start only the acoustic branch from the ordinary KWS model.
+            load_checkpoint(init_path, model.audio)
+            print(f"initialized_audio_checkpoint={init_path}", flush=True)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=float(cfg["train"]["lr"]))
+    teacher = None
+    distill_alpha = float(cfg.get("distill_alpha", 0.0))
+    distill_temperature = max(1.0, float(cfg.get("distill_temperature", 2.0)))
+    distill_checkpoint = cfg.get("distill_checkpoint")
+    if distill_alpha > 0.0 and distill_checkpoint:
+        teacher = TargetSpeakerKWSModel(
+            sample_rate=int(cfg["sample_rate"]),
+            n_mels=int(cfg["model"].get("n_mels", 40)),
+            channels=cfg["model"].get("channels", [32, 64, 128]),
+            num_classes=int(cfg["model"].get("num_classes", 2)),
+            speaker_embedding_dim=int(cfg["model"].get("speaker_embedding_dim", 256)),
+            hidden=int(cfg["model"].get("hidden", 256)),
+        ).to(device)
+        teacher_path = distill_checkpoint if Path(distill_checkpoint).is_absolute() else REPO_ROOT / distill_checkpoint
+        load_checkpoint(teacher_path, teacher)
+        teacher.eval()
+        for parameter in teacher.parameters():
+            parameter.requires_grad = False
+        print(
+            f"distillation_teacher={teacher_path} alpha={distill_alpha:.3f} "
+            f"temperature={distill_temperature:.2f}",
+            flush=True,
+        )
+
+    if bool(cfg.get("freeze_audio", False)):
+        for parameter in model.audio.parameters():
+            parameter.requires_grad = False
+        print("frozen_audio_branch=true", flush=True)
+    trainable_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    if not trainable_parameters:
+        raise RuntimeError("No trainable target-KWS parameters remain")
+    optimizer = torch.optim.AdamW(trainable_parameters, lr=float(cfg["train"]["lr"]))
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=int(cfg["train"]["max_epochs"])
     )
@@ -163,7 +201,20 @@ def main() -> int:
             labels = batch["label"].to(device, non_blocking=True)
             with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
                 logits = model(wav, enrollment, extracted)
-            loss = F.cross_entropy(logits.float(), labels)
+            classification_loss = F.cross_entropy(logits.float(), labels)
+            loss = classification_loss
+            distill_loss = torch.zeros((), device=device)
+            if teacher is not None:
+                with torch.no_grad():
+                    teacher_logits = teacher(wav, enrollment, extracted)
+                student_log_probs = F.log_softmax(logits.float() / distill_temperature, dim=-1)
+                teacher_probs = F.softmax(teacher_logits.float() / distill_temperature, dim=-1)
+                distill_loss = F.kl_div(
+                    student_log_probs,
+                    teacher_probs,
+                    reduction="batchmean",
+                ) * (distill_temperature**2)
+                loss = (1.0 - distill_alpha) * classification_loss + distill_alpha * distill_loss
             optimizer.zero_grad(set_to_none=True)
             if use_amp:
                 scaler.scale(loss).backward()
@@ -185,6 +236,8 @@ def main() -> int:
             "val": val,
             "lr": scheduler.get_last_lr()[0],
             "best_f1": best_f1,
+            "distill_alpha": distill_alpha,
+            "distill_temperature": distill_temperature,
         }
         write_metrics(Path(paths["log_root"]) / run_name / "metrics_last.json", metrics)
         print(

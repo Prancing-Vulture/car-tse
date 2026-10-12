@@ -1,0 +1,39 @@
+name: stage2_personal_presence_dual_domain_nonwake_anir_ft1
+sample_rate: 16000
+segment_seconds: 3.0
+manifests:
+  - stage2_presence_gsc_aishell_anir.jsonl
+  - stage1_target_kws_nonwake_hardneg.jsonl
+stage1_config: configs/stage1_spex_dual_domain_rms010_ft1.yaml
+spex_checkpoint: stage1_spex_dual_domain_rms010_ft1/best.pt
+cabin_noise: true
+num_mics: 4
+cabin_noise_channels: [0, 1, 2, 3]
+cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
+cabin_noise_cache_size: 32
+cabin_noise_cache_dir: data/cache/anir_v_class_noise_16k_mc
+
+model:
+  type: personal_frame
+  n_mels: 40
+  hidden: 64
+  n_fft: 512
+  hop: 160
+  top_fraction: 0.20
+  target_threshold_db_below_peak: 30.0
+  speaker_embedding_dim: 256
+
+train:
+  batch_size: 32
+  val_batch_size: 32
+  cache_batch_size: 16
+  cache_stage1: true
+  max_epochs: 4
+  val_fraction: 0.20
+  seed: 20261011
+  lr: 5.0e-5
+  grad_clip: 5.0
+  positive_weight: 2.0
+  smooth_weight: 0.02
+  amp: true
+  num_workers: 0

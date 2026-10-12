@@ -12,6 +12,7 @@ the repository's four stages:
 | Wake-word detection | Speech Commands v2 | Public 16 kHz keyword corpus; application-specific wake recordings still belong in `custom_incar/wake/` |
 | Intent classification | Fluent Speech Commands | 31 command intents with speaker-disjoint train/validation/test metadata |
 | Auxiliary vehicle-noise robustness | Vehicle Interior Sound Dataset | 5,980 short vehicle-only clips; useful as noise-domain material, not as speech supervision |
+| Auxiliary spatial augmentation | ANIR V-class impulse responses | 682 48 kHz automotive .fir responses; augmentation/diagnostics only, not wake or intent evidence |
 
 ## Source notes
 
@@ -34,6 +35,17 @@ the repository's four stages:
 - Vehicle Interior Sound Dataset: https://doi.org/10.5281/zenodo.5606504
   (CC BY 4.0). It contains no human speech and is retained only as auxiliary
   vehicle-noise data.
+- ANIR Corpus: https://dss-kiel.de/index.php/media-center/data-bases/anir-corpus
+  (free download described by the authors; notify the authors and cite their
+  work). The verified V-class impulse-response archive is stored outside the
+  repository at `D:\datasets\anir`; see
+  `data/manifests/external/anir_v_class_impulse_responses.json`. The companion
+  V-class noise archive is indexed by
+  `scripts/data/build_anir_noise_manifest.py`. A reproducible four-channel,
+  16-kHz derived cache is now available at
+  `D:\datasets\anir\v_class_noise_16k_mc` and is used only by the explicitly
+  marked ANIR presence-training candidate. Its noise-only diagnostic remains
+  separate in `reports/anir_noise_target_absent_2026-10-11.md`.
 - ASR-CabNois: https://magichub.com/datasets/in-vehicle-noise-dataset/
   (CC BY-NC-ND 4.0; 5.08 hours, 44.1 kHz stereo, sign-in required for the
   2.47 GB download). Only the public sample is eligible for local inspection

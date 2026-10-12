@@ -1,0 +1,29 @@
+name: stage4_intent_tse_domain_norm_student
+sample_rate: 16000
+segment_seconds: 2.0
+manifest_train: stage4_intent_tse_domain_train.jsonl
+manifest_eval: stage4_intent_tse_domain_eval.jsonl
+source_manifest_train: stage4_cavemove_intent.jsonl
+source_manifest_eval: stage4_cavemove_intent.jsonl
+label_map: intent_label_map.json
+waveform_cache_dir: data/cache/stage4_intent_tse_domain_16k_v4
+waveform_cache_includes_cabin_noise: true
+
+# The Wav2Vec reference normalizes every extracted utterance before encoding.
+# Enable the same conditioning for this compact raw-audio candidate.
+model:
+  n_mels: 80
+  hidden: 256
+  num_layers: 2
+  normalize_input: true
+
+train:
+  batch_size: 512
+  val_batch_size: 512
+  max_epochs: 8
+  patience: 3
+  lr: 1.0e-3
+  grad_clip: 5.0
+  amp: false
+  balanced_sampler: true
+  num_workers: 0

@@ -22,11 +22,19 @@ from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, sc
 
 def collate(batch):
     out = {}
-    for k in batch[0]:
-        if isinstance(batch[0][k], torch.Tensor):
-            out[k] = torch.stack([b[k] for b in batch])
+    keys = set().union(*(item.keys() for item in batch))
+    for k in keys:
+        # Speaker IDs are optional: AISHELL rows have speaker_id strings but
+        # no classifier label, while LibriMix/CAVEMOVE rows may carry one.
+        # Do not manufacture a numeric label for a mixed-domain batch; the
+        # Stage 1 loss will simply omit the auxiliary speaker CE term.
+        if k == "speaker_label" and not all(k in item for item in batch):
+            continue
+        values = [item.get(k) for item in batch]
+        if all(isinstance(value, torch.Tensor) for value in values):
+            out[k] = torch.stack(values)
         else:
-            out[k] = [b[k] for b in batch]
+            out[k] = values
     return out
 
 

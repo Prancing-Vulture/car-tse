@@ -68,14 +68,48 @@ class _IdentityStage1(nn.Module):
         return mixture, None, None, None
 
 
+class _EmbeddingIdentityStage1(_IdentityStage1):
+    def speaker_embedding(self, waveform):
+        return torch.tensor([[1.0, 0.0]], dtype=waveform.dtype, device=waveform.device).expand(
+            waveform.shape[0], -1
+        )
+
+
 class _AlwaysPresent(nn.Module):
     def forward(self, s1):
         return torch.full((s1.shape[0],), 10.0, device=s1.device)
 
 
+class _PassengerActivity(nn.Module):
+    is_multiclass = True
+    requires_enrollment = True
+    target_class_index = 1
+    num_classes = 3
+
+    def forward(self, s1, enrollment_embedding):
+        # Target speech is present enough to pass the ordinary presence
+        # threshold, but the non-target posterior is larger.
+        logits = torch.tensor([0.0, 4.0, 5.0], dtype=s1.dtype, device=s1.device)
+        return logits.view(1, 3, 1).expand(s1.shape[0], -1, 8)
+
+    @classmethod
+    def activity_probabilities(cls, logits):
+        return torch.softmax(logits.float(), dim=1)
+
+    @staticmethod
+    def aggregate_probability(probability, top_fraction=0.20):
+        top_k = max(1, int(round(probability.shape[-1] * float(top_fraction))))
+        return probability.topk(top_k, dim=-1).values.mean(dim=-1)
+
+
 class _AlwaysWake(nn.Module):
     def forward(self, wav):
         return torch.tensor([[0.0, 10.0]], dtype=wav.dtype, device=wav.device).expand(wav.shape[0], -1)
+
+
+class _AlwaysTargetWake(nn.Module):
+    def forward(self, wav, enrollment_embedding, extracted_embedding):
+        return torch.tensor([[0.0, 4.0]], dtype=wav.dtype, device=wav.device).expand(wav.shape[0], -1)
 
 
 class _CountingIntent(nn.Module):
@@ -88,6 +122,11 @@ class _CountingIntent(nn.Module):
         self.calls += 1
         self.last_input_length = int(wav.shape[-1])
         return torch.tensor([[0.0, 2.0]], dtype=wav.dtype, device=wav.device).expand(wav.shape[0], -1)
+
+
+class _LowConfidenceIntent(nn.Module):
+    def forward(self, wav):
+        return torch.zeros((wav.shape[0], 2), dtype=wav.dtype, device=wav.device)
 
 
 def test_pipeline_runs_intent_on_post_wake_frame_only():
@@ -123,4 +162,131 @@ def test_pipeline_runs_intent_on_post_wake_frame_only():
     assert command_output.action is not None
     assert intent.calls == 1
     assert intent.last_input_length == 2 * 16000
+
+
+def test_personal_activity_margin_vetoes_non_target_speech():
+    pipe = InCarPipeline(
+        _EmbeddingIdentityStage1(),
+        _PassengerActivity(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        presence_threshold=0.1,
+        presence_activity_margin_threshold=0.0,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+    )
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    output, _ = pipe.forward(mixture, enrollment)
+    assert output.accepted is False
+    assert output.wake_detected is False
+    assert output.presence_non_target_probability is not None
+    assert output.presence_activity_margin is not None
+    assert output.presence_activity_margin < 0.0
+
+
+def test_pipeline_can_delay_command_window_after_wake():
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        command_delay_calls=1,
+    )
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    wake_output, state = pipe.forward(mixture, enrollment)
+    assert wake_output.wake_detected is True
+    delayed_output, state = pipe.forward(mixture, enrollment, state)
+    assert delayed_output.command_pending is True
+    assert delayed_output.intent_ready is False
+    command_output, _ = pipe.forward(mixture, enrollment, state)
+    assert command_output.intent_ready is True
+
+
+def test_pipeline_suppresses_low_confidence_command():
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        intent_confidence_threshold=0.6,
+    )
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    _, state = pipe.forward(mixture, enrollment)
+    output, state = pipe.forward(mixture, enrollment, state)
+    assert output.command_suppressed is True
+    assert output.intent_ready is False
+    assert output.action is None
     assert state.awaiting_command is False
+    assert state.awaiting_command is False
+
+
+def test_pipeline_can_use_precomputed_enrollment_bank_embedding():
+    pipe = InCarPipeline(
+        _EmbeddingIdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        speaker_gate_threshold=0.0,
+        speaker_gate_backend="spex",
+    )
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+    # The extracted mock embedding is [1, 0], while the seeded bank is its
+    # opposite.  The gate must use the seeded bank, not recompute a single
+    # enrollment embedding from the raw enrollment waveform.
+    state = PipelineState(reference_speaker_embedding=torch.tensor([[-1.0, 0.0]]))
+    output, _ = pipe.forward(mixture, enrollment, state)
+    assert output.accepted is False
+    assert output.speaker_similarity is not None
+    assert output.speaker_similarity < 0.0
+
+
+def test_pipeline_opt_in_late_speaker_fusion_vetoes_mismatched_embedding():
+    pipe = InCarPipeline(
+        _EmbeddingIdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        target_kws=_AlwaysTargetWake(),
+        target_kws_secondary=_AlwaysTargetWake(),
+        target_kws_fusion_mode="min",
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        speaker_fusion_mode="min",
+        speaker_fusion_center=0.0,
+        speaker_fusion_scale=0.1,
+    )
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    matching_output, _ = pipe.forward(mixture, enrollment)
+    assert matching_output.wake_detected is True
+    assert matching_output.wake_probability is not None
+    assert matching_output.wake_probability > 0.5
+
+    mismatched_state = PipelineState(reference_speaker_embedding=torch.tensor([[-1.0, 0.0]]))
+    mismatched_output, _ = pipe.forward(mixture, enrollment, mismatched_state)
+    assert mismatched_output.wake_detected is False
+    assert mismatched_output.wake_probability is not None
+    assert mismatched_output.wake_probability < 0.5

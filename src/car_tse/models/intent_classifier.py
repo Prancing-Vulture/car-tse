@@ -16,8 +16,10 @@ class IntentClassifier(nn.Module):
         hidden: int = 256,
         num_layers: int = 2,
         num_classes: int = 31,
+        normalize_input: bool = False,
     ):
         super().__init__()
+        self.normalize_input = bool(normalize_input)
         self.mel = LogMelFront(sample_rate, n_mels, n_fft=512, hop=160)
         self.conv = nn.Sequential(
             nn.Conv2d(1, 64, 3, padding=1),
@@ -31,6 +33,9 @@ class IntentClassifier(nn.Module):
         self.fc = nn.Linear(hidden * 2, num_classes)
 
     def forward(self, wav: torch.Tensor) -> torch.Tensor:
+        if self.normalize_input:
+            wav = wav - wav.mean(dim=-1, keepdim=True)
+            wav = wav / wav.std(dim=-1, keepdim=True).clamp_min(1.0e-5)
         mel = self.mel(wav).unsqueeze(1)
         x = self.conv(mel)
         b, c, f, t = x.shape

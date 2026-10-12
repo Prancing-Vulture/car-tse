@@ -10,7 +10,13 @@ import torch
 
 from car_tse.models.intent_classifier import IntentClassifier
 from car_tse.models.kws_model import KWSModel, TargetSpeakerKWSModel
-from car_tse.models.presence_head import FramePresenceHead, PresenceHead
+from car_tse.models.presence_head import (
+    FramePresenceHead,
+    PersonalActivityHead,
+    PersonalFramePresenceHead,
+    PresenceHead,
+)
+from car_tse.models.speaker_verifier import CompactSpeakerVerifier
 from car_tse.models.stage1_system import Stage1System
 from car_tse.models.wav2vec_intent import Wav2VecIntentClassifier
 from car_tse.pipeline.actions import ActionResult, intent_to_action
@@ -29,6 +35,12 @@ class PipelineState:
     awaiting_command: bool = False
     command_wait_calls: int = 0
     speaker_embedding: torch.Tensor | None = None
+    # Optional precomputed SpEx reference embedding.  When supplied, this is
+    # an enrollment-bank representation (for example, the normalized mean of
+    # several short utterances) and is reused by all speaker-conditioned
+    # gates.  None preserves the historical single-utterance behavior.
+    reference_speaker_embedding: torch.Tensor | None = None
+    presence_enrollment_embedding: torch.Tensor | None = None
     target_kws_enrollment_embedding: torch.Tensor | None = None
 
 
@@ -41,7 +53,10 @@ class PipelineOutput:
     s1: torch.Tensor | None = None
     command_pending: bool = False
     intent_ready: bool = False
+    command_suppressed: bool = False
     presence_probability: float | None = None
+    presence_non_target_probability: float | None = None
+    presence_activity_margin: float | None = None
     speaker_similarity: float | None = None
     wake_probability: float | None = None
 
@@ -92,6 +107,9 @@ class InCarPipeline:
         intent: torch.nn.Module,
         kws_secondary: KWSModel | None = None,
         target_kws: TargetSpeakerKWSModel | None = None,
+        target_kws_secondary: TargetSpeakerKWSModel | None = None,
+        compact_speaker_verifier: CompactSpeakerVerifier | None = None,
+        target_kws_fusion_mode: str = "min",
         presence_threshold: float = 0.5,
         kws_threshold: float = 0.5,
         kws_fusion_mode: str = "mean",
@@ -105,9 +123,20 @@ class InCarPipeline:
         intent_sample_rate: int = 16000,
         intent_input_seconds: float = 2.0,
         command_timeout_calls: int = 4,
+        command_delay_calls: int = 0,
         command_presence_threshold: float | None = None,
+        presence_activity_margin_threshold: float | None = None,
+        presence_activity_margin_mode: str = "independent_top",
+        intent_confidence_threshold: float | None = None,
         speaker_gate_threshold: float | None = None,
+        command_speaker_gate_threshold: float | None = None,
         speaker_gate_backend: str = "spex",
+        speaker_fusion_mode: str = "none",
+        speaker_fusion_center: float = 0.0,
+        speaker_fusion_scale: float = 0.10,
+        speaker_fusion_alpha: float = 0.5,
+        compact_speaker_verifier_input_seconds: float = 1.0,
+        compact_speaker_verifier_sample_rate: int = 16000,
         presence_top_fraction: float = 0.20,
         label_map: dict[str, str] | None = None,
         device: torch.device | None = None,
@@ -117,6 +146,9 @@ class InCarPipeline:
         self.kws = kws
         self.kws_secondary = kws_secondary
         self.target_kws = target_kws
+        self.target_kws_secondary = target_kws_secondary
+        self.compact_speaker_verifier = compact_speaker_verifier
+        self.target_kws_fusion_mode = str(target_kws_fusion_mode).lower()
         self.intent = intent
         self.presence_threshold = presence_threshold
         self.kws_threshold = kws_threshold
@@ -131,15 +163,52 @@ class InCarPipeline:
         self.intent_sample_rate = int(intent_sample_rate)
         self.intent_input_seconds = max(0.01, float(intent_input_seconds))
         self.command_timeout_calls = max(1, int(command_timeout_calls))
+        self.command_delay_calls = max(0, int(command_delay_calls))
         self.command_presence_threshold = (
             float(presence_threshold)
             if command_presence_threshold is None
             else float(command_presence_threshold)
         )
+        self.presence_activity_margin_threshold = (
+            None
+            if presence_activity_margin_threshold is None
+            else float(presence_activity_margin_threshold)
+        )
+        self.presence_activity_margin_mode = str(presence_activity_margin_mode).lower()
+        if self.presence_activity_margin_mode not in {
+            "independent_top",
+            "target_top",
+            "framewise_top",
+            "mean",
+        }:
+            raise ValueError(
+                "presence_activity_margin_mode must be one of: "
+                "independent_top, target_top, framewise_top, mean"
+            )
+        self.intent_confidence_threshold = (
+            None if intent_confidence_threshold is None else float(intent_confidence_threshold)
+        )
         self.speaker_gate_threshold = (
             None if speaker_gate_threshold is None else float(speaker_gate_threshold)
         )
+        self.command_speaker_gate_threshold = (
+            self.speaker_gate_threshold
+            if command_speaker_gate_threshold is None
+            else float(command_speaker_gate_threshold)
+        )
         self.speaker_gate_backend = str(speaker_gate_backend).lower()
+        self.speaker_fusion_mode = str(speaker_fusion_mode).lower()
+        if self.speaker_fusion_mode not in {"none", "min", "product", "mean"}:
+            raise ValueError(
+                "speaker_fusion_mode must be one of: none, min, product, mean"
+            )
+        self.speaker_fusion_center = float(speaker_fusion_center)
+        self.speaker_fusion_scale = max(float(speaker_fusion_scale), 1.0e-4)
+        self.speaker_fusion_alpha = min(max(float(speaker_fusion_alpha), 0.0), 1.0)
+        self.compact_speaker_verifier_input_seconds = max(
+            0.01, float(compact_speaker_verifier_input_seconds)
+        )
+        self.compact_speaker_verifier_sample_rate = int(compact_speaker_verifier_sample_rate)
         self.presence_top_fraction = min(max(float(presence_top_fraction), 1.0e-3), 1.0)
         self.label_map = label_map
         self.device = device or torch.device("cpu")
@@ -150,6 +219,10 @@ class InCarPipeline:
             self.kws_secondary.to(self.device)
         if self.target_kws is not None:
             self.target_kws.to(self.device)
+        if self.target_kws_secondary is not None:
+            self.target_kws_secondary.to(self.device)
+        if self.compact_speaker_verifier is not None:
+            self.compact_speaker_verifier.to(self.device)
         self.intent.to(self.device)
         self.stage1.eval()
         self.presence.eval()
@@ -158,6 +231,10 @@ class InCarPipeline:
             self.kws_secondary.eval()
         if self.target_kws is not None:
             self.target_kws.eval()
+        if self.target_kws_secondary is not None:
+            self.target_kws_secondary.eval()
+        if self.compact_speaker_verifier is not None:
+            self.compact_speaker_verifier.eval()
         self.intent.eval()
 
     @classmethod
@@ -171,6 +248,10 @@ class InCarPipeline:
         kws_num_classes: int = 2,
         intent_sample_rate: int = 16000,
         intent_type: str = "crnn",
+        intent_normalize_input: bool = False,
+        intent_n_mels: int = 80,
+        intent_hidden: int = 256,
+        intent_num_layers: int = 2,
         intent_encoder: str = "facebook/wav2vec2-base-960h",
         intent_encoder_checkpoint: Path | str | None = None,
         intent_num_classes: int = 31,
@@ -179,13 +260,39 @@ class InCarPipeline:
         pipeline_kwargs = dict(kwargs)
         presence_type = str(pipeline_kwargs.pop("presence_type", "scalar")).lower()
         presence_sample_rate = int(pipeline_kwargs.pop("presence_sample_rate", kws_sample_rate))
+        # These parameters belong to the optional framewise presence head.  Pop
+        # them for every presence type so a scalar head cannot accidentally
+        # receive them through the generic pipeline constructor.
+        presence_n_mels = int(pipeline_kwargs.pop("presence_n_mels", 40))
+        presence_hidden = int(pipeline_kwargs.pop("presence_hidden", 64))
+        presence_n_fft = int(pipeline_kwargs.pop("presence_n_fft", 512))
+        presence_hop = int(pipeline_kwargs.pop("presence_hop", 160))
+        presence_speaker_embedding_dim = int(pipeline_kwargs.pop("presence_speaker_embedding_dim", 256))
         if presence_type == "frame":
             presence = FramePresenceHead(
                 sample_rate=presence_sample_rate,
-                n_mels=int(pipeline_kwargs.pop("presence_n_mels", 40)),
-                hidden=int(pipeline_kwargs.pop("presence_hidden", 64)),
-                n_fft=int(pipeline_kwargs.pop("presence_n_fft", 512)),
-                hop=int(pipeline_kwargs.pop("presence_hop", 160)),
+                n_mels=presence_n_mels,
+                hidden=presence_hidden,
+                n_fft=presence_n_fft,
+                hop=presence_hop,
+            )
+        elif presence_type == "personal_frame":
+            presence = PersonalFramePresenceHead(
+                sample_rate=presence_sample_rate,
+                n_mels=presence_n_mels,
+                hidden=presence_hidden,
+                n_fft=presence_n_fft,
+                hop=presence_hop,
+                speaker_embedding_dim=presence_speaker_embedding_dim,
+            )
+        elif presence_type in {"personal_activity", "personal_activity_3way"}:
+            presence = PersonalActivityHead(
+                sample_rate=presence_sample_rate,
+                n_mels=presence_n_mels,
+                hidden=presence_hidden,
+                n_fft=presence_n_fft,
+                hop=presence_hop,
+                speaker_embedding_dim=presence_speaker_embedding_dim,
             )
         elif presence_type == "scalar":
             presence = PresenceHead()
@@ -197,15 +304,52 @@ class InCarPipeline:
         if secondary_checkpoint:
             kws_secondary = KWSModel(sample_rate=kws_sample_rate, num_classes=kws_num_classes)
         target_kws_checkpoint = pipeline_kwargs.pop("target_kws_checkpoint", None)
+        target_kws_secondary_checkpoint = pipeline_kwargs.pop("target_kws_secondary_checkpoint", None)
+        compact_speaker_verifier_checkpoint = pipeline_kwargs.pop(
+            "compact_speaker_verifier_checkpoint", None
+        )
+        compact_speaker_verifier_embedding_dim = int(
+            pipeline_kwargs.pop("compact_speaker_verifier_embedding_dim", 128)
+        )
+        compact_speaker_verifier_hidden = int(
+            pipeline_kwargs.pop("compact_speaker_verifier_hidden", 128)
+        )
+        compact_speaker_verifier_input_seconds = float(
+            pipeline_kwargs.pop("compact_speaker_verifier_input_seconds", 1.0)
+        )
+        compact_speaker_verifier_sample_rate = int(
+            pipeline_kwargs.pop("compact_speaker_verifier_sample_rate", 16000)
+        )
         target_kws = None
+        target_kws_secondary = None
+        compact_speaker_verifier = None
         if target_kws_checkpoint:
+            target_kws_n_mels = int(pipeline_kwargs.pop("target_kws_n_mels", 40))
+            target_kws_channels = pipeline_kwargs.pop("target_kws_channels", [32, 64, 128])
+            target_kws_speaker_embedding_dim = int(pipeline_kwargs.pop("target_kws_speaker_embedding_dim", 256))
+            target_kws_hidden = int(pipeline_kwargs.pop("target_kws_hidden", 256))
             target_kws = TargetSpeakerKWSModel(
                 sample_rate=kws_sample_rate,
-                n_mels=int(pipeline_kwargs.pop("target_kws_n_mels", 40)),
-                channels=pipeline_kwargs.pop("target_kws_channels", [32, 64, 128]),
+                n_mels=target_kws_n_mels,
+                channels=target_kws_channels,
                 num_classes=kws_num_classes,
-                speaker_embedding_dim=int(pipeline_kwargs.pop("target_kws_speaker_embedding_dim", 256)),
-                hidden=int(pipeline_kwargs.pop("target_kws_hidden", 256)),
+                speaker_embedding_dim=target_kws_speaker_embedding_dim,
+                hidden=target_kws_hidden,
+            )
+            if target_kws_secondary_checkpoint:
+                target_kws_secondary = TargetSpeakerKWSModel(
+                    sample_rate=kws_sample_rate,
+                    n_mels=target_kws_n_mels,
+                    channels=target_kws_channels,
+                    num_classes=kws_num_classes,
+                    speaker_embedding_dim=target_kws_speaker_embedding_dim,
+                    hidden=target_kws_hidden,
+                )
+        if compact_speaker_verifier_checkpoint:
+            compact_speaker_verifier = CompactSpeakerVerifier(
+                embedding_dim=compact_speaker_verifier_embedding_dim,
+                hidden=compact_speaker_verifier_hidden,
+                sample_rate=compact_speaker_verifier_sample_rate,
             )
         intent_input_seconds = float(pipeline_kwargs.get("intent_input_seconds", 2.0))
         if intent_type == "wav2vec":
@@ -220,13 +364,23 @@ class InCarPipeline:
                 input_seconds=intent_input_seconds,
             )
         else:
-            intent = IntentClassifier(sample_rate=intent_sample_rate)
+            intent = IntentClassifier(
+                sample_rate=intent_sample_rate,
+                n_mels=int(intent_n_mels),
+                hidden=int(intent_hidden),
+                num_layers=int(intent_num_layers),
+                normalize_input=bool(intent_normalize_input),
+            )
         load_checkpoint(ckpt_presence, presence)
         load_checkpoint(ckpt_kws, kws)
         if kws_secondary is not None:
             load_checkpoint(secondary_checkpoint, kws_secondary)
         if target_kws is not None:
             load_checkpoint(target_kws_checkpoint, target_kws)
+        if target_kws_secondary is not None:
+            load_checkpoint(target_kws_secondary_checkpoint, target_kws_secondary)
+        if compact_speaker_verifier is not None:
+            load_checkpoint(compact_speaker_verifier_checkpoint, compact_speaker_verifier)
         if intent_type != "wav2vec":
             load_checkpoint(ckpt_intent, intent)
         pipeline_kwargs.setdefault("intent_sample_rate", intent_sample_rate)
@@ -238,7 +392,12 @@ class InCarPipeline:
             intent,
             kws_secondary=kws_secondary,
             target_kws=target_kws,
+            target_kws_secondary=target_kws_secondary,
+            compact_speaker_verifier=compact_speaker_verifier,
+            target_kws_fusion_mode=str(pipeline_kwargs.pop("target_kws_fusion_mode", "min")),
             kws_sample_rate=kws_sample_rate,
+            compact_speaker_verifier_input_seconds=compact_speaker_verifier_input_seconds,
+            compact_speaker_verifier_sample_rate=compact_speaker_verifier_sample_rate,
             **pipeline_kwargs,
         )
 
@@ -254,16 +413,114 @@ class InCarPipeline:
             return wav[..., :samples]
         return torch.nn.functional.pad(wav, (0, samples - wav.shape[-1]))
 
-    def presence_probability(self, s1: torch.Tensor) -> torch.Tensor:
+    def _prepare_compact_speaker_input(self, wav: torch.Tensor) -> torch.Tensor:
+        """Return the one-second waveform expected by the compact verifier."""
+
+        samples = max(
+            1,
+            int(
+                round(
+                    self.compact_speaker_verifier_sample_rate
+                    * self.compact_speaker_verifier_input_seconds
+                )
+            ),
+        )
+        if wav.shape[-1] >= samples:
+            return wav[..., :samples]
+        return torch.nn.functional.pad(wav, (0, samples - wav.shape[-1]))
+
+    def _speaker_fusion_probability(self, similarity: torch.Tensor) -> torch.Tensor:
+        """Map cosine similarity to an opt-in calibrated speaker score.
+
+        The center and scale are operating-point parameters, not learned
+        defaults.  They must be selected on tuning sessions because cosine
+        similarity is domain and enrollment dependent.  Keeping this mapping
+        explicit makes the keyword and speaker branches independently
+        inspectable and preserves the historical hard-gate behavior when the
+        fusion mode is ``none``.
+        """
+
+        return torch.sigmoid(
+            (similarity - self.speaker_fusion_center) / self.speaker_fusion_scale
+        )
+
+    def _fuse_speaker_score(
+        self,
+        keyword_score: float,
+        similarity: torch.Tensor,
+    ) -> float:
+        """Fuse keyword evidence with an independent speaker-verification score."""
+
+        speaker_score = float(self._speaker_fusion_probability(similarity).mean().item())
+        keyword_score = float(keyword_score)
+        if self.speaker_fusion_mode == "min":
+            return min(keyword_score, speaker_score)
+        if self.speaker_fusion_mode == "product":
+            return keyword_score * speaker_score
+        if self.speaker_fusion_mode == "mean":
+            return (
+                self.speaker_fusion_alpha * keyword_score
+                + (1.0 - self.speaker_fusion_alpha) * speaker_score
+            )
+        return keyword_score
+
+    def presence_probability(
+        self,
+        s1: torch.Tensor,
+        enrollment_embedding: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Return one target-present probability per batch item."""
 
-        logits = self.presence(s1)
-        if getattr(self.presence, "is_framewise", False):
-            return FramePresenceHead.aggregate_probability(
-                torch.sigmoid(logits),
+        target_probability, _, _ = self.presence_activity_scores(s1, enrollment_embedding)
+        return target_probability
+
+    def presence_activity_scores(
+        self,
+        s1: torch.Tensor,
+        enrollment_embedding: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+        """Return target, non-target, and target-minus-non-target scores.
+
+        The margin is populated only for the opt-in three-way personal
+        activity head. Other presence heads retain their historical behavior.
+        """
+
+        if getattr(self.presence, "requires_enrollment", False):
+            if enrollment_embedding is None:
+                raise ValueError("Personal presence head requires an enrollment embedding")
+            logits = self.presence(s1, enrollment_embedding)
+        else:
+            logits = self.presence(s1)
+        if getattr(self.presence, "is_multiclass", False):
+            probabilities = self.presence.activity_probabilities(logits)
+            target_frames = probabilities[:, self.presence.target_class_index, :]
+            non_target_frames = probabilities[:, 2, :]
+            target_probability = self.presence.aggregate_probability(
+                target_frames,
                 top_fraction=self.presence_top_fraction,
             )
-        return torch.sigmoid(logits)
+            non_target_probability = self.presence.aggregate_probability(
+                non_target_frames,
+                top_fraction=self.presence_top_fraction,
+            )
+            aggregate_margin = getattr(self.presence, "aggregate_margin", None)
+            if callable(aggregate_margin):
+                activity_margin = aggregate_margin(
+                    target_frames,
+                    non_target_frames,
+                    top_fraction=self.presence_top_fraction,
+                    mode=self.presence_activity_margin_mode,
+                )
+            else:
+                activity_margin = target_probability - non_target_probability
+            return target_probability, non_target_probability, activity_margin
+        if getattr(self.presence, "is_framewise", False):
+            aggregate = getattr(self.presence, "aggregate_probability", FramePresenceHead.aggregate_probability)
+            return aggregate(
+                torch.sigmoid(logits),
+                top_fraction=self.presence_top_fraction,
+            ), None, None
+        return torch.sigmoid(logits), None, None
 
     def forward(
         self,
@@ -291,21 +548,69 @@ class InCarPipeline:
                 multichannel=multichannel.to(self.device) if multichannel is not None else None,
                 playback_ref=pb,
             )
-            pres_prob = self.presence_probability(s1)
+            if state.reference_speaker_embedding is None:
+                speaker_embedder = getattr(self.stage1, "speaker_embedding", None)
+                if callable(speaker_embedder):
+                    state.reference_speaker_embedding = speaker_embedder(enrollment)
+                    if state.reference_speaker_embedding is not None:
+                        state.reference_speaker_embedding = state.reference_speaker_embedding.detach()
+            reference_speaker_embedding = state.reference_speaker_embedding
+            if getattr(self.presence, "requires_enrollment", False):
+                if state.presence_enrollment_embedding is None:
+                    if reference_speaker_embedding is None:
+                        raise ValueError("personal presence head requires a speaker embedding")
+                    state.presence_enrollment_embedding = reference_speaker_embedding
+                presence_enrollment_embedding = state.presence_enrollment_embedding
+            else:
+                presence_enrollment_embedding = None
+            pres_prob, non_target_prob, activity_margin = self.presence_activity_scores(
+                s1, presence_enrollment_embedding
+            )
             presence_probability = float(pres_prob.mean().item())
+            presence_non_target_probability = (
+                None if non_target_prob is None else float(non_target_prob.mean().item())
+            )
+            presence_activity_margin = (
+                None if activity_margin is None else float(activity_margin.mean().item())
+            )
             speaker_similarity = None
+            active_speaker_gate_threshold = (
+                self.command_speaker_gate_threshold
+                if state.awaiting_command
+                else self.speaker_gate_threshold
+            )
             active_presence_threshold = (
                 self.command_presence_threshold
                 if state.awaiting_command
                 else self.presence_threshold
             )
+            extracted_speaker_embedding = None
+            speaker_score_required = (
+                active_speaker_gate_threshold is not None
+                or (
+                    not state.awaiting_command
+                    and self.speaker_fusion_mode != "none"
+                    and self.target_kws is not None
+                )
+            )
             if (
-                self.speaker_gate_threshold is not None
+                speaker_score_required
                 and presence_probability >= active_presence_threshold
             ):
                 similarity = None
                 if self.speaker_gate_backend in {"spex", "auto"}:
-                    similarity = self.stage1.speaker_similarity(enrollment, s1)
+                    extracted_speaker_embedding = self.stage1.speaker_embedding(s1)
+                    if (
+                        reference_speaker_embedding is not None
+                        and extracted_speaker_embedding is not None
+                    ):
+                        similarity = torch.nn.functional.cosine_similarity(
+                            reference_speaker_embedding,
+                            extracted_speaker_embedding,
+                            dim=-1,
+                        )
+                    else:
+                        similarity = self.stage1.speaker_similarity(enrollment, s1)
                 if similarity is None and self.speaker_gate_backend in {"wav2vec", "auto"}:
                     embedder = getattr(self.intent, "embedding", None)
                     if callable(embedder):
@@ -317,13 +622,42 @@ class InCarPipeline:
                             extracted_embedding,
                             dim=-1,
                         )
+                if similarity is None and self.speaker_gate_backend == "compact":
+                    if self.compact_speaker_verifier is None:
+                        raise RuntimeError(
+                            "speaker_gate_backend='compact' requires "
+                            "compact_speaker_verifier_checkpoint"
+                        )
+                    compact_enrollment = self._prepare_compact_speaker_input(enrollment)
+                    compact_extracted = self._prepare_compact_speaker_input(
+                        normalize_extracted_waveform(s1)
+                    )
+                    compact_logits, _, _ = self.compact_speaker_verifier(
+                        compact_enrollment,
+                        compact_extracted,
+                    )
+                    # For this backend the exposed speaker_similarity field is
+                    # a calibrated verifier probability rather than SpEx cosine
+                    # similarity.  The explicit backend/threshold in the config
+                    # keeps that change auditable.
+                    similarity = torch.sigmoid(compact_logits)
                 if similarity is not None:
                     speaker_similarity = float(similarity.mean().item())
             speaker_rejected = (
                 speaker_similarity is not None
-                and speaker_similarity < self.speaker_gate_threshold
+                and active_speaker_gate_threshold is not None
+                and speaker_similarity < active_speaker_gate_threshold
             )
-            if presence_probability < active_presence_threshold or speaker_rejected:
+            activity_margin_rejected = (
+                self.presence_activity_margin_threshold is not None
+                and presence_activity_margin is not None
+                and presence_activity_margin < self.presence_activity_margin_threshold
+            )
+            if (
+                presence_probability < active_presence_threshold
+                or speaker_rejected
+                or activity_margin_rejected
+            ):
                 state.kws_scores.clear()
                 if not state.awaiting_command:
                     state.kws_refractory_left = 0
@@ -332,6 +666,8 @@ class InCarPipeline:
                         wake_detected=False,
                         s1=s1,
                         presence_probability=presence_probability,
+                        presence_non_target_probability=presence_non_target_probability,
+                        presence_activity_margin=presence_activity_margin,
                         speaker_similarity=speaker_similarity,
                     ), state
 
@@ -347,6 +683,8 @@ class InCarPipeline:
                         wake_detected=False,
                         s1=s1,
                         presence_probability=presence_probability,
+                        presence_non_target_probability=presence_non_target_probability,
+                        presence_activity_margin=presence_activity_margin,
                         speaker_similarity=speaker_similarity,
                     ), state
                 return PipelineOutput(
@@ -355,6 +693,8 @@ class InCarPipeline:
                     command_pending=True,
                     s1=s1,
                     presence_probability=presence_probability,
+                    presence_non_target_probability=presence_non_target_probability,
+                    presence_activity_margin=presence_activity_margin,
                     speaker_similarity=speaker_similarity,
                 ), state
             downstream_s1 = normalize_extracted_waveform(s1)
@@ -365,8 +705,45 @@ class InCarPipeline:
                 # wake frame; a later PVAD can replace this presence decision
                 # without changing the state-machine contract.
                 state.command_wait_calls += 1
+                if state.command_wait_calls <= self.command_delay_calls:
+                    # With sub-second hops, the first post-wake window can
+                    # still contain the wake word.  An opt-in delay lets a
+                    # streaming caller wait for a clean command window
+                    # without changing the historical zero-delay behavior.
+                    return PipelineOutput(
+                        accepted=True,
+                        wake_detected=False,
+                        s1=s1,
+                        command_pending=True,
+                        presence_probability=presence_probability,
+                        presence_non_target_probability=presence_non_target_probability,
+                        presence_activity_margin=presence_activity_margin,
+                        speaker_similarity=speaker_similarity,
+                    ), state
                 intent_input = self._prepare_intent_input(downstream_s1)
                 intent_logits = self.intent(intent_input)
+                intent_probability = torch.softmax(intent_logits, dim=-1)
+                intent_confidence = float(intent_probability.max(dim=-1).values.mean().item())
+                if (
+                    self.intent_confidence_threshold is not None
+                    and intent_confidence < self.intent_confidence_threshold
+                ):
+                    self._reset_command_capture(state)
+                    state.kws_scores.clear()
+                    return PipelineOutput(
+                        accepted=True,
+                        wake_detected=False,
+                        intent_logits=intent_logits,
+                        action=None,
+                        s1=s1,
+                        command_pending=False,
+                        intent_ready=False,
+                        command_suppressed=True,
+                        presence_probability=presence_probability,
+                        presence_non_target_probability=presence_non_target_probability,
+                        presence_activity_margin=presence_activity_margin,
+                        speaker_similarity=speaker_similarity,
+                    ), state
                 intent_id = str(int(torch.argmax(intent_logits, dim=-1).item()))
                 action = intent_to_action(intent_id, self.label_map)
                 if action.reply_wav and action.reply_wav.exists():
@@ -382,6 +759,8 @@ class InCarPipeline:
                     command_pending=False,
                     intent_ready=True,
                     presence_probability=presence_probability,
+                    presence_non_target_probability=presence_non_target_probability,
+                    presence_activity_margin=presence_activity_margin,
                     speaker_similarity=speaker_similarity,
                 ), state
 
@@ -397,15 +776,41 @@ class InCarPipeline:
                 embedder = getattr(self.stage1, "speaker_embedding", None)
                 if callable(embedder):
                     if state.target_kws_enrollment_embedding is None:
-                        state.target_kws_enrollment_embedding = embedder(enrollment).detach()
-                    extracted_embedding = embedder(s1).detach()
+                        if reference_speaker_embedding is None:
+                            raise ValueError("target KWS requires a speaker embedding")
+                        state.target_kws_enrollment_embedding = reference_speaker_embedding
+                    if extracted_speaker_embedding is None:
+                        extracted_speaker_embedding = embedder(s1).detach()
+                    else:
+                        extracted_speaker_embedding = extracted_speaker_embedding.detach()
                     target_kws_logits = self.target_kws(
                         kws_input,
                         state.target_kws_enrollment_embedding,
-                        extracted_embedding,
+                        extracted_speaker_embedding,
                     )
                     target_kws_prob = torch.softmax(target_kws_logits, dim=-1)
                     target_kws_score = target_kws_prob[..., self.wake_class_id].mean().item()
+                    if self.target_kws_secondary is not None:
+                        secondary_logits = self.target_kws_secondary(
+                            kws_input,
+                            state.target_kws_enrollment_embedding,
+                            extracted_speaker_embedding,
+                        )
+                        secondary_score = torch.softmax(secondary_logits, dim=-1)[..., self.wake_class_id].mean().item()
+                        if self.target_kws_fusion_mode == "mean":
+                            target_kws_score = 0.5 * (target_kws_score + secondary_score)
+                        elif self.target_kws_fusion_mode == "geomean":
+                            target_kws_score = float(max(target_kws_score, 0.0) * max(secondary_score, 0.0)) ** 0.5
+                        else:
+                            target_kws_score = min(target_kws_score, secondary_score)
+                    if (
+                        self.speaker_fusion_mode != "none"
+                        and similarity is not None
+                    ):
+                        target_kws_score = self._fuse_speaker_score(
+                            target_kws_score,
+                            similarity,
+                        )
             if target_kws_score is None:
                 kws_logits = self.kws(kws_input)
                 kws_prob = torch.softmax(kws_logits, dim=-1)
@@ -437,6 +842,8 @@ class InCarPipeline:
                     wake_detected=False,
                     s1=s1,
                     presence_probability=presence_probability,
+                    presence_non_target_probability=presence_non_target_probability,
+                    presence_activity_margin=presence_activity_margin,
                     speaker_similarity=speaker_similarity,
                     wake_probability=score,
                 ), state
@@ -452,6 +859,8 @@ class InCarPipeline:
                 s1=s1,
                 command_pending=True,
                 presence_probability=presence_probability,
+                presence_non_target_probability=presence_non_target_probability,
+                presence_activity_margin=presence_activity_margin,
                 speaker_similarity=speaker_similarity,
                 wake_probability=score,
             ), state
