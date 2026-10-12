@@ -1793,3 +1793,23 @@ Artifacts:
 - `logs/continuous_full_pipeline_proxy_compact_cabin_aware_thr030_same_speaker_p10_2026-10-12.json`
 - `data/cache/compact_speaker_verifier_cabin_aware_2026-10-12/`
 - `data/cache/wavlm_speaker_verifier_cabin_aware_2026-10-12/`
+
+### E-2026-10-12-smart-speaker-compact-gate-cross-check
+
+The cabin-aware compact gate was cross-checked on the completed all-file
+University of Rochester Smart Speaker Command benchmark (2,110 files, 3.193
+hours of clean `Hey Alexa, <command>` speech). The concurrent reference run
+used the Smart-Speaker negative-adapted target KWS with the SpEx gate and
+recorded 86 full-path false wakes (26.94/hour). Replaying the same
+configuration with only the speaker gate swapped to the cabin-aware compact
+verifier at 0.30 produced 11 false wakes (3.45/hour), a 7.8x observed
+reduction, with the KWS-only rate unchanged at 93.97/hour and zero false
+actions in the 14-file action sample. This is a second negative domain for
+the same gate, not production evidence: the audio is clean single-channel
+studio speech with duplicated channels, and it contains no positive Marvin
+examples.
+
+Artifacts:
+
+- `logs/smart_speaker_command_negative_all_compact_cabin_aware_thr030_2026-10-12.json`
+- `configs/eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_aware_thr030_2026-10-12.yaml`

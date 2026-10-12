@@ -123,6 +123,32 @@ The retrain lowers the aggregate AUC while improving the operating region that
 matters (low-FPR recall and real-cabin rejection). This is reported as a
 candidate; the threshold is not frozen.
 
+## Smart Speaker cross-domain negative check
+
+The University of Rochester Smart Speaker Command corpus (2,110 clean
+`Hey Alexa, <command>` files, 3.193 hours) is a second negative domain with
+wake-like speech. The completed all-file reference used the Smart-Speaker
+negative-adapted target KWS and the SpEx gate. To isolate the identity-gate
+effect, the same configuration was replayed with only the speaker gate
+changed to the cabin-aware compact verifier at 0.30:
+
+| Configuration | Full-path false wakes | False wakes/hour | KWS-only wakes/hour | 14-file action sample |
+|---|---:|---:|---:|---:|
+| SpEx 0.24 (reference, concurrent run) | 86 | 26.94 | 93.97 | 0 false actions |
+| Cabin-aware compact 0.30 | **11** | **3.45** | 93.97 | 0 false actions |
+
+The cabin-aware gate reduces observed full-path false wakes by 7.8× on a
+second, acoustically different negative domain with the KWS-only rate
+unchanged. This remains clean single-channel studio audio duplicated across
+four interface channels, one file per scripted `Hey Alexa` utterance; it is
+not real-cabin or production FAR evidence.
+
+Logs:
+
+- `logs/smart_speaker_command_negative_all_2026-10-12.json` (reference, concurrent)
+- `logs/smart_speaker_command_negative_all_compact_cabin_aware_thr030_2026-10-12.json`
+- Config: `configs/eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_aware_thr030_2026-10-12.yaml`
+
 ## Positive-proxy caveat
 
 The retained 8-scene same-speaker proxy
