@@ -217,6 +217,53 @@ size, capture-hardware match, frozen split, threshold freeze, and reproducible
 release state remain blocked. A capture preflight on 2026-10-12 still finds
 only a single-channel interface, so the pilot cannot be recorded on this host.
 
+## Long-form continuous stream evaluation
+
+New evaluator: `scripts/eval/eval_continuous_stream_eval.py`. It builds one
+900-second four-channel stream with a continuous ReMASC vehicle-noise bed at
+sample-rate scale, plus sparse speech events placed at random times with
+0–15 dB cabin SNR: 12 target `Marvin` + command events, 4 passenger `Marvin`
+events, 15 passenger non-wake speech events, and 6 command-like speech events
+without a wake word. The runtime pipeline processes the entire stream in one
+stateful pass (hop 0.25 s, two-call command delay). Both clips are saved under
+`output/artifacts/` (PCM16, git-ignored) with full timelines.
+
+Event `marvin` + command under two enrollment constructions:
+
+| Stream | Enrollment / wake / command | Target wake recall | Mean latency | False wakes | False actions | Intent overall |
+|---|---|---:|---:|---:|---:|---:|
+| A | same GSC speaker: enrollment+wake; FSC command different speaker | **12/12 (100%)** | 1.49 s | 2 events / 8.0 per hour | 0 | 0.0 (command speaker mismatch) |
+| B | same FSC speaker: enrollment+command; GSC wake different speaker | 0/12 | — | 1 event / 4.0 per hour | 0 | n/a |
+
+Findings:
+
+- With a speaker-consistent wake/enrollment pair, every wake was detected down
+  to 0.0 dB cabin SNR over a noisy, mostly-silent 15-minute timeline, at
+  1.49 s mean latency. This is the strongest positive-side stream result the
+  project has, and it is synthetic (Speech Commands + CAVEMOVE/ReMASC).
+- One passenger `Marvin` (a different speaker, 2.9 dB SNR) slipped through the
+  compact gate and produced a false wake; one additional false wake occurred
+  in a noise stretch. With 2 events over 0.25 h the rate is 8.0/h with a 95%
+  Poisson interval of roughly 1.0–29/h: far too few events to treat as an
+  estimate.
+- Stream B shows the cross-corpus limitation directly: under arbitrary event
+  alignment the enrollment-conditioned extractor suppresses the different
+  speaker's wake, so no target wake fires. The historical aligned 8-scene
+  proxy still reproduces 1/1 in the same session, so the earlier 100%
+  construction was alignment-favourable and should not be read as robust
+  cross-corpus wake recall.
+- The intent leg cannot be measured in one stream with the available corpora:
+  the wake and command always come from different speakers. It remains a
+  real-driver measurement.
+
+Stream artifacts:
+
+- `output/artifacts/continuous_stream_eval_samewake_15min_p025_2026-10-12/stream_4ch.wav`
+- `output/artifacts/continuous_stream_eval_samewake_15min_p025_2026-10-12/stream_timeline.json`
+- `logs/continuous_stream_eval_samewake_15min_p025_2026-10-12.json`
+- `output/artifacts/continuous_stream_eval_samecommand_15min_p025_2026-10-12/stream_4ch.wav`
+- `logs/continuous_stream_eval_samecommand_15min_p025_2026-10-12.json`
+
 ## Positive-proxy caveat
 
 The retained 8-scene same-speaker proxy

@@ -1,0 +1,70 @@
+{
+  "seed": 20261012,
+  "duration_seconds": 120.0,
+  "sample_rate": 16000,
+  "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+  "noise_bed": "D:\\datasets\\remasc\\stress_bed\\ReMASC\\noise\\remasc_vehicle_replayed_6ch_tiled.wav",
+  "noise_rms": 0.084465891122818,
+  "enrollment_source": "same_speaker_other",
+  "enrollment_source_wav": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00224990-452e-11e9-b1e4-e5985dca719e.wav",
+  "enrollment_bank_wavs": [
+    "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00224990-452e-11e9-b1e4-e5985dca719e.wav"
+  ],
+  "events": [
+    {
+      "type": "target_wake_command",
+      "start_seconds": 87.87692274180043,
+      "wake_end_seconds": 88.87692274180043,
+      "command_start_seconds": 89.54289023312252,
+      "command_end_seconds": 91.54289023312252,
+      "cabin_snr_db": 0.021341439826991215,
+      "expected_intent": "activate|lights|washroom",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\022cd682_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00143870-4531-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "022cd682"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 59.97558236751728,
+      "wake_end_seconds": 60.97558236751728,
+      "command_start_seconds": 61.31440599896558,
+      "command_end_seconds": 63.31440599896558,
+      "cabin_snr_db": 1.0293548117238949,
+      "expected_intent": "increase|volume",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\03401e93_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00224990-452e-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "03401e93"
+    },
+    {
+      "type": "passenger_wake",
+      "start_seconds": 45.91194882691008,
+      "end_seconds": 46.91194882691008,
+      "snr_db": -3.2920487053745684,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\5f814c23_nohash_0.wav",
+      "speaker": "5f814c23"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 100.63829409189543,
+      "end_seconds": 102.13829409189543,
+      "snr_db": 0.5976521397377947,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\zero\\4fd1443e_nohash_2.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 69.41185175386758,
+      "end_seconds": 70.91185175386758,
+      "snr_db": 4.052552406184702,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\four\\e71b4ce6_nohash_0.wav"
+    },
+    {
+      "type": "command_like_without_wake",
+      "start_seconds": 16.11808606752541,
+      "end_seconds": 18.11808606752541,
+      "snr_db": 3.77308721414488,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\NgQEvO2x7Vh3xy2xz\\daa269c0-45cd-11e9-9992-dfba019cb646.wav",
+      "intent": "increase|volume"
+    }
+  ],
+  "limitation": "Synthetic cross-corpus stream: Marvin clips come from Speech Commands and commands from Fluent Speech Commands; the wake speaker is not verified to match the enrollment speaker. Not real-driver evidence."
+}

@@ -1,0 +1,345 @@
+{
+  "seed": 20261012,
+  "duration_seconds": 900.0,
+  "sample_rate": 16000,
+  "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_dual_domain_stage2_hardneg_aishell5_neg_safety_splitgate_candidate.yaml",
+  "noise_bed": "D:\\datasets\\remasc\\stress_bed\\ReMASC\\noise\\remasc_vehicle_replayed_6ch_tiled.wav",
+  "noise_rms": 0.084465891122818,
+  "enrollment_source": "same_speaker_other",
+  "enrollment_source_wav": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00224990-452e-11e9-b1e4-e5985dca719e.wav",
+  "enrollment_bank_wavs": [
+    "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00224990-452e-11e9-b1e4-e5985dca719e.wav"
+  ],
+  "events": [
+    {
+      "type": "target_wake_command",
+      "start_seconds": 703.3461670084166,
+      "wake_end_seconds": 704.3461670084166,
+      "command_start_seconds": 705.0121344997387,
+      "command_end_seconds": 707.0121344997387,
+      "cabin_snr_db": 0.021341439826991215,
+      "expected_intent": "activate|lights|washroom",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\022cd682_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00143870-4531-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "022cd682"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 728.31541191185,
+      "wake_end_seconds": 729.31541191185,
+      "command_start_seconds": 729.6542355432983,
+      "command_end_seconds": 731.6542355432983,
+      "cabin_snr_db": 7.966511212527502,
+      "expected_intent": "increase|volume",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\03401e93_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00224990-452e-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "03401e93"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 199.9041407207861,
+      "wake_end_seconds": 200.9041407207861,
+      "command_start_seconds": 201.26590200948954,
+      "command_end_seconds": 203.26590200948954,
+      "cabin_snr_db": 0.7533816811585942,
+      "expected_intent": "change language|English",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\0b57a6ed_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00762400-4530-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "0b57a6ed"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 791.9888228392502,
+      "wake_end_seconds": 792.9888228392502,
+      "command_start_seconds": 793.4957584066641,
+      "command_end_seconds": 795.4957584066641,
+      "cabin_snr_db": 8.396478209606691,
+      "expected_intent": "decrease|heat|kitchen",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\0c40e715_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\008b2810-452f-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "0c40e715"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 488.0346142595348,
+      "wake_end_seconds": 489.0346142595348,
+      "command_start_seconds": 489.4018251308631,
+      "command_end_seconds": 491.4018251308631,
+      "cabin_snr_db": 9.838565772299885,
+      "expected_intent": "increase|heat|washroom",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\0cb74144_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\018d0050-4532-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "0cb74144"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 655.9049824311172,
+      "wake_end_seconds": 656.9049824311172,
+      "command_start_seconds": 657.598679216859,
+      "command_end_seconds": 659.598679216859,
+      "cabin_snr_db": 1.9164822716097847,
+      "expected_intent": "increase|volume",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\0d53e045_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\01f180c0-452d-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "0d53e045"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 758.4863321692542,
+      "wake_end_seconds": 759.4863321692542,
+      "command_start_seconds": 760.5759100185272,
+      "command_end_seconds": 762.5759100185272,
+      "cabin_snr_db": 8.923085731470934,
+      "expected_intent": "activate|lights|washroom",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\105a0eea_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\02ea62e0-4531-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "105a0eea"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 402.68664761434604,
+      "wake_end_seconds": 403.68664761434604,
+      "command_start_seconds": 404.62426636905934,
+      "command_end_seconds": 406.62426636905934,
+      "cabin_snr_db": 0.9383772266404811,
+      "expected_intent": "increase|volume",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\1093c8e7_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\038e7270-452e-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "1093c8e7"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 86.30447773290996,
+      "wake_end_seconds": 87.30447773290996,
+      "command_start_seconds": 88.23669869674079,
+      "command_end_seconds": 90.23669869674079,
+      "cabin_snr_db": 5.863488819101733,
+      "expected_intent": "decrease|heat|kitchen",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\135c6841_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\03aa6970-452f-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "135c6841"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 773.4129721118435,
+      "wake_end_seconds": 774.4129721118435,
+      "command_start_seconds": 775.1249530969035,
+      "command_end_seconds": 777.1249530969035,
+      "cabin_snr_db": 5.051487058974865,
+      "expected_intent": "increase|heat|washroom",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\1528225c_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\045f0c10-4532-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "1528225c"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 32.130235308977205,
+      "wake_end_seconds": 33.130235308977205,
+      "command_start_seconds": 33.69343882745241,
+      "command_end_seconds": 35.69343882745241,
+      "cabin_snr_db": 4.385735363351923,
+      "expected_intent": "decrease|volume",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\1acc97de_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\0547b0a0-452d-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "1acc97de"
+    },
+    {
+      "type": "target_wake_command",
+      "start_seconds": 287.5963043234114,
+      "wake_end_seconds": 288.5963043234114,
+      "command_start_seconds": 289.0101832564896,
+      "command_end_seconds": 291.0101832564896,
+      "cabin_snr_db": 7.926982323115474,
+      "expected_intent": "deactivate|lights",
+      "wake_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\1b4c9b89_nohash_0.wav",
+      "command_source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\060b7900-4531-11e9-b1e4-e5985dca719e.wav",
+      "target_speaker": "1b4c9b89"
+    },
+    {
+      "type": "passenger_wake",
+      "start_seconds": 418.67390621735166,
+      "end_seconds": 419.67390621735166,
+      "snr_db": 4.009636720595674,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\9a7c1f83_nohash_0.wav",
+      "speaker": "9a7c1f83"
+    },
+    {
+      "type": "passenger_wake",
+      "start_seconds": 743.1547575613339,
+      "end_seconds": 744.1547575613339,
+      "snr_db": -4.596273535218307,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\837a0f64_nohash_0.wav",
+      "speaker": "837a0f64"
+    },
+    {
+      "type": "passenger_wake",
+      "start_seconds": 465.7883880204022,
+      "end_seconds": 466.7883880204022,
+      "snr_db": -2.4466643709612566,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\964e8cfd_nohash_0.wav",
+      "speaker": "964e8cfd"
+    },
+    {
+      "type": "passenger_wake",
+      "start_seconds": 174.41624100948272,
+      "end_seconds": 175.41624100948272,
+      "snr_db": 2.8966341958030526,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\marvin\\412c675c_nohash_0.wav",
+      "speaker": "412c675c"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 324.84421552987584,
+      "end_seconds": 326.34421552987584,
+      "snr_db": 0.29500842398535276,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\visual\\3d86b69a_nohash_2.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 427.930177985624,
+      "end_seconds": 429.430177985624,
+      "snr_db": -1.563984090949396,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\up\\9a7c1f83_nohash_3.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 152.11559974615713,
+      "end_seconds": 153.61559974615713,
+      "snr_db": -0.15839401759134475,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\four\\d962e5ac_nohash_2.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 540.4974924944594,
+      "end_seconds": 541.9974924944594,
+      "snr_db": -1.1567556793320986,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\seven\\fb7eb481_nohash_2.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 456.5113747782005,
+      "end_seconds": 458.0113747782005,
+      "snr_db": -4.726271530904191,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\happy\\e49428d9_nohash_0.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 876.2539897682354,
+      "end_seconds": 877.7539897682354,
+      "snr_db": -3.587350751099839,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\nine\\63f7a489_nohash_4.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 667.2687516426499,
+      "end_seconds": 668.7687516426499,
+      "snr_db": -2.7768743920577723,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\on\\d962e5ac_nohash_1.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 518.1695183981712,
+      "end_seconds": 519.6695183981712,
+      "snr_db": -2.694759089214945,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\bird\\b97c9f77_nohash_0.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 714.1378637269141,
+      "end_seconds": 715.6378637269141,
+      "snr_db": -3.3359602826737778,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\on\\6021f08b_nohash_0.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 855.360761301216,
+      "end_seconds": 856.860761301216,
+      "snr_db": 2.541718320486094,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\one\\beb458a4_nohash_1.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 804.6447363228981,
+      "end_seconds": 806.1447363228981,
+      "snr_db": -0.03097802339124378,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\four\\c22d3f18_nohash_1.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 551.4102861435401,
+      "end_seconds": 552.9102861435401,
+      "snr_db": 0.9252712361857416,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\yes\\c7dc7278_nohash_1.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 637.5332353974962,
+      "end_seconds": 639.0332353974962,
+      "snr_db": 3.369279989975862,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\learn\\87070229_nohash_0.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 227.02841735774246,
+      "end_seconds": 228.52841735774246,
+      "snr_db": 3.8504992399194222,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\go\\bfd26d6b_nohash_0.wav"
+    },
+    {
+      "type": "passenger_speech",
+      "start_seconds": 134.2396428672757,
+      "end_seconds": 135.7396428672757,
+      "snr_db": 0.6097555416627749,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\speech_commands_v2\\extracted\\eight\\964e8cfd_nohash_2.wav"
+    },
+    {
+      "type": "command_like_without_wake",
+      "start_seconds": 609.9700572263481,
+      "end_seconds": 611.9700572263481,
+      "snr_db": 2.7095743604201905,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\01f180c0-452d-11e9-b1e4-e5985dca719e.wav",
+      "intent": "increase|volume"
+    },
+    {
+      "type": "command_like_without_wake",
+      "start_seconds": 366.53558271494614,
+      "end_seconds": 368.53558271494614,
+      "snr_db": -0.4084313735992193,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\oOK5kxoW7dskMbaK\\a5f81070-44e8-11e9-a1ea-79ca03012c0e.wav",
+      "intent": "increase|volume"
+    },
+    {
+      "type": "command_like_without_wake",
+      "start_seconds": 208.87910413192014,
+      "end_seconds": 210.87910413192014,
+      "snr_db": -0.3196768447964091,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\V4ZbwLm9G5irobWn\\a40c15c0-4526-11e9-a843-8db76f4b5e29.wav",
+      "intent": "decrease|heat|washroom"
+    },
+    {
+      "type": "command_like_without_wake",
+      "start_seconds": 886.8147367772308,
+      "end_seconds": 888.8147367772308,
+      "snr_db": 0.021069079691439008,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\k5bqyxx2lzIbrlg9\\f36e3d40-4527-11e9-a843-8db76f4b5e29.wav",
+      "intent": "decrease|heat|washroom"
+    },
+    {
+      "type": "command_like_without_wake",
+      "start_seconds": 675.0121971530973,
+      "end_seconds": 677.0121971530973,
+      "snr_db": -3.053889416275882,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\b711ec70-4531-11e9-b1e4-e5985dca719e.wav",
+      "intent": "increase|heat"
+    },
+    {
+      "type": "command_like_without_wake",
+      "start_seconds": 6.209545898299851,
+      "end_seconds": 8.20954589829985,
+      "snr_db": 4.2962729981090035,
+      "source": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\fluent_speech_commands\\extracted\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\cbe1c0a0-452f-11e9-b1e4-e5985dca719e.wav",
+      "intent": "change language"
+    }
+  ],
+  "limitation": "The enrollment and command are different utterances by the same FSC speaker (speaker-consistent command leg). The Marvin wake clip speaker is not verified to match, so the wake leg is a cross-corpus proxy. Not real-driver evidence."
+}

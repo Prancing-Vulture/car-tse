@@ -1846,3 +1846,36 @@ Artifacts:
 - `logs/full_pipeline_latency_compact_cabin_smart_cpu_2026-10-12.json`
 - `reports/production_readiness_snapshot_compact_cabin_smart_2026-10-12.md`
 - `configs/eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml`
+
+### E-2026-10-12-longform-continuous-stream-eval
+
+A new evaluator (`scripts/eval/eval_continuous_stream_eval.py`) builds one
+900-second four-channel stream from a continuous ReMASC vehicle-noise bed plus
+sparse random speech events (12 target Marvin+command, 4 passenger Marvin, 15
+passenger non-wake, 6 command-like without wake) at 0-15 dB cabin SNR, and
+runs the whole stream through one stateful pipeline pass at a 0.25-second hop
+with a two-call command delay. Clips and timelines are saved under
+`output/artifacts/` (PCM16, git-ignored).
+
+Stream A uses a speaker-consistent wake/enrollment pair (two different Marvin
+utterances by the same Speech Commands speaker; the FSC command remains
+cross-corpus): 12/12 target wakes, 1.49-second mean latency, 2 false wakes
+(8.0/hour; one passenger Marvin at 2.9 dB SNR and one in a noise stretch),
+0 false actions. Every wake was detected down to 0.0 dB cabin SNR. Stream B
+uses the command-speaker enrollment (FSC) with cross-corpus GSC wakes and got
+0/12 because the enrollment-conditioned extractor suppresses the different
+speaker's wake under arbitrary alignment; the historical aligned 8-scene proxy
+still reproduces 1/1 in the same session, showing that the earlier 100% proxy
+number was alignment-favourable. The intent leg cannot be measured in one
+stream with available corpora because the wake and command always come from
+different speakers. Zero false actions in both streams; the false-wake sample
+is far too small for a rate estimate.
+
+Artifacts:
+
+- `scripts/eval/eval_continuous_stream_eval.py`
+- `logs/continuous_stream_eval_samewake_15min_p025_2026-10-12.json`
+- `logs/continuous_stream_eval_samecommand_15min_p025_2026-10-12.json`
+- `output/artifacts/continuous_stream_eval_samewake_15min_p025_2026-10-12/`
+- `output/artifacts/continuous_stream_eval_samecommand_15min_p025_2026-10-12/`
+- `logs/proxy_recheck_splitgate_scene1_2026-10-12.json`
