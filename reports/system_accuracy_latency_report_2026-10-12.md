@@ -106,8 +106,8 @@ LibriSpeech enrollment speaker absent; frame presence 0.15, target KWS 0.50,
 | SpEx cosine 0.24 (previous reference) | 18 | 4.63 | 2.74 – 7.00 | 96.69 |
 | Compact (GSC-trained) 0.50 | 7 | 1.80 | 0.72 – 3.36 | 96.69 |
 | Compact (GSC-trained) 0.20 | 11 | 2.83 | 1.41 – 4.73 | 96.69 |
-| Compact cabin-aware 0.30 / 0.50 | **0** | **0.00** | 0 – 0.95 (one-sided) | 96.69 |
-| Compact cabin+Smart 0.30 | **0** | **0.00** | 0 – 0.95 (one-sided) | 96.69 |
+| Compact cabin-aware 0.30 / 0.50 | **0** | **0.00** | 0 – 0.95 (95% upper) | 96.69 |
+| Compact cabin+Smart 0.30 | **0** | **0.00** | 0 – 0.95 (95% upper) | 96.69 |
 
 ### 2.2 Clean wake-like negative benchmark
 
