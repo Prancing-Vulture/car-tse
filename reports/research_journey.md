@@ -1917,3 +1917,39 @@ Artifacts:
 - `logs/streaming_runner_simulation_thread_gpu_30s_2026-10-12.json`
 - `logs/streaming_runner_simulation_thread_cpu_30s_drop_2026-10-12.json`
 - `logs/streaming_runner_simulation_realtime30s_cpu_drop_2026-10-12.json`
+
+### E-2026-10-12-verifier-scaling-and-cpu-operating-point
+
+Two production-axis experiments. First, the compact verifier was scaled with
+9,216 LibriSpeech pairs synthesized through the runtime Stage 1 (same-speaker
+positives and different-speaker negatives with interference and cabin noise;
+8,192/512/512 speaker-disjoint by official LibriSpeech split) and merged with
+the cabin+Smart cache (12,876/2,653/2,649 rows) to train
+`compact_speaker_verifier_librispeech_ft1` supervised-only. On the merged test
+at 0.30 the new model rejects generic mismatches far better (Libri negatives
+18.9% vs 45.9%; AISHELL 0.0% vs 2.0%) but keeps fewer same-speaker positives
+(GSC 68.0% vs 93.0%), and no threshold or ensemble fusion (mean/min/product)
+dominates the current v2 on the validated system benchmarks. v2 therefore
+stays the recommended verifier; v3 and the pair caches are archived for future
+tuning.
+
+Second, the deployment axis was measured with the streaming runner. CPU real
+time at the rejected 0.25-second hop is 1.73x too slow (9 s skipped of 30 s),
+but at the reference 1.0-second hop the same CPU sustains real time with RTF
+0.47, 0.9-second peak lag, and zero skipped audio over a 60-second capture-
+thread replay. Sixteen threads are slower than eight (stage 1 457 ms vs
+423 ms), and dynamic int8 only speeds the intent branch because Stage 1
+convolutions dominate CPU cost. The CPU-deployable point on this host is
+therefore the reference 1-second hop plus the ring buffer; 0.25-second hops
+require GPU acceleration or a lighter Stage 1.
+
+Artifacts:
+
+- `scripts/data/build_verifier_librispeech_pairs.py`
+- `scripts/data/merge_verifier_caches.py`
+- `scripts/eval/eval_verifier_ensemble_merged.py`
+- `checkpoints/compact_speaker_verifier_librispeech_ft1/best.pt`
+- `logs/compact_verifier_librispeech_on_merged_2026-10-12.json`
+- `logs/verifier_ensemble_merged_2026-10-12.json`
+- `logs/streaming_runner_simulation_thread_cpu_60s_hop1s_2026-10-12.json`
+- `logs/component_latency_cpu_fp32_threads16_2026-10-12.json`

@@ -197,6 +197,63 @@ seconds instead of growing latency or silently losing audio. Strictly bounded
 latency additionally needs chunked inference because one call may process
 several buffered windows.
 
+### Deployment operating points (measured with the streaming runner)
+
+| Operating point | RTF | Skipped (60 s) | Peak lag |
+|---|---:|---:|---:|
+| GPU FP16, 0.25 s hop | 0.28 | 0.0 s | 0.2 s |
+| CPU FP32, 0.25 s hop | 1.73 | 9.0 s (30 s run) | 4.85 s |
+| **CPU FP32, 1.0 s hop (reference timing)** | **0.47** | **0.0 s** | 0.9 s |
+
+The 1-second hop is the project's reference timing (the 0.25 s fast stream was
+already rejected on safety grounds), and it is the CPU-deployable point on this
+host: real-time with ~2x margin and no skipped audio through the ring buffer.
+CPU at 0.25 s hop and all 0.25 s-hop CPU claims require GPU acceleration or a
+lighter Stage 1. Thread scaling was tested: 16 threads is slower than 8
+(stage 1 457 ms vs 423 ms), so physical-core count is the right default.
+Dynamic int8 quantization only touches the intent Linear/LSTM modules
+(wake 515 ms vs 522 ms) because Stage 1 convolutions dominate the CPU cost.
+
+### Verifier data-scaling experiment (v3) and ensemble check
+
+Added 9,216 LibriSpeech speaker pairs synthesized through the runtime Stage 1
+(8,192 train / 512 val / 512 test; same-speaker positives and different-speaker
+negatives with interference and cabin noise), merged with the cabin+Smart
+cache (12,876 / 2,653 / 2,649 rows), and trained
+`compact_speaker_verifier_librispeech_ft1` supervised-only.
+
+Merged Eval1 test pass rates at threshold 0.30:
+
+| Model | GSC positives | Libri positives | Libri negatives | AISHELL | Smart Speaker |
+|---|---:|---:|---:|---:|---:|
+| v2 cabin+Smart (current) | **93.0%** | 75.6% | 45.9% | 2.0% | 0.0% |
+| v3 LibriSpeech | 68.0% | 68.6% | **18.9%** | **0.0%** | 0.0% |
+| Ensemble mean (v2, v3) | 86.7% | **78.3%** | 36.3% | 0.5% | 0.0% |
+| Ensemble min (v2, v3) | 67.2% | 57.6% | 14.3% | 0.0% | 0.0% |
+
+v3 is a stronger generic mismatch rejector (Libri negatives 18.9% vs 45.9%;
+AISHELL 0.0%) but cannot reach v2's same-speaker positive pass at any
+threshold (78.9% at 0.05 vs 93.0% at 0.30). No fusion dominates: mean sits
+between the two, min/product sacrifice positives for negatives. On the
+validated system benchmarks v2 already yields 0 events on AISHELL and 3.45/h
+on Smart Speaker with the best positive retention, so **v2 remains the
+recommended verifier**; v3 and the LibriSpeech cache are archived research
+artifacts for future tuning once real-driver data exists. No pipeline default
+changed.
+
+Artifacts:
+
+- `scripts/data/build_verifier_librispeech_pairs.py`
+- `scripts/data/merge_verifier_caches.py`
+- `scripts/eval/eval_verifier_ensemble_merged.py`
+- `checkpoints/compact_speaker_verifier_librispeech_ft1/best.pt`
+- `data/cache/verifier_librispeech_pairs_2026-10-12/`,
+  `data/cache/verifier_merged_{extracted,enrollment}_2026-10-12/`
+- `logs/compact_verifier_*_on_merged_2026-10-12.json`,
+  `logs/verifier_ensemble_merged_2026-10-12.json`
+- `logs/streaming_runner_simulation_thread_cpu_60s_hop1s_2026-10-12.json`,
+  `logs/component_latency_cpu_fp32_threads16_2026-10-12.json`
+
 ## 4. Footprint
 
 | Item | Value |

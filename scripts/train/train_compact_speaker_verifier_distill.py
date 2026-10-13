@@ -175,21 +175,26 @@ def main() -> int:
     teacher_cache_dir = resolve(args.teacher_cache_dir)
     manifest_root = resolve(args.manifest_root)
 
-    teacher = SpeakerVerifierHead(embedding_dim=512, hidden=128).to(device)
-    load_checkpoint(resolve(args.teacher_checkpoint), teacher)
-    teacher.eval()
-    for parameter in teacher.parameters():
-        parameter.requires_grad = False
+    teacher = None
+    if float(args.distill_weight) > 0.0:
+        teacher = SpeakerVerifierHead(embedding_dim=512, hidden=128).to(device)
+        load_checkpoint(resolve(args.teacher_checkpoint), teacher)
+        teacher.eval()
+        for parameter in teacher.parameters():
+            parameter.requires_grad = False
 
     datasets: dict[str, WavePairDataset] = {}
     raw: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
     for split in ("train", "val", "test"):
         enrollment = np.load(wave_cache_dir / f"{split}_enrollment_wav.npy", mmap_mode="r", allow_pickle=False)
         extracted = np.load(extracted_cache_dir / f"{split}_wav_16000hz.npy", mmap_mode="r", allow_pickle=False)
-        teacher_enrollment = np.load(teacher_cache_dir / f"{split}_enrollment_embedding.npy", mmap_mode="r", allow_pickle=False)
-        teacher_extracted = np.load(teacher_cache_dir / f"{split}_extracted_embedding.npy", mmap_mode="r", allow_pickle=False)
         labels = read_labels(manifest_root, str(args.manifest_template), split, len(enrollment))
-        probabilities = teacher_probabilities(teacher, teacher_enrollment, teacher_extracted, device)
+        if teacher is not None:
+            teacher_enrollment = np.load(teacher_cache_dir / f"{split}_enrollment_embedding.npy", mmap_mode="r", allow_pickle=False)
+            teacher_extracted = np.load(teacher_cache_dir / f"{split}_extracted_embedding.npy", mmap_mode="r", allow_pickle=False)
+            probabilities = teacher_probabilities(teacher, teacher_enrollment, teacher_extracted, device)
+        else:
+            probabilities = np.zeros(len(enrollment), dtype=np.float32)
         raw[split] = (enrollment, extracted, labels)
         datasets[split] = WavePairDataset(enrollment, extracted, labels, probabilities)
 

@@ -161,6 +161,12 @@ def main() -> int:
         / "data/raw/librispeech/extracted/LibriSpeech/test-clean/1089/134686/1089-134686-0014.flac",
     )
     parser.add_argument("--seconds", type=float, default=1.0)
+    parser.add_argument(
+        "--enrollment-cache-dir",
+        type=Path,
+        default=None,
+        help="Optional directory of {split}_enrollment_wav.npy for merged caches.",
+    )
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--target-fpr", type=float, default=0.01)
     parser.add_argument("--batch-size", type=int, default=256)
@@ -205,7 +211,25 @@ def main() -> int:
         enrollment = np.zeros((len(rows), num_samples), dtype=np.float32)
         labels = np.zeros(len(rows), dtype=np.int64)
         groups = np.empty(len(rows), dtype=object)
+        enrollment_cache = (
+            np.load(
+                resolve(args.enrollment_cache_dir) / f"{split}_enrollment_wav.npy",
+                mmap_mode="r",
+                allow_pickle=False,
+            )
+            if args.enrollment_cache_dir is not None
+            else None
+        )
         for position, row in enumerate(rows):
+            if enrollment_cache is not None:
+                enrollment[position] = enrollment_cache[position]
+                groups[position] = str(
+                    row.get("source")
+                    or Path(str(row.get("source_manifest", ""))).stem
+                    or "unknown"
+                )
+                labels[position] = int(row.get("label", 0))
+                continue
             source = index.get(str(row["source_manifest"]), str(row["source_id"]))
             if source is None:
                 enrollment[position] = fixed_enrollment
