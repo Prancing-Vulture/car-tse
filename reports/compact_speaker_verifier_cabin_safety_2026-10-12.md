@@ -264,6 +264,57 @@ Stream artifacts:
 - `output/artifacts/continuous_stream_eval_samecommand_15min_p025_2026-10-12/stream_4ch.wav`
 - `logs/continuous_stream_eval_samecommand_15min_p025_2026-10-12.json`
 
+## Streaming runner and capture buffer
+
+The offline evaluators slice pre-recorded audio, so their window cadence is
+perfect and no audio is ever skipped. A live microphone is not like that:
+capture delivers small frames on a wall-clock cadence while inference takes a
+variable amount of time. Before this change the repository had no ring buffer,
+queue, or capture/inference decoupling anywhere.
+
+New runtime piece: `src/car_tse/pipeline/streaming_runner.py`.
+
+- `RingBuffer`: fixed-capacity mono/multichannel ring with absolute sample
+  indexing, wraparound reads, overwrite accounting, and its own lock.
+- `StreamingRunner`: accepts arbitrary capture frames via `push` (safe from a
+  `sounddevice` callback; never blocks on inference), runs the existing windowed
+  pipeline from `process_available` under a separate processing lock, keeps the
+  3-second non-causal context in the ring, and bounds lag at
+  `max_lag_seconds`. Under sustained overload, `drop_oldest` skips whole hops
+  and counts every skipped sample; `catch_up` first spends a bounded number of
+  extra windows per call and then applies the same bound.
+- `stats()` reports pushed/processed/skipped seconds, current and peak lag,
+  inference wall time, real-time factor, wake events, and intent events.
+- 7 new unit tests cover wraparound reads, overwrite accounting, no-skip
+  steady-state, lag-bounded dropping with skip accounting, catch-up vs
+  drop-oldest recovery, state continuity, and incremental reprocessing.
+
+Simulation harness: `scripts/eval/streaming_runner_simulation.py` replays a
+recorded four-channel stream clip through the real pipeline with a separate
+capture thread (the callback model), at wall-clock cadence.
+
+| Run | Device | Wall | RTF | Skipped | Peak lag |
+|---|---|---:|---:|---:|---:|
+| 60 s real-time, capture thread | RTX 4080 | 60.0 s | 0.28 | 0.0 s | 0.2 s |
+| 30 s real-time, capture thread | CPU | 34.6 s | 1.73 | **9.0 s** | 4.85 s |
+
+Interpretation:
+
+- On the development GPU the pipeline keeps up at the 0.25-second hop with
+  ~3.5x real-time margin; the buffer never had to drop and peak lag stayed at
+  the hop size.
+- On this host CPU the same configuration is 1.73x too slow in real time. The
+  runner behaved as designed: instead of unbounded latency growth it skipped
+  9.0 seconds of a 30-second stream and reported them. Any wake word inside a
+  skipped span is lost, which is why `skipped_seconds` is treated as an error
+  metric, not a convenience.
+- A single inference call can process up to a few buffered windows
+  synchronously, so transient lag can exceed the cap during one call (4.85 s
+  observed). Strictly bounded latency would need chunked/streaming inference.
+- CPU deployment therefore needs at least a 1-second hop, a quantized/compiled
+  model, or a causal/chunked Stage 1 before the buffer can operate drop-free.
+  The automotive target must be benchmarked the same way.
+
 ## Positive-proxy caveat
 
 The retained 8-scene same-speaker proxy

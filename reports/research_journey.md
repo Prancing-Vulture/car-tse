@@ -1879,3 +1879,41 @@ Artifacts:
 - `output/artifacts/continuous_stream_eval_samewake_15min_p025_2026-10-12/`
 - `output/artifacts/continuous_stream_eval_samecommand_15min_p025_2026-10-12/`
 - `logs/proxy_recheck_splitgate_scene1_2026-10-12.json`
+
+### E-2026-10-12-streaming-runner-ring-buffer
+
+The repository had no capture/inference buffering: all evaluators slice
+pre-recorded audio and the recorder writes WAVs, so a live microphone would
+have to run inference synchronously and would silently skip audio whenever a
+call outlasted the hop. Added `src/car_tse/pipeline/streaming_runner.py` with a
+fixed-capacity mono/multichannel ring buffer (absolute indexing, wraparound
+reads, overwrite accounting) and a `StreamingRunner` that accepts capture
+frames from a callback thread without blocking, runs the windowed pipeline
+under a separate processing lock, retains the non-causal context, and bounds
+lag at a configurable maximum. Overload policy `drop_oldest` skips whole hops
+and counts every skipped sample; `catch_up` first spends a bounded number of
+extra windows per call. Stats report pushed/processed/skipped seconds, lag,
+real-time factor, and wake/intent events. Seven unit tests cover wraparound,
+overwrite accounting, steady-state no-skip, bounded dropping with accounting,
+catch-up recovery, and state continuity.
+
+The simulation harness (`scripts/eval/streaming_runner_simulation.py`) replays
+a recorded four-channel clip through the real pipeline with a separate capture
+thread. On the RTX 4080 at the 0.25-second hop, 60 real seconds were replayed
+in 60 wall seconds at RTF 0.28 with zero skips and 0.2-second peak lag. On this
+host CPU the same stream ran at RTF 1.73 and the runner explicitly skipped 9.0
+of 30 seconds instead of growing latency without bound; peak transient lag was
+4.85 seconds during single inference calls. CPU deployment therefore needs a
+1-second hop, quantized/compiled inference, or a causal/chunked Stage 1, and
+the automotive target must be benchmarked with this harness. No model or
+threshold changed.
+
+Artifacts:
+
+- `src/car_tse/pipeline/streaming_runner.py`
+- `tests/test_streaming_runner.py`
+- `scripts/eval/streaming_runner_simulation.py`
+- `logs/streaming_runner_simulation_realtime60s_gpu_2026-10-12.json`
+- `logs/streaming_runner_simulation_thread_gpu_30s_2026-10-12.json`
+- `logs/streaming_runner_simulation_thread_cpu_30s_drop_2026-10-12.json`
+- `logs/streaming_runner_simulation_realtime30s_cpu_drop_2026-10-12.json`
