@@ -108,6 +108,16 @@ LibriSpeech enrollment speaker absent; frame presence 0.15, target KWS 0.50,
 | Compact (GSC-trained) 0.20 | 11 | 2.83 | 1.41 – 4.73 | 96.69 |
 | Compact cabin-aware 0.30 / 0.50 | **0** | **0.00** | 0 – 0.95 (95% upper) | 96.69 |
 | Compact cabin+Smart 0.30 | **0** | **0.00** | 0 – 0.95 (95% upper) | 96.69 |
+| Compact cabin+Smart 0.30, 0.25 s hop, 8-of-8 | **0** | **0.00** | 0 – 0.95 (95% upper) | 71.74 |
+
+Fast-timing check (2026-10-13): the 0.25-second hop was previously rejected for
+safety with the older gating. With the compact cabin+Smart gate at 0.30 and an
+equivalent 2-second confirmation (8-of-8 at 0.25 s, refractory 8), the full
+18-session replay again records zero full-path events, so sub-second timing is
+safety-viable at this gate. A 1-second-evidence variant (4-of-4) was
+interrupted before writing a log and still needs to be rerun if faster
+confirmation is desired. Artifact:
+`logs/aishell5_target_absent_compact_cabin_smart_thr030_hop025_hits8_all18_2026-10-12.json`.
 
 ### 2.2 Clean wake-like negative benchmark
 

@@ -1953,3 +1953,20 @@ Artifacts:
 - `logs/verifier_ensemble_merged_2026-10-12.json`
 - `logs/streaming_runner_simulation_thread_cpu_60s_hop1s_2026-10-12.json`
 - `logs/component_latency_cpu_fp32_threads16_2026-10-12.json`
+
+### E-2026-10-13-fast-hop-compact-gate-safety
+
+The 0.25-second hop had been rejected for safety in the earlier fast-stream
+study, but that study predated the compact speaker verifier. Replaying the full
+AISHELL-5 Eval2 target-absent benchmark (18 sessions, 3.889 hours) at a
+0.25-second hop with the compact cabin+Smart gate at 0.30 and an equivalent
+2-second confirmation (8-of-8 smoothing, eight-call refractory) records zero
+full-path events with a KWS-only smoothed rate of 71.74/hour. Sub-second
+timing is therefore safety-viable with the compact gate. A 1-second-evidence
+variant (4-of-4) was interrupted before producing a log and remains to be
+rerun if faster confirmation is wanted. No checkpoint or configuration
+changed.
+
+Artifacts:
+
+- `logs/aishell5_target_absent_compact_cabin_smart_thr030_hop025_hits8_all18_2026-10-12.json`
