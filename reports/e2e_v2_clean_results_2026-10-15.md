@@ -490,3 +490,12 @@ Candidate artifacts:
 The next decision is held out until the 1,000-scene candidate regression and
 the clean regression complete. The retained baseline remains the reference
 configuration.
+
+## Candidate regression status
+
+The planned 1,000-scene overlap candidate regression was interrupted before a
+JSON result was written. A smaller follow-up was subsequently canceled before
+completion, also without a result file. Neither run contributes a score or
+promotion decision. Training and evaluation are currently paused; the
+retained baseline remains the reference configuration until an explicitly
+authorized held-out regression is completed.

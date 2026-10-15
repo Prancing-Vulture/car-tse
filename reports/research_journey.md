@@ -3535,3 +3535,12 @@ pilot it improved overlap intent accuracy from 45.31% to 57.03% (+11.72
 points) while preserving 100% wake recall; the clean pilot was 94.53%. The
 candidate is not promoted until the 1,000-scene overlap and clean regressions
 complete, and it remains synthetic evidence rather than production validation.
+
+## 2026-10-15 candidate regression paused
+
+The planned 1,000-scene overlap regression was interrupted before it wrote a
+JSON result artifact, so it is not a benchmark and no partial metric is
+accepted. A smaller follow-up was subsequently canceled before completion,
+also without a result file. No training or evaluation is currently running,
+and the overlap-aware candidate remains an unpromoted research checkpoint.
+The next run must be started explicitly and should use a fresh output path.
