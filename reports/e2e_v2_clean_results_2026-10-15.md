@@ -4,6 +4,12 @@ Date: 2026-10-15
 Status: clean-data engineering target met on a synthetic, speaker-consistent
 proxy; production readiness is not established.
 
+> **Mac-review reconciliation (2026-10-15):** the sequential passenger and
+> overlap sections in this historical report use legacy event association.
+> The corrected action-level/source-attributed results are in
+> [mac_review_reconciliation_2026-10-15.md](mac_review_reconciliation_2026-10-15.md)
+> and can be reproduced with `scripts/eval/rescore_multispeaker_log.py`.
+
 ## Executive result
 
 The balanced 1,000-scene English clean benchmark reached **90.1% end-to-end
