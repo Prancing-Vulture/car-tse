@@ -1,0 +1,9 @@
+{
+  "run_id": "c32e45fc3af240788a7b7bd87fd66b12",
+  "run_name": "stage4_intent_wav2vec_overlap_trainsplit_0db_2026-10-16",
+  "device": "cuda",
+  "config": "configs\\stage4_intent_overlap_trainsplit_0db_2026-10-16.yaml",
+  "init_head_checkpoint": "checkpoints\\stage4_intent_wav2vec_ft8_resume_tse_domain\\best.pt",
+  "encoder_checkpoint": "checkpoints\\stage4_intent_wav2vec_ft8_resume_tse_domain\\encoder_best.pt",
+  "unfreeze_layers": 2
+}

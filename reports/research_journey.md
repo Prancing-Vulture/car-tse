@@ -3588,3 +3588,34 @@ An earlier screening invocation omitted the evaluator's `--clean` flag and
 inherited its default -5/0 dB two-condition path. Its 256-scene output is
 retained as a noisy smoke diagnostic only and must not be compared with the
 128-scene clean or overlap pilots.
+
+## 2026-10-16 train-split-safe overlap adaptation and 1,000-scene regression
+
+The next iteration addressed the contamination concern before training. The
+previous overlap FT1/FT2 cache used the held-out KWS test passenger pool, so a
+new cache was generated from `manifests/train/stage3_kws_cabin_train.jsonl`
+only. Its 8,628 train audio files had zero path intersection with the 1,147
+held-out passenger files. The cache contains 16,384 balanced clean/overlap
+training rows and 4,096 validation rows at 0 dB passenger SNR.
+
+A fresh Stage-4 candidate was initialized from the clean retained Wav2Vec
+encoder/head, with Stage 1, presence, and target KWS frozen. It trained for
+eight epochs with two unfrozen upper encoder layers and AMP. Epoch 6 was best:
+75.5% validation accuracy, 75.2% macro-F1, and 92.7% top-5 accuracy. The raw
+history and plots are under the dated `stage4_intent_wav2vec_overlap_trainsplit`
+log/checkpoint directories and `reports/figures/`.
+
+The frozen candidate was then evaluated on 1,000 clean, sequential-passenger,
+and simultaneous-overlap scenes. Clean remained 90.6%. Sequential exact-scene
+success improved from 49.8% to 58.6%, and overlap improved from 53.4% to 62.6%;
+overlap target intent accuracy improved from 61.5% to 70.4%. Sequential
+passenger-only false actions decreased from 91 to 84, but the false-action
+rate remains 22.63/hour. The improvement is therefore meaningful model
+adaptation, not a production release. The dominant remaining sequential
+failure is the target/passenger action gate; the dominant overlap failure is
+co-channel separation and ambiguous command capture.
+
+The full corrected results and reproduction artifacts are recorded in
+`reports/mac_review_reconciliation_2026-10-15.md`, with the six-condition
+comparison figure at
+`reports/figures/multispeaker_candidate_comparison_2026-10-16.png` and PDF.

@@ -296,8 +296,78 @@ out passenger audio paths have zero intersection (8,628 train files versus
 | Validation manifest | `manifests/val/stage4_intent_overlap_trainsplit_0db_2026-10-16.jsonl` |
 | Config | `configs/stage4_intent_overlap_trainsplit_0db_2026-10-16.yaml` |
 
-The candidate is initialized from the retained clean cabin-domain intent head;
-the Stage-1 extractor and wake model remain frozen.  Its history, plots, clean
-regression, overlap regression, and checkpoint hash will be appended here only
-after the run completes.  No candidate is promoted based on training
-validation alone.
+The candidate was initialized from the retained clean cabin-domain intent head
+and encoder; the Stage-1 extractor and wake model remained frozen.  It trained
+for eight epochs with mixed precision and selected epoch 6 by validation
+macro-F1:
+
+| Metric | Best validation value |
+|---|---:|
+| Accuracy | 75.5% |
+| Macro-F1 | 75.2% |
+| Top-5 accuracy | 92.7% |
+| Train accuracy | 77.0% |
+
+Raw history:
+`logs/stage4_intent_wav2vec_overlap_trainsplit_0db_2026-10-16/epoch_metrics_c32e45fc3af240788a7b7bd87fd66b12.jsonl`
+
+Training curves (PNG/PDF):
+`reports/figures/stage4_intent_overlap_trainsplit_0db_training_curves_2026-10-16.png`
+and `reports/figures/stage4_intent_overlap_trainsplit_0db_training_curves_2026-10-16.pdf`.
+
+The head checkpoint SHA256 is
+`D99BEBAB14D014F47CFF07F988912EE84E2E2D941E5F6B697F9B169B82BB2ACC` and the
+encoder checkpoint SHA256 is
+`E550FACB7ED4174BE96DB0E6D6AAD359F12D374206E5F0DEDE43012DE80F4064`.
+These are validation results only; the candidate remains unpromoted until the
+clean, sequential, and simultaneous-overlap end-to-end regressions complete.
+
+## Train-split-safe candidate end-to-end regression (completed 2026-10-16)
+
+The new head/encoder was evaluated with the same frozen Stage-1, presence,
+target-KWS, command-buffer, and confidence settings as the P0 baseline.  The
+only changed learned component is the Stage-4 intent head/upper encoder.  Each
+condition contains 1,000 matched-speaker scenes (3.889 synthetic hours).
+
+| Metric | Clean control | Sequential passenger | Simultaneous co-channel overlap |
+|---|---:|---:|---:|
+| Target wake recall | 99.90% | 99.90% | 100.00% |
+| Target intent accuracy | **90.60%** | **94.10%** | **70.40%** |
+| Fully correct scenes | **90.60%** | **58.60%** | **62.60%** |
+| Passenger-only false actions | 0 | 84 | 0* |
+| False-action rate | 0/h | 22.63/h | 0/h |
+| Executed non-target actions | 0 | 403 | 89 |
+| Wrong executed actions | 39 | 440 | 307 |
+| Strict false wakes | 176.91/h | 628.71/h | 213.17/h |
+| Strict false commands | 2.31/h | 76.63/h | 7.97/h |
+| Target-wake latency mean / p95 | 1.664 s / 2.000 s | 1.668 s / 2.000 s | 1.726 s / 3.000 s |
+
+Relative to the no-gate baseline, the candidate keeps the clean score at
+90.60%, raises the sequential exact-scene rate from 49.80% to 58.60% (+8.80
+points), and raises the overlap exact-scene rate from 53.40% to 62.60% (+9.20
+points).  Overlap target intent accuracy rises from 61.50% to 70.40% (+8.90
+points).  Sequential passenger-only false actions fall from 91 to 84 and
+executed non-target actions from 527 to 403, but 22.63 false actions/hour is
+still far above a safe operating target.  The Stage-4 adaptation is therefore
+useful and retained as a research candidate, but it is not production-ready.
+
+The co-channel zero in the passenger-only column is not a safety pass: target
+and passenger intervals overlap by construction.  The strict false-command,
+wrong-action, and ambiguous-window metrics are the meaningful diagnostics for
+that condition.
+
+Raw end-to-end artifacts:
+
+- `logs/clean_trainsplit_intent_1000_2026-10-16.json`
+- `logs/multispeaker_speech_only_trainsplit_intent_1000_2026-10-16.json`
+- `logs/multispeaker_overlap_trainsplit_intent_1000_2026-10-16.json`
+
+Comparison figure (PNG/PDF):
+`reports/figures/multispeaker_candidate_comparison_2026-10-16.png`
+and `reports/figures/multispeaker_candidate_comparison_2026-10-16.pdf`.
+
+All three runs used effective configuration SHA256
+`d5120d89681e86afebb9731de840db55f5b99e3ccc68cf1c344ec7ea867eff8c` and
+`production_valid: false`.  The next improvement is a calibrated target
+speaker/seat gate and one-action-per-wake policy, evaluated on tuning data
+before another held-out test.
