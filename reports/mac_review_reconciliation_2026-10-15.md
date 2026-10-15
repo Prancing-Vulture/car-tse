@@ -213,3 +213,35 @@ Reproduction artifact:
 
 The identical effective configuration SHA256 was recorded in both runs:
 `3fc7a20b28769698d6a21b337f2a667b88b9bc8570abb869b736f6cd5b9dc8bb`.
+
+## P1 compact speaker-gate comparison: sequential result
+
+The first runtime improvement was evaluated without retraining.  It enables
+the existing cabin+Smart compact verifier at threshold 0.30 for both the
+pre-wake and command speaker checks, while keeping the P0 scene set, target
+checkpoints, command buffer, and full-length command construction unchanged.
+
+| Metric | No gate | Compact gate 0.30 | Change |
+|---|---:|---:|---:|
+| Target wake recall | 99.90% | 96.40% | -3.50 pp |
+| Target intent accuracy overall | 94.00% | 62.20% | -31.80 pp |
+| Target intent accuracy conditioned on wake | 94.09% | 64.52% | -29.57 pp |
+| Fully correct scenes | 49.80% | **57.60%** | **+7.80 pp** |
+| Passenger-only false actions | 91 | **22** | **-75.82%** |
+| Wrong executed actions | 566 | **79** | **-86.04%** |
+| Scenes with wrong executed action | 486 | **73** | **-84.98%** |
+| Strict false wakes | 2,445 | **988** | **-59.59%** |
+| False-action events | 99 | 22 | -77.78% |
+
+The gate improves the safety-weighted exact-scene metric and sharply reduces
+non-target actions, but the 0.30 threshold rejects too much target speech in
+this clean synthetic proxy.  It is retained as a candidate, not promoted as
+the default.  The next sweep must select a threshold on tuning data and
+report the full driver-safety Pareto curve before any checkpoint or default
+configuration changes.
+
+Artifact:
+`logs/multispeaker_speech_only_p0_compact030_full_1000_2026-10-15.json`
+
+Candidate configuration:
+`configs/eval_end_to_end_clean_english_identity_targetkws_confidence_buffered_hybrid_compact030_2026-10-15.yaml`
