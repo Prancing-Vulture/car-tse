@@ -379,3 +379,41 @@ Raw artifacts:
 - `checkpoints/stage3_target_kws_gsc_marvin_librispeech_hardneg_2026-10-15_v2/best.pt`
 - `logs/smart_speaker_command_negative_librispeech_hardneg_candidate_2026-10-15.json`
 - `logs/clean_e2e_v2_knnvc_matched_librispeech_hardneg_buffer4_1000_2026-10-15.json`
+
+## 2026-10-15 multi-speaker clean speech-only follow-up
+
+To test passenger rejection without adding cabin or road noise, the retained
+clean configuration was rerun on 1,000 synthetic scenes with matched target
+speaker identities and a passenger speech track. The passenger track included
+passenger wake-word and non-wake speech, while the cabin-noise component was
+forced to zero (`--passenger-only`). This is a sequential multi-speaker proxy,
+not a real continuous recording and not an overlapping-speech benchmark.
+
+| Metric | Result |
+|---|---:|
+| Scenes / synthetic duration | 1,000 / 3.889 h |
+| Target wake recall | 99.9% (999/1,000) |
+| Overall target command accuracy | 90.2% (902/1,000) |
+| Command accuracy conditioned on detected target wake | 90.29% |
+| False wake events | 1,102 (283.37/h) |
+| False action events | 99 (25.46/h) |
+| Target-wake latency | 1.664 s mean, 2.000 s p95 |
+
+The result is a confirmed safety gap: high target recall and command accuracy
+coexist with a very high passenger/ non-target false-action rate. Therefore the
+90.6% target-only clean result must not be described as multi-speaker or
+passenger-safe. The run is useful for debugging the target-selection and event
+association path, but it does not isolate TSE overlap suppression because the
+passenger utterances are assembled sequentially rather than overlapping the
+target command.
+
+No checkpoint was changed. The run used CUDA, the retained `run3` checkpoint
+set, and `confidence_buffered_hybrid` with buffer four. The complete raw result
+and per-scene artifacts are preserved at:
+
+- `logs/multispeaker_speech_only_e2e_v2_knnvc_matched_buffer4_1000_2026-10-15.json`
+- `reports/artifacts/multispeaker_speech_only_e2e_v2_knnvc_matched_buffer4_1000_2026-10-15/`
+
+The next engineering issue is to reduce passenger false actions while keeping
+driver recall, then repeat the measurement with true simultaneous target and
+passenger speech. This synthetic result remains `production_valid: false`.

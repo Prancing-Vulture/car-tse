@@ -3486,3 +3486,22 @@ wake recall from 68.0% at KWS 0.45 to 89.0% at KWS 0.25, but still produced
 0/100 task successes. The failure is therefore not just threshold selection;
 the candidate's target-speaker conditioning/gating behavior is incompatible
 with the retained clean cascade.
+
+## 2026-10-15 multi-speaker clean speech-only evaluation
+
+The retained clean `confidence_buffered_hybrid` path was evaluated on 1,000
+matched-speaker synthetic scenes with passenger speech and no cabin/road noise.
+The passenger wake and non-wake clips were sequential, so this is a
+multi-speaker rejection diagnostic rather than a true overlapping-speech TSE
+test. Target wake recall was 99.9% (999/1,000), overall intent/task accuracy
+was 90.2% (902/1,000), and wake latency averaged 1.664 seconds (2.0 seconds
+p95). However, the evaluator recorded 1,102 false wake events (283.37/hour)
+and 99 false actions (25.46/hour) over 3.889 synthetic hours. This confirms
+that the high 90.6% clean target-only score cannot be treated as passenger-safe
+end-to-end accuracy. No checkpoint was changed and the run remains
+`production_valid: false`; the raw log is
+`logs/multispeaker_speech_only_e2e_v2_knnvc_matched_buffer4_1000_2026-10-15.json`.
+
+The next evaluation must add genuinely simultaneous target/passenger speech to
+measure extraction, and the next model work must target the false-action path
+without sacrificing target wake recall.
