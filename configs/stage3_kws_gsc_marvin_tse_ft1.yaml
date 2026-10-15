@@ -1,0 +1,30 @@
+name: stage3_kws_gsc_marvin_tse_ft1
+sample_rate: 16000
+segment_seconds: 1.0
+wake_word: marvin
+manifest_train: stage3_kws_gsc_marvin_tse_train.jsonl
+manifest_val: stage3_kws_gsc_marvin_tse_val.jsonl
+manifest_eval: stage3_kws_gsc_marvin_tse_test.jsonl
+cabin_noise: false
+audio_cache_size: 0
+waveform_cache_dir: data/cache/stage3_kws_gsc_marvin_16k
+waveform_cache_includes_cabin_noise: true
+waveform_cache_crop_start_seconds: 0.0
+validation_threshold: 0.29
+
+model:
+  n_mels: 40
+  channels: [32, 64, 128]
+  num_classes: 2
+
+train:
+  seed: 20261011
+  batch_size: 512
+  val_batch_size: 512
+  max_epochs: 8
+  patience: 2
+  lr: 1.0e-4
+  grad_clip: 5.0
+  amp: true
+  balanced_sampler: true
+  num_workers: 0

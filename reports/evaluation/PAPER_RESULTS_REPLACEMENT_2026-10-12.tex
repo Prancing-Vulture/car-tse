@@ -1,0 +1,67 @@
+% Replacement text for the manuscript's Model Training and Results and
+% Offline Evaluation sections. Keep the limitations with the reported values.
+
+\subsection{Model Training and Results}
+
+The in-car voice-assistant system comprises target-speaker extraction, target-presence detection, wake-word detection, and spoken-intent classification. Since each stage was evaluated on a different split and sometimes a different corpus, the measurements below are reported separately and should not be interpreted as one end-to-end accuracy score. The tested pipeline used the cabin-adapted SpEx+-based extractor, a framewise target-presence head, a compact convolutional wake-word classifier for ``Marvin,'' and a fine-tuned wav2vec~2.0 intent model with 31 output classes. The learned Stage~2/3 fusion head was evaluated separately from the ordinary two-threshold gate.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Verified stage-wise results. Test, validation, and diagnostic measurements use different protocols.}
+\label{tab:stagewise-results-updated}
+\begin{tabular}{p{0.14\linewidth}p{0.30\linewidth}p{0.48\linewidth}}
+\hline
+Stage & Evaluation set & Result \\
+\hline
+Target-speaker extraction & 400 held-out synthetic CAVEMOVE mixtures & Mean SI-SDR improved from $-2.41$~dB at the input to $8.57$~dB after extraction; SI-SDRi was $10.98$~dB. \\
+Target-presence detection & 300 held-out test chunks; validation-locked threshold $0.40$ & Accuracy $78.67\%$, precision $73.12\%$, recall $90.67\%$, specificity $66.67\%$, and F1 $80.95\%$. The false-accept and false-reject rates were $33.33\%$ and $9.33\%$, respectively. \\
+Wake-word detection & Current cascade checkpoint; 390 validation windows; threshold $0.29$ & F1 $68.25\%$, precision $55.56\%$, and recall $88.46\%$. This is a validation result; a standalone held-out test result for this exact cascade checkpoint was not established in the reviewed artifacts. \\
+Intent classification & Official Fluent Speech Commands test; 3,793 clean utterances & The 31-class wav2vec~2.0 model achieved $99.31\%$ top-1 accuracy, $99.89\%$ top-5 accuracy, and $99.24\%$ macro-F1. \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Target-Speaker Extraction}
+
+The target-speaker extractor was initialized from pretrained SpEx+ weights and adapted with a multichannel cabin front end. The current configuration processes four microphone channels at 16~kHz using three-second segments. Training used a staged schedule: the cabin front end alone was optimized during epochs 1--2; extraction layers and the front end were trained while the pretrained encoders remained frozen during epochs 3--5; and all components were unfrozen with a lower encoder learning rate during epochs 6--10. The SI-SDR objective assigned weight $0.1$ to each auxiliary estimate. The synthetic CAVEMOVE result above measures reconstruction quality under the held-out mixture protocol. A separate real-cabin AISHELL-5 diagnostic used 144 aligned target-present windows: mean SI-SDR was $-37.31$~dB for the far-field input and $-31.22$~dB for the current extractor output. This diagnostic uses a different reference and acoustic protocol, so it should not be compared numerically with the synthetic CAVEMOVE result.
+
+\subsubsection{Target-Presence Detection}
+
+The framewise presence model uses 40 mel-frequency bins and a 64-unit hidden layer. It was trained for up to eight epochs on three-second examples, with the target-speaker extractor frozen and cached extracted audio from speaker-disjoint training/validation partitions. The configured batch size was eight and the learning rate was $10^{-4}$. It was tested at a threshold selected on validation, rather than a threshold optimized on the test split. Although its test recall was $90.67\%$, its $33.33\%$ false-accept rate shows that the gate still admits many target-absent chunks. Accuracy alone would conceal this operating-point trade-off.
+
+\subsubsection{Wake-Word Detection}
+
+The wake-word network is a compact convolutional classifier operating on one-second windows represented with 40 mel-frequency bins. The wake-word row reports the checkpoint used in the cascade on its recorded validation split. A separate TSE-conditioned GSC candidate achieved $66.67\%$ F1, $52.47\%$ precision, and $91.41\%$ recall at threshold $0.29$ on 384 held-out isolated examples. That candidate is not the same checkpoint as the cascade KWS model, so its test score is not substituted for the cascade model's validation score. In a separate shared-window development comparison (305 speaker-held-out windows), Stage~2/3 fusion at threshold $0.60$ achieved F1 $77.3\%$, precision $85.0\%$, recall $70.8\%$, and specificity $98.9\%$; the best hard-gate sweep achieved F1 $76.0\%$. The fusion threshold and checkpoint were selected using this validation data, so these are development results rather than an untouched test comparison.
+
+\subsubsection{Intent Classification}
+
+The intent model was fine-tuned and evaluated independently of the streaming cascade. Its $99.31\%$ clean-test accuracy therefore does not imply the same accuracy on short, noisy, or target-extracted runtime audio. On local cabin validation data, the recorded top-1 accuracies were $90.71\%$ for raw cabin audio and $90.49\%$ for TSE-domain audio.
+
+\subsection{Offline Evaluation}
+
+The offline evaluation replays assembled audio sequentially through the stateful pipeline, including the Stage~1 extractor, Stage~2/3 wake decision, temporal confirmation, command buffer, and Stage~4 intent classifier. It therefore measures full-pipeline event and command outcomes rather than isolated-window classification. The matched comparison below contains 16 scenes (eight selected wake recordings replayed at $-5$ and $0$~dB cabin SNR), for 224 seconds of audio. Every approach used the same Stage~1, Stage~2, Stage~3, and Stage~4 checkpoints and the same scenes; the command-presence threshold was $0.35$ in all runs.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Matched 16-scene full-pipeline replay. False triggers are event counts over 224 seconds, not hourly rates.}
+\label{tab:stream-results-updated}
+\begin{tabular}{p{0.32\linewidth}cccc}
+\hline
+Wake decision & Target wakes detected & Correct end-to-end commands & False wake events & False action events \\
+\hline
+Hard gate: presence $0.50$, wake $0.29$ & 14/16 ($87.5\%$) & 9/16 ($56.3\%$) & 15 & 11 \\
+Validation-selected hard gate: presence $0.70$, wake $0.45$ & 7/16 ($43.8\%$) & 6/16 ($37.5\%$) & 4 & 4 \\
+Learned Stage~2/3 fusion: fusion score $0.60$ & 5/16 ($31.3\%$) & 5/16 ($31.3\%$) & 3 & 3 \\
+\hline
+\end{tabular}
+\end{table}
+
+On this matched stream sample, the ordinary hard gate produced the highest end-to-end command accuracy, at $9/16$ scenes. The learned fusion gate reduced false wake events from 15 to 3 and false action events from 11 to 3, but detected fewer target wakes and produced $5/16$ correct end-to-end commands. Thus, its higher validation-window F1 did not translate into the highest full-stream score in this replay. The hard gate with validation-selected thresholds produced $6/16$ correct end-to-end commands. These short-run event counts must not be converted to false events per hour.
+
+The wake and enrollment recordings in this comparison came from Speech Commands speakers, while commands came from Fluent Speech Commands speakers. Consequently, enrollment and command voices were not matched. Since Stage~1 is conditioned on the enrolled speaker, this proxy can suppress a command spoken by another person; the result is not a same-speaker in-car accuracy estimate and does not isolate Stage~1 from Stage~4 as the cause of command errors. The run reported a mean wake-decision latency of approximately $3.1$~s and a median Stage~4 decision time of $6.0$~s from scene start; these values include the synthetic scene timing and should not be presented as an isolated model-forward latency.
+
+A separate 51-scene pilot used the same GSC speaker for wake, enrollment, and command, but a different, lightweight nine-class Stage~4 command head and a different gate configuration. In isolation, this head achieved $84.98\%$ accuracy and $85.18\%$ macro-F1 on 1,764 held-out examples; runtime-capture validation macro-F1 was $76.67\%$ on 95 captures. In the cascade, it correctly classified $5/17$ target-command scenes ($29.4\%$), detected wakes in $21/34$ target-wake scenes ($61.8\%$), and produced false wakes in $10/17$ no-target-wake scenes ($58.8\%$). It safely rejected $16/17$ wake-plus-no-command scenes ($94.1\%$), with one false action. Among the six target-command scenes where it emitted an action, five were correct ($83.3\%$); this conditional result is not the overall end-to-end accuracy. Because this pilot uses a different Stage~4 head and is a small synthetic proxy, it is reported separately from the 31-class wav2vec comparison.
+
+The current evidence supports reporting the component scores and stream outcomes separately. In particular, the clean Stage~4 score and the validation-window fusion score should not be presented as evidence that the full wake-to-intent pipeline exceeds $90\%$ accuracy. The available stream tests remain synthetic proxies; a same-driver recording with enrollment, wake phrase, command, passenger/media speech, and cabin noise is needed for a production-relevant estimate.

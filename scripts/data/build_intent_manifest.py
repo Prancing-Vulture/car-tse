@@ -18,7 +18,11 @@ from car_tse.io.manifest import write_jsonl
 def scan_fsc(root: Path) -> tuple[list[dict], dict[str, int]]:
     rows = []
     label_map: dict[str, int] = {}
-    tsv = root / "data" / "fluent_speech_commands_dataset" / "data" / "train_data.csv"
+    # The Zenodo archive extracts with ``data/`` directly below the dataset
+    # root; also accept the nested layout used by older mirrors.
+    tsv = root / "data" / "train_data.csv"
+    if not tsv.exists():
+        tsv = root / "data" / "fluent_speech_commands_dataset" / "data" / "train_data.csv"
     if not tsv.exists():
         for wav in root.rglob("*.wav"):
             intent = wav.parent.name
@@ -29,7 +33,13 @@ def scan_fsc(root: Path) -> tuple[list[dict], dict[str, int]]:
     with open(tsv, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for r in reader:
-            intent = r.get("action", r.get("intent", "unknown"))
+            # FSC's ``action`` column alone collapses the task to six labels.
+            # Use the action/object/location tuple to preserve the actual
+            # command intent taxonomy.
+            intent = r.get("intent", "")
+            if not intent:
+                parts = [r.get("action", ""), r.get("object", ""), r.get("location", "")]
+                intent = "|".join(p for p in parts if p and p != "none") or "unknown"
             if intent not in label_map:
                 label_map[intent] = len(label_map)
             wav_path = root / r.get("wav_path", r.get("path", ""))

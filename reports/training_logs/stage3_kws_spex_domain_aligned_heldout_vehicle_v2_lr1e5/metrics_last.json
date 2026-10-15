@@ -1,0 +1,17 @@
+{
+  "epoch": 11,
+  "train_accuracy": 0.7610375275938189,
+  "val": {
+    "accuracy": 0.7025641025641025,
+    "precision": 0.5315315315315315,
+    "recall": 0.9076923076923077,
+    "f1": 0.6704545454545454,
+    "examples": 390.0,
+    "true_positive": 118.0,
+    "false_positive": 104.0,
+    "false_negative": 12.0,
+    "decision_threshold": 0.29
+  },
+  "lr": 1.7037086855465907e-07,
+  "best_f1": 0.6824925816023739
+}

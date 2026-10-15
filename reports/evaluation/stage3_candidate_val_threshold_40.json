@@ -1,0 +1,17 @@
+{
+  "split": "val",
+  "wake_word": "marvin",
+  "accuracy": 0.7282051282051282,
+  "precision": 0.5674157303370787,
+  "recall": 0.7769230769230769,
+  "f1": 0.6558441558441559,
+  "examples": 390,
+  "true_positive": 101,
+  "false_positive": 77,
+  "false_negative": 29,
+  "true_negative": 183,
+  "decision_threshold": 0.4,
+  "test_manifest": "stage3_kws_gsc_marvin_tse_val.jsonl",
+  "checkpoint": "best.pt",
+  "test_cache_loaded": true
+}

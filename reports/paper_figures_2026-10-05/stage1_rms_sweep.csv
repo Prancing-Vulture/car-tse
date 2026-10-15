@@ -1,0 +1,5 @@
+Policy,AISHELL-5 (n=73),CAVEMOVE (n=400)
+Raw input,1.47,10.98
+RMS target 0.10,4.94,10.91
+RMS target 0.20,6.43,10.62
+Enrollment RMS,1.11,10.72

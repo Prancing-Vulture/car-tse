@@ -1,0 +1,49 @@
+# Experimental candidate from the GSC command-word pilot. It is not a
+# production profile: thresholds are a small-proxy operating point and require
+# validation on naturally recorded in-car sessions.
+name: eval_continuous_pipeline_gsc_command_candidate
+sample_rate: 16000
+segment_seconds: 3.0
+stage1_config: configs/stage1_spex_transfer_mc_cavemove_e.yaml
+presence_threshold: 0.20
+command_presence_threshold: 0.20
+kws_threshold: 0.29
+kws_input_seconds: 1.0
+kws_smoothing_window: 3
+kws_required_hits: 2
+kws_refractory_calls: 2
+wake_class_id: 1
+intent_input_seconds: 2.0
+command_timeout_calls: 4
+command_capture_preroll_seconds: 0.25
+intent_action_threshold: 0.35
+kws_num_classes: 2
+intent_type: wav2vec
+intent_encoder: E:/car-tse-data/models/facebook-wav2vec2-base-960h
+intent_encoder_checkpoint: stage4_intent_wav2vec_ft8_resume_tse_domain/encoder_best.pt
+intent_num_classes: 9
+intent_head_hidden: 0
+intent_label_map:
+  "0": "on"
+  "1": "off"
+  "2": "up"
+  "3": "down"
+  "4": "left"
+  "5": "right"
+  "6": "go"
+  "7": "stop"
+  "8": "noop"
+num_mics: 4
+cabin_noise_channels: [0, 2, 4, 6]
+presence_type: frame
+presence_sample_rate: 16000
+presence_n_mels: 40
+presence_hidden: 64
+presence_n_fft: 512
+presence_hop: 160
+presence_top_fraction: 0.20
+checkpoints:
+  spex: stage1_spex_transfer_mc_cavemove_cabin/best.pt
+  presence: stage2_frame_presence_gsc_aishell_ft1/best.pt
+  kws: stage3_kws_tse_hybrid_ft1/best.pt
+  intent: stage4_gsc_runtime_capture/best.pt

@@ -1,0 +1,27 @@
+name: stage3_kws_cavemove_ft_from_tse_hybrid
+sample_rate: 16000
+segment_seconds: 1.0
+wake_word: marvin
+manifest_train: stage3_kws_cabin_train.jsonl
+manifest_val: stage3_kws_cabin_val.jsonl
+manifest_eval: stage3_kws_cabin_test.jsonl
+cabin_noise: true
+cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
+cabin_noise_cache_size: 32
+audio_cache_size: 2048
+
+model:
+  n_mels: 40
+  channels: [32, 64, 128]
+  num_classes: 2
+
+train:
+  seed: 20261011
+  batch_size: 512
+  val_batch_size: 512
+  max_epochs: 6
+  patience: 2
+  lr: 1.0e-4
+  grad_clip: 5.0
+  amp: false
+  num_workers: 2

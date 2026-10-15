@@ -1,0 +1,26 @@
+name: stage2_presence_tse_hardneg_fast
+sample_rate: 16000
+segment_seconds: 3.0
+manifest: stage2_presence_tse_hardneg_fast_train.jsonl
+stage1_config: configs/stage1_spex_transfer_mc_cavemove.yaml
+spex_checkpoint: stage1_spex_transfer_mc_cavemove_cabin/best.pt
+cabin_noise: true
+num_mics: 4
+cabin_noise_channels: [0, 2, 4, 6]
+cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
+cabin_noise_cache_size: 32
+
+model:
+  hidden: 128
+
+train:
+  batch_size: 16
+  val_batch_size: 16
+  max_epochs: 5
+  lr: 5.0e-4
+  grad_clip: 5.0
+  absent_output_penalty: 1.0
+  val_fraction: 0.2
+  seed: 2026
+  amp: true
+  num_workers: 0

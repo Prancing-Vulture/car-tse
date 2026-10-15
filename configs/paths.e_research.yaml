@@ -1,0 +1,29 @@
+# Local research data configuration for the E: data volume.
+# Keep corpus paths external to the repository; generated manifests/logs/caches
+# are also written to E: so large artifacts never enter Git.
+data_root: "E:/car-tse-data"
+checkpoint_root: "C:/Users/Harreesh/projects/audio-bss-tse/car-tse/checkpoints"
+manifest_root: "E:/car-tse-data/manifests"
+log_root: "E:/car-tse-data/logs"
+spex_pretrained_dir: "E:/car-tse-data/models"
+
+corpora:
+  librispeech: "E:/bss-audio-data/speech/LibriSpeech/LibriSpeech"
+  librimix: "E:/bss-audio-data/LibriMix/Libri2Mix"
+  aishell5: "E:/car-tse-data/aishell5/extracted"
+  cavemove: "E:/car-tse-data/cavemove/extracted/cavemove_dataset"
+  wham: "E:/bss-audio-data/LibriMix/wham_noise"
+  speech_commands_v2: "E:/car-tse-data/speech_commands_v2"
+  mswc_en: "E:/car-tse-data/mswc/en"
+  hey_snips: "E:/car-tse-data/hey_snips"
+  fluent_speech_commands: "E:/car-tse-data/fluent_speech_commands/fluent_speech_commands_dataset"
+  slurp: "E:/car-tse-data/slurp"
+  custom_incar: "E:/car-tse-data/custom_incar"
+
+splits:
+  librispeech_speakers: "E:/car-tse-data/manifests/meta/librispeech_speakers.json"
+  intent_label_map: "E:/car-tse-data/manifests/meta/intent_label_map.json"
+  kws_label_map: "E:/car-tse-data/manifests/meta/kws_label_map.json"
+
+sample_rate: 16000
+segment_seconds: 3.0

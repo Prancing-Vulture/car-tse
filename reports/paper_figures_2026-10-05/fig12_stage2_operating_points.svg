@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="650" viewBox="0 0 900 650">
+<rect width="100%" height="100%" fill="#fff"/>
+<style>text{font-family:Arial,sans-serif;fill:#253247}.title{font-size:23px;font-weight:bold}.label{font-size:14px}.small{font-size:12px}.grid{stroke:#d9e0e8;stroke-width:1}.axis{stroke:#536273;stroke-width:1.2}</style>
+<text class="title" x="450.0" y="38" text-anchor="middle">Stage 2: presence-gate validation operating points</text>
+<line class="grid" x1="100" y1="520.0" x2="820" y2="520.0"/>
+<text class="small" x="90" y="524.0" text-anchor="end">0</text>
+<line class="grid" x1="100.0" y1="90" x2="100.0" y2="520"/>
+<text class="small" x="100.0" y="542" text-anchor="middle">0</text>
+<line class="grid" x1="100" y1="434.0" x2="820" y2="434.0"/>
+<text class="small" x="90" y="438.0" text-anchor="end">20</text>
+<line class="grid" x1="244.0" y1="90" x2="244.0" y2="520"/>
+<text class="small" x="244.0" y="542" text-anchor="middle">20</text>
+<line class="grid" x1="100" y1="348.0" x2="820" y2="348.0"/>
+<text class="small" x="90" y="352.0" text-anchor="end">40</text>
+<line class="grid" x1="388.0" y1="90" x2="388.0" y2="520"/>
+<text class="small" x="388.0" y="542" text-anchor="middle">40</text>
+<line class="grid" x1="100" y1="262.0" x2="820" y2="262.0"/>
+<text class="small" x="90" y="266.0" text-anchor="end">60</text>
+<line class="grid" x1="532.0" y1="90" x2="532.0" y2="520"/>
+<text class="small" x="532.0" y="542" text-anchor="middle">60</text>
+<line class="grid" x1="100" y1="176.0" x2="820" y2="176.0"/>
+<text class="small" x="90" y="180.0" text-anchor="end">80</text>
+<line class="grid" x1="676.0" y1="90" x2="676.0" y2="520"/>
+<text class="small" x="676.0" y="542" text-anchor="middle">80</text>
+<line class="grid" x1="100" y1="90.0" x2="820" y2="90.0"/>
+<text class="small" x="90" y="94.0" text-anchor="end">100</text>
+<line class="grid" x1="820.0" y1="90" x2="820.0" y2="520"/>
+<text class="small" x="820.0" y="542" text-anchor="middle">100</text>
+<circle cx="793.0" cy="90.0" r="10" fill="#386cb0"/>
+<text class="small" x="781.0" y="80.0" text-anchor="end">threshold 0.50</text>
+<circle cx="361.0" cy="94.30000000000001" r="10" fill="#f0027f"/>
+<text class="small" x="373.0" y="84.30000000000001" text-anchor="start">threshold 0.72</text>
+<circle cx="226.0" cy="128.141" r="10" fill="#7fc97f"/>
+<text class="small" x="238.0" y="118.14099999999999" text-anchor="start">threshold 0.90</text>
+<text class="label" x="460" y="590" text-anchor="middle">False accept rate on target-absent validation (%)</text>
+<text class="label" transform="translate(30 300) rotate(-90)" text-anchor="middle">Target-present recall (%)</text>
+<text class="small" x="100" y="635">Validation: 800 target-present / 80 target-absent examples; points summarize one threshold sweep.</text>
+</svg>
