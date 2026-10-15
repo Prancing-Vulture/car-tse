@@ -1533,6 +1533,12 @@ def main() -> int:
         "strict_false_command_events", "strict_false_command_rate_per_hour",
         "passenger_unambiguous_wake_events", "passenger_overlap_command_events",
         "ambiguous_overlap_command_events", "passenger_only_false_action_events",
+        "executed_action_events", "executed_non_target_actions",
+        "wrong_intent_action_events", "wrong_executed_action_events",
+        "scenes_with_wrong_intent_action", "scenes_with_wrong_executed_action",
+        "fully_correct_scenes", "fully_correct_scene_rate",
+        "wake_trigger_source_counts", "passenger_wake_unique_speakers",
+        "passenger_nonwake_unique_speakers", "effective_config_sha256",
         "ambiguous_overlap_command_rate_per_hour", "speaker_consistent", "production_valid", "output",
     ) if key in report} | {"output": str(output)}, indent=2))
     return 0
