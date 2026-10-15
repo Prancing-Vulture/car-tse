@@ -1,0 +1,17 @@
+name: stage4_intent_overlap_wav2vec_ft2
+sample_rate: 16000
+segment_seconds: 2.0
+manifest_train: stage4_intent_overlap_ft2.jsonl
+manifest_eval: stage4_intent_overlap_ft2.jsonl
+label_map: intent_label_map.json
+waveform_cache_dir: data/cache/stage4_intent_overlap_ft2_16k
+waveform_cache_includes_cabin_noise: true
+waveform_cache_train: train_overlap_wav_16000hz.npy
+waveform_cache_eval: val_overlap_wav_16000hz.npy
+
+model:
+  encoder: facebook/wav2vec2-base-960h
+
+train:
+  overlap_snr_db: -3.0
+  clean_and_overlap_balanced: true
