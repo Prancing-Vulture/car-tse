@@ -499,3 +499,27 @@ completion, also without a result file. Neither run contributes a score or
 promotion decision. Training and evaluation are currently paused; the
 retained baseline remains the reference configuration until an explicitly
 authorized held-out regression is completed.
+
+## FT2 candidate training status
+
+The pause was subsequently lifted and a second overlap-aware intent candidate
+was trained from the FT1 candidate. The FT2 cache contains 8,192 training and
+2,048 validation examples with balanced clean/overlap mixtures at -3 dB
+passenger SNR. The best validation point was epoch 4: 71.53% accuracy,
+90.58% top-5 accuracy, and 71.77% macro-F1. The run ended after six epochs
+under patience-based stopping. No end-to-end metric has been assigned to FT2
+yet, and it remains unpromoted.
+
+Training curves are rendered at:
+
+- `reports/figures/stage4_intent_overlap_ft2_training_curves.png`
+- `reports/figures/stage4_intent_overlap_ft1_ft2_comparison.png`
+
+The corrected FT2 clean pilot reached 94.53% (121/128) with 100% wake recall,
+matching the FT1 clean pilot. The simultaneous-overlap FT2 pilot reached
+57.81% with 100% wake recall, only +0.78 points over FT1's 57.03%. It remains
+an unpromoted synthetic candidate: 103 command windows were ambiguous under
+overlap and the legacy false-action count of zero is not a passenger-safety
+measurement. The first FT2 screening output omitted `--clean` and used the
+evaluator's default -5/0 dB two-condition path; it is retained only as a
+noisy smoke diagnostic and is not part of the clean comparison.

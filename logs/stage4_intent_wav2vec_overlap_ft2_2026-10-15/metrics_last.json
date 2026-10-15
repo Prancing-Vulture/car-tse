@@ -1,0 +1,21 @@
+{
+  "epoch": 6,
+  "run_id": "c97ae8e4a982402787b05f933c316f1a",
+  "device": "cuda",
+  "encoder": "facebook/wav2vec2-base-960h",
+  "unfreeze_layers": 2,
+  "train_loss": 1.1032561287574936,
+  "train_accuracy": 0.71826171875,
+  "val": {
+    "accuracy": 0.71142578125,
+    "top5_accuracy": 0.90966796875,
+    "macro_precision": 0.729238748550415,
+    "macro_recall": 0.7113737463951111,
+    "macro_f1": 0.7147639393806458,
+    "examples": 2048.0
+  },
+  "lr": [
+    0.0,
+    0.0
+  ]
+}

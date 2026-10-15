@@ -1,0 +1,6 @@
+{
+  "best_macro_f1": 0.717689573764801,
+  "epochs_completed": 6,
+  "run_id": "c97ae8e4a982402787b05f933c316f1a",
+  "history": "D:\\Prawin_New\\tse\\car-tse-main\\logs\\stage4_intent_wav2vec_overlap_ft2_2026-10-15\\epoch_metrics_c97ae8e4a982402787b05f933c316f1a.jsonl"
+}

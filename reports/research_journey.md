@@ -3544,3 +3544,47 @@ accepted. A smaller follow-up was subsequently canceled before completion,
 also without a result file. No training or evaluation is currently running,
 and the overlap-aware candidate remains an unpromoted research checkpoint.
 The next run must be started explicitly and should use a fresh output path.
+
+## 2026-10-15 FT2 overlap-aware intent training and curve artifacts
+
+After the pause was explicitly lifted, the prepared FT2 cache was used for an
+append-only Stage-4 candidate. This run was initialized from the FT1
+overlap-aware candidate and did not modify any retained checkpoint. It used
+8,192 training examples and 2,048 validation examples, balanced clean and
+overlap mixtures at -3 dB passenger SNR, two unfrozen Wav2Vec encoder layers,
+AMP, and six maximum epochs with patience two.
+
+The best validation point was epoch 4: 71.53% accuracy, 90.58% top-5
+accuracy, and 71.77% macro-F1. Epochs 5 and 6 did not improve macro-F1, so
+the candidate was early-stopped after epoch 6. This is a training-validation
+result only; no end-to-end score has been assigned to FT2 yet and it remains
+unpromoted.
+
+The reusable plotting utility and rendered figures are:
+
+- `scripts/reporting/plot_training_history.py`
+- `reports/figures/stage4_intent_overlap_ft2_training_curves.png`
+- `reports/figures/stage4_intent_overlap_ft1_ft2_comparison.png`
+
+The exact epoch history remains at
+`logs/stage4_intent_wav2vec_overlap_ft2_2026-10-15/` and the candidate
+checkpoint is at
+`checkpoints/stage4_intent_wav2vec_overlap_ft2_2026-10-15/`. The next step is
+an explicitly labeled clean and simultaneous-overlap pilot using the FT2
+checkpoint, followed by a larger regression only if the pilot improves both
+conditions.
+
+The corrected clean pilot reached 94.53% end-to-end intent accuracy (121/128)
+with 100% target wake recall, matching FT1. The simultaneous-overlap pilot
+reached 57.81% intent accuracy with 100% target wake recall, only +0.78 points
+over FT1's 57.03%. The overlap run still contained 103 ambiguous command
+windows (206.92/hour) and 100 strict wake supports outside the exact target
+wake interval (200.89/hour); the legacy false-action counter was zero but is
+not a passenger-safety result under co-channel overlap. FT2 is therefore not
+promoted and a larger regression is deferred until the command endpoint and
+target/passenger separation path changes.
+
+An earlier screening invocation omitted the evaluator's `--clean` flag and
+inherited its default -5/0 dB two-condition path. Its 256-scene output is
+retained as a noisy smoke diagnostic only and must not be compared with the
+128-scene clean or overlap pilots.
