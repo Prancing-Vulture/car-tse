@@ -506,6 +506,52 @@ def evaluate_scene(
     target_command_events.sort(key=lambda row: float(row["window_start_seconds"]))
     target_command_event = target_command_events[0] if target_command_events else None
     false_command_events = [row for row in command_events if row not in target_command_events]
+    # In a simultaneous scene, an emitted window can support both the target
+    # command and a passenger utterance.  The old outside-target counter
+    # cannot call that a passenger false action, because the labels overlap.
+    # Keep the original metric for backwards compatibility and expose the
+    # contaminated/ambiguous support windows separately.
+    passenger_intervals: list[tuple[float, float]] = []
+    if truth.get("passenger_present", False):
+        passenger_wake_start = float(truth.get("passenger_wake_start_seconds", -1.0))
+        passenger_nonwake_start = float(truth.get("passenger_nonwake_start_seconds", -1.0))
+        if passenger_wake_start >= 0.0:
+            passenger_intervals.append((passenger_wake_start, passenger_wake_start + 1.0))
+        if passenger_nonwake_start >= 0.0:
+            passenger_intervals.append((passenger_nonwake_start, passenger_nonwake_start + 1.5))
+
+    def overlaps_passenger(row: dict[str, Any]) -> bool:
+        window_start = float(row["window_start_seconds"])
+        window_end = float(row.get("window_end_seconds", window_start + stage1_seconds))
+        return any(
+            intervals_overlap(window_start, window_end, interval_start, interval_end)
+            for interval_start, interval_end in passenger_intervals
+        )
+
+    passenger_wake_interval = passenger_intervals[0] if passenger_intervals else None
+    passenger_wake_overlap_events = [
+        row
+        for row in wake_events
+        if passenger_wake_interval is not None
+        and intervals_overlap(
+            float(row["window_start_seconds"]),
+            float(row.get("window_end_seconds", float(row["window_start_seconds"]) + stage1_seconds)),
+            passenger_wake_interval[0],
+            passenger_wake_interval[1],
+        )
+    ]
+    passenger_unambiguous_wake_events = [
+        row for row in passenger_wake_overlap_events if not event_overlaps_label(
+            row, target_start, target_end, stage1_seconds, tolerance_before=0.0, tolerance_after=0.0
+        )
+    ]
+    passenger_overlap_command_events = [row for row in command_events if overlaps_passenger(row)]
+    ambiguous_overlap_command_events = [
+        row for row in target_command_events if overlaps_passenger(row)
+    ]
+    passenger_only_false_action_events = [
+        row for row in passenger_overlap_command_events if row not in target_command_events
+    ]
     intent_correct = bool(target_command_event and target_command_event.get("intent") == command_intent)
     target_wake_detected = target_wake_event is not None
     latency = None
@@ -527,6 +573,11 @@ def evaluate_scene(
         "false_wake_rate_per_hour": len(false_events) * 3600.0 / max(duration, 1.0e-6),
         "false_action_events": len(false_command_events),
         "false_action_rate_per_hour": len(false_command_events) * 3600.0 / max(duration, 1.0e-6),
+        "passenger_wake_overlap_events": len(passenger_wake_overlap_events),
+        "passenger_unambiguous_wake_events": len(passenger_unambiguous_wake_events),
+        "passenger_overlap_command_events": len(passenger_overlap_command_events),
+        "ambiguous_overlap_command_events": len(ambiguous_overlap_command_events),
+        "passenger_only_false_action_events": len(passenger_only_false_action_events),
         "target_wake_latency_seconds": latency,
         "expected_intent": command_intent,
         "predicted_intent": target_command_event.get("intent") if target_command_event else None,
@@ -1008,6 +1059,19 @@ def main() -> int:
     intent_successes = sum(bool(row["target_intent_correct"]) for row in results)
     false_events = sum(int(row["false_wake_events"]) for row in results)
     false_actions = sum(int(row["false_action_events"]) for row in results)
+    passenger_wake_overlap_events = sum(int(row.get("passenger_wake_overlap_events", 0)) for row in results)
+    passenger_unambiguous_wake_events = sum(
+        int(row.get("passenger_unambiguous_wake_events", 0)) for row in results
+    )
+    passenger_overlap_command_events = sum(
+        int(row.get("passenger_overlap_command_events", 0)) for row in results
+    )
+    ambiguous_overlap_command_events = sum(
+        int(row.get("ambiguous_overlap_command_events", 0)) for row in results
+    )
+    passenger_only_false_action_events = sum(
+        int(row.get("passenger_only_false_action_events", 0)) for row in results
+    )
     latencies = [float(row["target_wake_latency_seconds"]) for row in results if row["target_wake_latency_seconds"] is not None]
     speaker_identity_match_count = sum(
         bool(row.get("truth", {}).get("speaker_consistent", False)) for row in results
@@ -1108,6 +1172,15 @@ def main() -> int:
         "false_wake_rate_per_hour": false_events * 3600.0 / max(total_duration, 1.0e-6),
         "false_action_events": false_actions,
         "false_action_rate_per_hour": false_actions * 3600.0 / max(total_duration, 1.0e-6),
+        "passenger_wake_overlap_events": passenger_wake_overlap_events,
+        "passenger_unambiguous_wake_events": passenger_unambiguous_wake_events,
+        "passenger_overlap_command_events": passenger_overlap_command_events,
+        "ambiguous_overlap_command_events": ambiguous_overlap_command_events,
+        "passenger_only_false_action_events": passenger_only_false_action_events,
+        "passenger_unambiguous_wake_rate_per_hour": passenger_unambiguous_wake_events * 3600.0 / max(total_duration, 1.0e-6),
+        "passenger_overlap_command_rate_per_hour": passenger_overlap_command_events * 3600.0 / max(total_duration, 1.0e-6),
+        "ambiguous_overlap_command_rate_per_hour": ambiguous_overlap_command_events * 3600.0 / max(total_duration, 1.0e-6),
+        "passenger_only_false_action_rate_per_hour": passenger_only_false_action_events * 3600.0 / max(total_duration, 1.0e-6),
         "target_wake_latency_mean_seconds": float(np.mean(latencies)) if latencies else None,
         "target_wake_latency_p95_seconds": float(np.percentile(latencies, 95)) if latencies else None,
         "speaker_consistent": speaker_consistent,
@@ -1138,7 +1211,10 @@ def main() -> int:
         "target_intent_accuracy_overall", "target_intent_accuracy_conditioned_on_wake",
         "false_wake_events", "false_action_events", "false_wake_rate_per_hour",
         "false_action_rate_per_hour", "target_wake_latency_mean_seconds",
-        "target_wake_latency_p95_seconds", "speaker_consistent", "production_valid", "output",
+        "target_wake_latency_p95_seconds", "passenger_wake_overlap_events",
+        "passenger_unambiguous_wake_events", "passenger_overlap_command_events",
+        "ambiguous_overlap_command_events", "passenger_only_false_action_events",
+        "ambiguous_overlap_command_rate_per_hour", "speaker_consistent", "production_valid", "output",
     ) if key in report} | {"output": str(output)}, indent=2))
     return 0
 

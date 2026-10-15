@@ -82,7 +82,10 @@ def main() -> int:
         cfg["sample_rate"],
         cfg["segment_seconds"],
         training=True,
-        waveform_cache_path=cache_dir / f"train_cabin_wav_{cfg['sample_rate']}hz.npy",
+        waveform_cache_path=cache_dir / cfg.get(
+            "waveform_cache_train",
+            f"train_cabin_wav_{cfg['sample_rate']}hz.npy",
+        ),
         **common_kwargs,
     )
     val_ds = IntentDataset(
@@ -90,7 +93,10 @@ def main() -> int:
         cfg["sample_rate"],
         cfg["segment_seconds"],
         training=False,
-        waveform_cache_path=cache_dir / f"val_cabin_wav_{cfg['sample_rate']}hz.npy",
+        waveform_cache_path=cache_dir / cfg.get(
+            "waveform_cache_eval",
+            f"val_cabin_wav_{cfg['sample_rate']}hz.npy",
+        ),
         **common_kwargs,
     )
     encoder = AutoModel.from_pretrained(args.encoder).to(device)

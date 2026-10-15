@@ -3505,3 +3505,31 @@ end-to-end accuracy. No checkpoint was changed and the run remains
 The next evaluation must add genuinely simultaneous target/passenger speech to
 measure extraction, and the next model work must target the false-action path
 without sacrificing target wake recall.
+
+## 2026-10-15 simultaneous overlap evaluation and intent adaptation
+
+The 1,000-scene passenger-only study was followed by an explicit co-channel
+stress test: the target's `Marvin` and command were combined with a passenger
+`Marvin` and passenger non-wake speech inside the command interval. Cabin noise
+was disabled and the four synthetic channels were identical, so the result
+tests target-conditioned overlap handling but not spatial beamforming.
+
+The retained reference path preserved 100.0% target wake recall but dropped to
+45.3% end-to-end command accuracy. A 128-scene Stage-1 bypass control scored
+45.31% as well, showing that the dominant immediate gap is downstream
+co-channel intent/state handling and contaminated command windows, rather than
+an isolated wake-word failure. The old outside-target false-action counter was
+zero, but it is not valid as a safety rate when the passenger and target
+intervals overlap. An offline audit found 766 command windows with simultaneous
+target/passenger support over 3.889 synthetic hours; the evaluator now records
+this ambiguous support explicitly.
+
+An append-only overlap-aware Wav2Vec candidate was then trained from the
+retained intent checkpoint. It used 2,048 clean plus 2,048 overlap training
+examples and 512 clean plus 512 overlap validation examples, with two held-out
+KWS speech pools mixed at 0 dB into the frozen Stage-1 cache. The four-epoch
+candidate reached 73.8% mixed validation accuracy. On a 128-scene end-to-end
+pilot it improved overlap intent accuracy from 45.31% to 57.03% (+11.72
+points) while preserving 100% wake recall; the clean pilot was 94.53%. The
+candidate is not promoted until the 1,000-scene overlap and clean regressions
+complete, and it remains synthetic evidence rather than production validation.

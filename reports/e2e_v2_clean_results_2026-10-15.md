@@ -417,3 +417,74 @@ and per-scene artifacts are preserved at:
 The next engineering issue is to reduce passenger false actions while keeping
 driver recall, then repeat the measurement with true simultaneous target and
 passenger speech. This synthetic result remains `production_valid: false`.
+
+## 2026-10-15 simultaneous target/passenger overlap
+
+The next run placed a target wake at 1.0 s, a target command at 2.1 s, a
+passenger `Marvin` at 2.4 s, and passenger non-wake speech at 3.2 s. The
+passenger tracks therefore overlap the target command; cabin/road noise was
+disabled. All four synthetic microphone channels receive the same summed
+waveform, so this is a target-conditioned co-channel stress test rather than a
+spatial-array separation benchmark.
+
+The retained checkpoint set produced the following result on 1,000 matched
+speaker scenes:
+
+| Metric | Retained baseline |
+|---|---:|
+| Scenes / synthetic duration | 1,000 / 3.889 h |
+| Target wake recall | 100.0% |
+| Overall target command accuracy | 45.3% |
+| False events outside the labelled target interval | 0 wake / 0 action |
+| Mean / p95 target-wake latency | 1.702 s / 2.525 s |
+
+The outside-target counters are not a passenger-safety result in this
+condition. The target command interval and passenger intervals overlap, so
+many emitted command windows are inherently ambiguous. Offline analysis of the
+raw log found 766 command windows that simultaneously supported the target
+command and passenger activity (196.97 ambiguous command-window supports per
+hour). The evaluator now records these contaminated/ambiguous windows
+explicitly rather than presenting the legacy outside-target counter as a
+false-action rate.
+
+The 128-scene Stage-1 bypass control also scored 45.31% with 100% wake recall.
+This indicates that the first failure is not explained solely by the learned
+extractor removing the command; the downstream intent/state path has not been
+trained for co-channel overlap, and the current three-second support windows
+are contaminated by the passenger tracks.
+
+Raw overlap artifacts:
+
+- `logs/multispeaker_overlap_speech_only_e2e_v2_knnvc_matched_buffer4_1000_2026-10-15.json`
+- `logs/multispeaker_overlap_bypass_stage1_128_2026-10-15.json`
+- `reports/artifacts/multispeaker_overlap_speech_only_e2e_v2_knnvc_matched_buffer4_1000_2026-10-15/`
+
+## 2026-10-15 overlap-aware intent candidate
+
+An append-only Stage-4 candidate was initialized from the retained Wav2Vec
+intent head/encoder. Its cache contains 2,048 clean and 2,048 overlap train
+examples, plus 512 clean and 512 overlap validation examples. Overlap samples
+mix two held-out KWS speech pools into the frozen Stage-1 intent cache at 0 dB
+passenger SNR. The candidate trained for four epochs; its best mixed
+validation accuracy was 73.8% with macro-F1 0.741.
+
+On a 128-scene pilot using the same held-out matched-speaker scenes, the
+candidate reached 57.03% overlap command accuracy (up from 45.31%, +11.72
+points) with 100% target wake recall. Its clean control reached 94.53% intent
+accuracy with 100% wake recall. These are encouraging adaptation results but
+not a promotion: the overlap score remains far below the 90% research target,
+the scenes are synthetic, and no real-driver or spatial-array evidence exists.
+
+Candidate artifacts:
+
+- `scripts/data/build_overlap_intent_cache.py`
+- `configs/stage4_intent_overlap_wav2vec_ft1.yaml`
+- `configs/eval_end_to_end_clean_english_overlap_intent_ft1.yaml`
+- `data/cache/stage4_intent_overlap_ft1_16k/`
+- `checkpoints/stage4_intent_wav2vec_overlap_ft1_2026-10-15/`
+- `logs/clean_overlap_intent_ft1_128_2026-10-15.json`
+- `logs/multispeaker_overlap_intent_ft1_128_2026-10-15.json`
+
+The next decision is held out until the 1,000-scene candidate regression and
+the clean regression complete. The retained baseline remains the reference
+configuration.
