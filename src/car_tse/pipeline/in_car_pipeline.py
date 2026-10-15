@@ -814,7 +814,6 @@ class InCarPipeline:
             ):
                 state.kws_scores.clear()
                 if not state.awaiting_command:
-                    state.kws_refractory_left = 0
                     return PipelineOutput(
                         accepted=False,
                         wake_detected=False,
