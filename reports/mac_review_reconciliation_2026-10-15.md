@@ -139,3 +139,41 @@ legacy false-wake/false-action counters.
 - Production false-accept, passenger-rejection, device-latency, privacy, and
   safety claims remain blocked until the frozen pilot protocol and target
   hardware evaluation exist.
+
+## Corrected P0 sequential result (completed 2026-10-15)
+
+The first corrected rerun completed with 1,000 scenes using dynamic passenger
+selection, 136 unique passenger speakers for both wake and non-wake pools, the
+full command audio, the canonical three-call command buffer, and no active
+speaker gate or refractory period.  This is still a synthetic speech-only
+proxy, not a real-driver result.
+
+| Metric | Result |
+|---|---:|
+| Scenes / synthetic duration | 1,000 / 3.889 h |
+| Target wake recall | **99.90%** |
+| Target intent accuracy | **94.00%** |
+| Intent accuracy conditioned on target wake | **94.09%** |
+| Fully correct scenes | **498 / 1,000 (49.80%)** |
+| Strict fully-correct action scenes | **497 / 1,000 (49.70%)** |
+| Executed action events | 1,506 |
+| Executed non-target actions | 527 |
+| Wrong-intent action events | 525 |
+| Scenes with a wrong-intent action | 452 / 1,000 |
+| Passenger-only false actions | **91** |
+| False-action events | 99 / 3.889 h (25.46/h) |
+| Strict false-wake events | 2,445 / 3.889 h (628.71/h) |
+| Target-wake latency mean / p95 | 1.668 s / 2.000 s |
+
+The result separates the current bottlenecks: target wake recall and
+conditional intent recognition are already high on this proxy, while the
+guarded action policy is unsafe because passenger/non-target wake evidence is
+still converted into many action attempts.  The large strict false-wake count
+also means the current source-association and wake policy need to be fixed
+before model fine-tuning can be interpreted as a production improvement.
+
+Reproduction artifact:
+`logs/multispeaker_speech_only_p0_dynamic_full_1000_2026-10-15.json`
+
+Effective configuration SHA256:
+`3fc7a20b28769698d6a21b337f2a667b88b9bc8570abb869b736f6cd5b9dc8bb`
