@@ -316,8 +316,9 @@ def build_scene(
     passenger_snr_db: float,
     clean: bool = False,
     passenger_only: bool = False,
+    overlap: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
-    """Build one 14-second scene, optionally with passenger speech only."""
+    """Build one 14-second scene with optional passenger/target overlap."""
 
     duration_seconds = 14.0
     total_samples = int(round(duration_seconds * sample_rate))
@@ -326,11 +327,19 @@ def build_scene(
 
     wake_start = int(round(1.0 * sample_rate))
     command_start = int(round(2.1 * sample_rate))
-    passenger_wake_start = int(round(6.0 * sample_rate))
-    passenger_nonwake_start = int(round(9.0 * sample_rate))
+    if overlap:
+        # Put both passenger utterances inside the target command interval.
+        # This is deliberately a co-channel stress test: all microphone
+        # channels receive the same summed speech, while the target identity
+        # remains available through enrollment.
+        passenger_wake_start = int(round(2.4 * sample_rate))
+        passenger_nonwake_start = int(round(3.2 * sample_rate))
+    else:
+        passenger_wake_start = int(round(6.0 * sample_rate))
+        passenger_nonwake_start = int(round(9.0 * sample_rate))
     add_at(target, target_wake, wake_start)
     add_at(target, target_command, command_start)
-    if not clean or passenger_only:
+    if not clean or passenger_only or overlap:
         add_at(passenger, passenger_wake, passenger_wake_start)
         add_at(passenger, passenger_nonwake, passenger_nonwake_start)
 
@@ -347,7 +356,7 @@ def build_scene(
         repeats = int(np.ceil(total_samples / max(1, len(noise))))
         noise = np.tile(noise, (repeats, 1))
     noise = noise[:total_samples]
-    if clean or passenger_only:
+    if clean or passenger_only or overlap:
         noise_scaled = np.zeros_like(noise)
     else:
         noise_scale = target_rms * (10.0 ** (-float(cabin_snr_db) / 20.0)) / max(rms(noise), 1.0e-6)
@@ -366,6 +375,7 @@ def build_scene(
         "passenger_snr_db": float(passenger_snr_db),
         "clean": bool(clean),
         "passenger_only": bool(passenger_only),
+        "overlap": bool(overlap),
         "passenger_present": not bool(clean),
     }
     return mixture, multichannel.astype(np.float32), target, speech.astype(np.float32), truth
@@ -570,6 +580,15 @@ def main() -> int:
         "--passenger-only",
         action="store_true",
         help="Add passenger wake/non-wake speech but force the cabin-noise bed to zero.",
+    )
+    parser.add_argument(
+        "--overlap",
+        action="store_true",
+        help=(
+            "Place passenger wake/non-wake speech inside the target command interval "
+            "and force the cabin-noise bed to zero. This is a synthetic co-channel "
+            "overlap stress test."
+        ),
     )
     parser.add_argument(
         "--clean-bypass-stage1",
@@ -802,10 +821,10 @@ def main() -> int:
     if not negative_rows:
         raise RuntimeError("No non-wake passenger examples found")
     passenger_nonwake_row = negative_rows[0]
-    if args.clean and args.passenger_only:
-        raise ValueError("--clean and --passenger-only are mutually exclusive")
-    noise_files = [] if (args.clean or args.passenger_only) else select_noise_files(resolve_path(args.noise_root), 20.0)
-    if not args.clean and not args.passenger_only and not noise_files:
+    if sum(bool(value) for value in (args.clean, args.passenger_only, args.overlap)) > 1:
+        raise ValueError("--clean, --passenger-only, and --overlap are mutually exclusive")
+    noise_files = [] if (args.clean or args.passenger_only or args.overlap) else select_noise_files(resolve_path(args.noise_root), 20.0)
+    if not args.clean and not args.passenger_only and not args.overlap and not noise_files:
         raise RuntimeError("No sufficiently long CAVEMOVE noise streams found")
 
     results: list[dict[str, Any]] = []
@@ -895,7 +914,7 @@ def main() -> int:
 
         for snr_index, cabin_snr_db in enumerate(args.cabin_snr_db):
             noise_path = None
-            if args.clean or args.passenger_only:
+            if args.clean or args.passenger_only or args.overlap:
                 cabin_noise = np.zeros(
                     (int(round(14.0 * sample_rate)), int(cfg.get("num_mics", 4))),
                     dtype=np.float32,
@@ -919,6 +938,7 @@ def main() -> int:
                 float(args.passenger_snr_db),
                 clean=bool(args.clean),
                 passenger_only=bool(args.passenger_only),
+                overlap=bool(args.overlap),
             )
             truth["expected_intent"] = str(intent_row["intent"])
             truth["target_wake_source"] = str(resolve_path(wake_row["wav"]))
@@ -1022,6 +1042,8 @@ def main() -> int:
         "benchmark": (
             "continuous_full_pipeline_clean_control"
             if args.clean
+            else "continuous_full_pipeline_overlap_proxy"
+            if args.overlap
             else "continuous_full_pipeline_cross_corpus_proxy"
         ),
         "device": str(device),
@@ -1071,6 +1093,7 @@ def main() -> int:
         }),
         "clean": bool(args.clean),
         "passenger_only": bool(args.passenger_only),
+        "overlap": bool(args.overlap),
         "clean_bypass_stage1": bool(args.clean_bypass_stage1),
         "scenes": target_count,
         "duration_seconds": total_duration,
