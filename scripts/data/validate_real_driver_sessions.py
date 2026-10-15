@@ -126,6 +126,46 @@ def validate(root: Path, tuning_drivers: set[str], test_drivers: set[str]) -> di
         except (TypeError, ValueError):
             errors.append(f"{session_id}: channel_count must be an integer")
 
+        capture_contract = metadata.get("capture_contract")
+        playback_reference_declared = bool(
+            isinstance(capture_contract, dict)
+            and capture_contract.get("playback_reference_declared") is True
+        )
+        # Six-channel production captures are four cabin microphones plus two
+        # playback-reference inputs. A four-channel model-compatible pilot is
+        # still accepted for diagnostics, but a six-channel session without an
+        # explicit AEC reference contract must not pass validation.
+        if channels >= 6:
+            if not isinstance(capture_contract, dict):
+                errors.append(f"{session_id}: six-channel capture needs capture_contract metadata")
+            elif capture_contract.get("playback_reference_required") is not True:
+                errors.append(f"{session_id}: six-channel capture must require a playback reference")
+            if not playback_reference_declared:
+                errors.append(f"{session_id}: six-channel capture needs a declared playback reference")
+            mic_indices = capture_contract.get("microphone_channel_indices") if isinstance(capture_contract, dict) else None
+            playback_indices = (
+                capture_contract.get("playback_reference_channel_indices")
+                if isinstance(capture_contract, dict)
+                else None
+            )
+            if not isinstance(mic_indices, list) or len(mic_indices) != 4:
+                errors.append(
+                    f"{session_id}: six-channel capture needs four explicit microphone channel indices"
+                )
+            if not isinstance(playback_indices, list) or not playback_indices:
+                errors.append(
+                    f"{session_id}: six-channel capture needs explicit playback channel indices"
+                )
+            if isinstance(mic_indices, list) and isinstance(playback_indices, list):
+                try:
+                    mapped = [int(index) for index in [*mic_indices, *playback_indices]]
+                    if len(set(mapped)) != len(mapped) or any(index < 0 or index >= channels for index in mapped):
+                        errors.append(
+                            f"{session_id}: capture channel indices must be unique and in range"
+                        )
+                except (TypeError, ValueError):
+                    errors.append(f"{session_id}: capture channel indices must be integers")
+
         audio_path = Path(str(metadata.get("audio_path", "audio.wav")))
         if not audio_path.is_absolute():
             audio_path = session_dir / audio_path.name if audio_path.parent == Path(".") else root / audio_path
@@ -203,6 +243,17 @@ def validate(root: Path, tuning_drivers: set[str], test_drivers: set[str]) -> di
                 "split": split,
                 "recording_sample_rate_hz": int(metadata.get("recording_sample_rate_hz", 0) or 0),
                 "channel_count": channels,
+                "playback_reference_declared": playback_reference_declared,
+                "microphone_channel_indices": (
+                    capture_contract.get("microphone_channel_indices")
+                    if isinstance(capture_contract, dict)
+                    else None
+                ),
+                "playback_reference_channel_indices": (
+                    capture_contract.get("playback_reference_channel_indices")
+                    if isinstance(capture_contract, dict)
+                    else None
+                ),
                 "event_counts": event_counts,
             }
         )

@@ -6,6 +6,12 @@ checkpoint or configuration changed.
 
 ## Motivation
 
+> **Scope note (2026-10-14):** this is a historical AISHELL-5 safety
+> diagnostic. Do not reuse its zero-event Smart/compact interpretation for
+> the Smart Speaker full-corpus study; the latter required a batched-backend
+> correction documented in
+> `reports/compact_gate_backend_correction_2026-10-14.md`.
+
 The retained split-gate path uses the SpEx extracted-embedding cosine as the
 speaker gate. That score is nearly uninformative as an identity probability
 (AUC ~0.5 on the synthetic verifier pairs). The compact log-mel speaker

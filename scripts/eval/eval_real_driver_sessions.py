@@ -39,7 +39,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "data"))
 
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.io.audio import read_multichannel
-from car_tse.pipeline.in_car_pipeline import PipelineState
+from car_tse.io.capture import split_capture_audio
+from car_tse.pipeline.in_car_pipeline import PipelineState, normalize_extracted_waveform
+from car_tse.pipeline.windowing import full_context_window_starts
 from car_tse.train.utils import get_device, write_metrics
 from eval_continuous_full_pipeline_proxy import load_pipeline, resolve_path
 from validate_real_driver_sessions import validate
@@ -54,6 +56,40 @@ REQUIRED_EVENTS = {
     "passenger_speech",
     "no_command",
     "noise_only",
+}
+
+
+ABLATION_VARIANTS: dict[str, dict[str, bool]] = {
+    "full": {
+        "use_tse": True,
+        "use_presence": True,
+        "use_speaker_matching": True,
+        "use_wake_smoothing": True,
+    },
+    "no_tse": {
+        "use_tse": False,
+        "use_presence": True,
+        "use_speaker_matching": False,
+        "use_wake_smoothing": True,
+    },
+    "no_presence": {
+        "use_tse": True,
+        "use_presence": False,
+        "use_speaker_matching": True,
+        "use_wake_smoothing": True,
+    },
+    "no_speaker_matching": {
+        "use_tse": True,
+        "use_presence": True,
+        "use_speaker_matching": False,
+        "use_wake_smoothing": True,
+    },
+    "no_wake_smoothing": {
+        "use_tse": True,
+        "use_presence": True,
+        "use_speaker_matching": True,
+        "use_wake_smoothing": False,
+    },
 }
 
 
@@ -141,6 +177,25 @@ def event_condition(row: dict[str, Any], session: Session) -> str:
 
 def event_contains(center: float, row: dict[str, Any], tolerance: float = 0.0) -> bool:
     return event_time(row, "start_s") - tolerance <= center <= event_time(row, "end_s") + tolerance
+
+
+def event_overlaps_window(
+    event: dict[str, Any],
+    truth: dict[str, Any],
+    stage1_seconds: float,
+    *,
+    tolerance_before: float = 0.0,
+    tolerance_after: float = 0.0,
+) -> bool:
+    """Associate a model window by interval support, not only its centre."""
+
+    window_start = float(event["window_start_seconds"])
+    window_end = float(
+        event.get("window_end_seconds", window_start + float(stage1_seconds))
+    )
+    truth_start = event_time(truth, "start_s") - float(tolerance_before)
+    truth_end = event_time(truth, "end_s") + float(tolerance_after)
+    return min(window_end, truth_end) > max(window_start, truth_start)
 
 
 def load_enrollment(session: Session, sample_rate: int, max_seconds: float = 3.0) -> np.ndarray:
@@ -427,11 +482,21 @@ def run_session(
     intent_confidence_threshold: float | None,
     device: torch.device,
     save_windows: bool,
+    variant: str = "full",
 ) -> dict[str, Any]:
     """Run one session with a fresh streaming state."""
 
+    if variant not in ABLATION_VARIANTS:
+        raise ValueError(f"unknown real-driver ablation variant: {variant}")
+    variant_settings = ABLATION_VARIANTS[variant]
+
     num_mics = int(getattr(pipeline.stage1, "frontend", None).num_mics) if getattr(pipeline.stage1, "frontend", None) is not None else 1
-    multichannel = fit_channels(session.audio, num_mics)
+    multichannel, playback = split_capture_audio(
+        session.audio,
+        session.metadata,
+        model_mics=num_mics,
+    )
+    multichannel = fit_channels(multichannel, num_mics)
     mixture = multichannel.mean(axis=1).astype(np.float32)
     stage1_seconds = float(getattr(pipeline, "segment_seconds", 3.0))
     # ``InCarPipeline`` does not need this attribute at runtime, so derive the
@@ -449,69 +514,130 @@ def run_session(
 
     # The evaluator applies the candidate thresholds to this run only. The
     # caller restores the pipeline values before the next operating point.
-    pipeline.presence_threshold = float(presence_threshold)
+    original_values = {
+        "presence_threshold": pipeline.presence_threshold,
+        "kws_threshold": pipeline.kws_threshold,
+        "command_presence_threshold": pipeline.command_presence_threshold,
+        "speaker_gate_threshold": pipeline.speaker_gate_threshold,
+        "command_speaker_gate_threshold": pipeline.command_speaker_gate_threshold,
+        "presence_activity_margin_threshold": pipeline.presence_activity_margin_threshold,
+        "kws_smoothing_window": pipeline.kws_smoothing_window,
+        "kws_required_hits": pipeline.kws_required_hits,
+        "kws_refractory_calls": pipeline.kws_refractory_calls,
+        "speaker_fusion_mode": pipeline.speaker_fusion_mode,
+        "target_kws": pipeline.target_kws,
+        "target_kws_secondary": pipeline.target_kws_secondary,
+        "intent_confidence_threshold": pipeline.intent_confidence_threshold,
+    }
+    pipeline.presence_threshold = (
+        float(presence_threshold) if variant_settings["use_presence"] else float("-inf")
+    )
+    pipeline.command_presence_threshold = (
+        float(command_presence_threshold)
+        if variant_settings["use_presence"]
+        else float("-inf")
+    )
     pipeline.kws_threshold = float(kws_threshold)
-    pipeline.command_presence_threshold = float(command_presence_threshold)
     pipeline.speaker_gate_threshold = (
-        None if speaker_gate_threshold is None else float(speaker_gate_threshold)
+        None
+        if not variant_settings["use_speaker_matching"]
+        else None if speaker_gate_threshold is None else float(speaker_gate_threshold)
     )
     pipeline.command_speaker_gate_threshold = (
-        pipeline.speaker_gate_threshold
-        if command_speaker_gate_threshold is None
-        else float(command_speaker_gate_threshold)
+        None
+        if not variant_settings["use_speaker_matching"]
+        else (
+            pipeline.speaker_gate_threshold
+            if command_speaker_gate_threshold is None
+            else float(command_speaker_gate_threshold)
+        )
     )
+    pipeline.presence_activity_margin_threshold = (
+        original_values["presence_activity_margin_threshold"]
+        if variant_settings["use_presence"]
+        else None
+    )
+    if not variant_settings["use_speaker_matching"]:
+        pipeline.target_kws = None
+        pipeline.target_kws_secondary = None
+        pipeline.speaker_fusion_mode = "none"
+    if not variant_settings["use_wake_smoothing"]:
+        pipeline.kws_smoothing_window = 1
+        pipeline.kws_required_hits = 1
+        pipeline.kws_refractory_calls = 0
     pipeline.intent_confidence_threshold = (
         None if intent_confidence_threshold is None else float(intent_confidence_threshold)
     )
     pipeline.eval()
-    with torch.inference_mode():
-        for start in range(0, max(1, len(mixture)), hop_samples):
-            end = min(start + window_samples, len(mixture))
-            mix_window = np.zeros(window_samples, dtype=np.float32)
-            mc_window = np.zeros((multichannel.shape[1], window_samples), dtype=np.float32)
-            if end > start:
-                mix_window[: end - start] = mixture[start:end]
-                mc_window[:, : end - start] = multichannel[start:end].T
-            mix_tensor = torch.from_numpy(mix_window).to(device).unsqueeze(0)
-            mc_tensor = torch.from_numpy(mc_window).to(device).unsqueeze(0)
-            output, state = pipeline.forward(
-                mix_tensor,
-                enrollment_tensor,
-                state,
-                multichannel=mc_tensor,
-            )
-            center = start / session.sample_rate + stage1_seconds / 2.0
-            row = {
-                "window_index": len(windows),
-                "window_start_seconds": start / session.sample_rate,
-                "window_center_seconds": center,
-                "accepted": bool(output.accepted),
-                "presence_probability": output.presence_probability,
-                "speaker_similarity": output.speaker_similarity,
-                "wake_probability": output.wake_probability,
-                "wake_detected": bool(output.wake_detected),
-                "command_pending": bool(output.command_pending),
-                "intent_ready": bool(output.intent_ready),
-                "command_suppressed": bool(output.command_suppressed),
-                "intent": None,
-                "intent_confidence": None,
-                "action": output.action.action if output.action is not None else None,
-            }
-            if output.intent_logits is not None:
-                probabilities = torch.softmax(output.intent_logits, dim=-1)[0]
-                predicted_id = str(int(probabilities.argmax().item()))
-                row["intent_id"] = predicted_id
-                row["intent"] = (
-                    pipeline.label_map.get(predicted_id, predicted_id)
-                    if pipeline.label_map
-                    else predicted_id
+    try:
+        with torch.inference_mode():
+            # Do not turn the final partial recording tail into a synthetic
+            # zero-padded negative window. This matches StreamingRunner's
+            # full-context cadence and prevents tail-only false accepts.
+            for start in full_context_window_starts(len(mixture), window_samples, hop_samples):
+                end = min(start + window_samples, len(mixture))
+                mix_window = np.zeros(window_samples, dtype=np.float32)
+                mc_window = np.zeros((multichannel.shape[1], window_samples), dtype=np.float32)
+                playback_window = None
+                if end > start:
+                    mix_window[: end - start] = mixture[start:end]
+                    mc_window[:, : end - start] = multichannel[start:end].T
+                    if playback is not None:
+                        playback_window = np.zeros(window_samples, dtype=np.float32)
+                        playback_window[: end - start] = playback[start:end]
+                elif playback is not None:
+                    playback_window = np.zeros(window_samples, dtype=np.float32)
+                mix_tensor = torch.from_numpy(mix_window).to(device).unsqueeze(0)
+                mc_tensor = torch.from_numpy(mc_window).to(device).unsqueeze(0)
+                playback_tensor = (
+                    None
+                    if playback_window is None
+                    else torch.from_numpy(playback_window).to(device).unsqueeze(0)
                 )
-                row["intent_confidence"] = float(probabilities.max().cpu())
-            windows.append(row)
-            if output.wake_detected:
-                wake_events.append(row)
-            if output.intent_ready:
-                command_events.append(row)
+                output, state = pipeline.forward(
+                    mix_tensor,
+                    enrollment_tensor,
+                    state,
+                    multichannel=mc_tensor,
+                    pre_extracted=(mix_tensor if not variant_settings["use_tse"] else None),
+                    playback_ref=playback_tensor,
+                )
+                center = start / session.sample_rate + stage1_seconds / 2.0
+                row = {
+                    "window_index": len(windows),
+                    "window_start_seconds": start / session.sample_rate,
+                    "window_end_seconds": start / session.sample_rate + stage1_seconds,
+                    "window_center_seconds": center,
+                    "accepted": bool(output.accepted),
+                    "presence_probability": output.presence_probability,
+                    "speaker_similarity": output.speaker_similarity,
+                    "wake_probability": output.wake_probability,
+                    "wake_detected": bool(output.wake_detected),
+                    "command_pending": bool(output.command_pending),
+                    "intent_ready": bool(output.intent_ready),
+                    "command_suppressed": bool(output.command_suppressed),
+                    "intent": None,
+                    "intent_confidence": None,
+                    "action": output.action.action if output.action is not None else None,
+                }
+                if output.intent_logits is not None:
+                    probabilities = torch.softmax(output.intent_logits, dim=-1)[0]
+                    predicted_id = str(int(probabilities.argmax().item()))
+                    row["intent_id"] = predicted_id
+                    row["intent"] = (
+                        pipeline.label_map.get(predicted_id, predicted_id)
+                        if pipeline.label_map
+                        else predicted_id
+                    )
+                    row["intent_confidence"] = float(probabilities.max().cpu())
+                windows.append(row)
+                if output.wake_detected:
+                    wake_events.append(row)
+                if output.intent_ready:
+                    command_events.append(row)
+    finally:
+        for name, value in original_values.items():
+            setattr(pipeline, name, value)
 
     driver_wakes = [row for row in session.annotations if row.get("event") == "driver_wake"]
     driver_commands = [row for row in session.annotations if row.get("event") == "driver_command"]
@@ -527,7 +653,13 @@ def run_session(
             (index, event)
             for index, event in enumerate(wake_events)
             if index not in used_wake_indices
-            and event_contains(float(event["window_center_seconds"]), truth, tolerance=max(0.5, hop_seconds))
+            and event_overlaps_window(
+                event,
+                truth,
+                stage1_seconds,
+                tolerance_before=max(0.5, hop_seconds),
+                tolerance_after=max(0.5, hop_seconds),
+            )
         ]
         if candidates:
             index, event = min(candidates, key=lambda item: item[1]["window_center_seconds"])
@@ -563,7 +695,13 @@ def run_session(
         candidates = [
             match
             for match in command_matches
-            if event_contains(float(match["prediction"]["window_center_seconds"]), truth, tolerance=4.0)
+            if event_overlaps_window(
+                match["prediction"],
+                truth,
+                stage1_seconds,
+                tolerance_before=4.0,
+                tolerance_after=4.0,
+            )
         ]
         if not candidates:
             command_details.append(
@@ -603,7 +741,10 @@ def run_session(
     negative_wakes = [
         event
         for event in unmatched_wakes
-        if any(event_contains(float(event["window_center_seconds"]), truth, tolerance=0.0) for truth in eligible_negative_events)
+        if any(
+            event_overlaps_window(event, truth, stage1_seconds)
+            for truth in eligible_negative_events
+        )
     ]
     negative_exposure_seconds = _union_seconds(
         [
@@ -625,10 +766,16 @@ def run_session(
     duration_hours = session.duration_seconds / 3600.0
     result = {
         "session_id": session.session_id,
+        "variant": variant,
         "driver_id": session.driver_id,
         "split": session.split,
         "conditions": sorted({event_condition(row, session) for row in session.annotations}),
         "duration_seconds": session.duration_seconds,
+        "capture": {
+            "recorded_channel_count": int(session.audio.shape[1]),
+            "model_microphone_count": int(multichannel.shape[1]),
+            "playback_reference_used": playback is not None,
+        },
         "driver_wake_events": len(driver_wakes),
         "driver_wakes_detected": len(matched_wakes),
         "driver_wake_recall": len(matched_wakes) / max(len(driver_wakes), 1),
@@ -829,6 +976,7 @@ def evaluate_group(
     intent_confidence_threshold: float | None,
     device: torch.device,
     save_windows: bool,
+    variant: str = "full",
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     details = [
         run_session(
@@ -843,10 +991,118 @@ def evaluate_group(
             intent_confidence_threshold=intent_confidence_threshold,
             device=device,
             save_windows=save_windows,
+            variant=variant,
         )
         for session in sessions
     ]
     return aggregate(details), details
+
+
+def evaluate_direct_command_oracle(
+    pipeline: Any,
+    sessions: list[Session],
+    *,
+    device: torch.device,
+    use_tse: bool = True,
+) -> dict[str, Any]:
+    """Score labeled command windows without wake-word gating.
+
+    This is intentionally an oracle segmentation baseline: the evaluator is
+    given the annotated command interval and therefore does not measure wake
+    recall, false accepts, endpointing, or action safety. It answers only how
+    much command intent accuracy changes when wake-word decisions are removed.
+    """
+
+    num_mics = int(getattr(pipeline.stage1, "frontend", None).num_mics) if getattr(pipeline.stage1, "frontend", None) is not None else 1
+    stage1_seconds = float(getattr(pipeline, "segment_seconds", 3.0))
+    window_samples = max(1, int(round(stage1_seconds * SAMPLE_RATE)))
+    total = 0
+    correct = 0
+    by_condition: dict[str, dict[str, int]] = defaultdict(lambda: {"commands": 0, "correct": 0})
+    predictions: list[dict[str, Any]] = []
+    pipeline.eval()
+    with torch.inference_mode():
+        for session in sessions:
+            microphones, playback = split_capture_audio(
+                session.audio,
+                session.metadata,
+                model_mics=num_mics,
+            )
+            microphones = fit_channels(microphones, num_mics)
+            mixture = microphones.mean(axis=1).astype(np.float32)
+            enrollment = load_enrollment(session, SAMPLE_RATE)
+            enrollment_tensor = torch.from_numpy(enrollment).to(device).unsqueeze(0)
+            for truth in [row for row in session.annotations if row.get("event") == "driver_command"]:
+                center = 0.5 * (event_time(truth, "start_s") + event_time(truth, "end_s"))
+                start = max(0, min(len(mixture), int(round(center * SAMPLE_RATE - window_samples / 2.0))))
+                end = min(len(mixture), start + window_samples)
+                mix_window = np.zeros(window_samples, dtype=np.float32)
+                mc_window = np.zeros((microphones.shape[1], window_samples), dtype=np.float32)
+                count = max(0, end - start)
+                if count:
+                    mix_window[:count] = mixture[start:end]
+                    mc_window[:, :count] = microphones[start:end].T
+                playback_tensor = None
+                if playback is not None:
+                    playback_window = np.zeros(window_samples, dtype=np.float32)
+                    if count:
+                        playback_window[:count] = playback[start:end]
+                    playback_tensor = torch.from_numpy(playback_window).to(device).unsqueeze(0)
+                mix_tensor = torch.from_numpy(mix_window).to(device).unsqueeze(0)
+                mc_tensor = torch.from_numpy(mc_window).to(device).unsqueeze(0)
+                extracted, _, _, _ = pipeline.stage1(
+                    mix_tensor,
+                    enrollment_tensor,
+                    multichannel=mc_tensor,
+                    playback_ref=playback_tensor,
+                )
+                intent_input = extracted if use_tse else mix_tensor
+                intent_input = normalize_extracted_waveform(intent_input)
+                probabilities = torch.softmax(
+                    pipeline.intent(pipeline._prepare_intent_input(intent_input)),
+                    dim=-1,
+                )[0]
+                predicted_id = str(int(probabilities.argmax().item()))
+                predicted_intent = (
+                    pipeline.label_map.get(predicted_id, predicted_id)
+                    if pipeline.label_map
+                    else predicted_id
+                )
+                expected_intent = str(truth.get("expected_intent"))
+                condition = event_condition(truth, session)
+                is_correct = predicted_intent == expected_intent
+                total += 1
+                correct += int(is_correct)
+                by_condition[condition]["commands"] += 1
+                by_condition[condition]["correct"] += int(is_correct)
+                predictions.append(
+                    {
+                        "session_id": session.session_id,
+                        "driver_id": session.driver_id,
+                        "condition": condition,
+                        "expected_intent": expected_intent,
+                        "predicted_intent": predicted_intent,
+                        "confidence": float(probabilities.max().cpu()),
+                        "correct": bool(is_correct),
+                    }
+                )
+    return {
+        "oracle_segmentation": True,
+        "wake_word_steps_enabled": False,
+        "use_tse": bool(use_tse),
+        "sessions": len(sessions),
+        "driver_command_events": total,
+        "correct_commands": correct,
+        "command_accuracy": correct / max(total, 1),
+        "by_condition": {
+            condition: {
+                **counts,
+                "command_accuracy": counts["correct"] / max(counts["commands"], 1),
+            }
+            for condition, counts in sorted(by_condition.items())
+        },
+        "predictions": predictions,
+    }
 
 
 def choose_thresholds(
@@ -1012,6 +1268,14 @@ def main() -> int:
         help="safety limit used during tuning and the held-out production gate",
     )
     parser.add_argument("--max-false-actions-per-hour", type=float, default=1.0)
+    parser.add_argument(
+        "--run-ablations",
+        action="store_true",
+        help=(
+            "after freezing full-system tuning thresholds, evaluate the real-driver "
+            "test sessions with each component ablation and a command-only oracle"
+        ),
+    )
     parser.add_argument("--output", type=Path, default=REPO_ROOT / "logs/real_driver_pipeline_evaluation.json")
     args = parser.parse_args()
 
@@ -1086,6 +1350,40 @@ def main() -> int:
         device=device,
         save_windows=True,
     )
+    ablation_study = None
+    if args.run_ablations:
+        ablation_variants: dict[str, Any] = {}
+        for variant_name in ABLATION_VARIANTS:
+            if variant_name == "full":
+                continue
+            variant_summary, variant_details = evaluate_group(
+                pipeline,
+                test,
+                hop_seconds=float(args.hop_seconds),
+                presence_threshold=selected_presence,
+                kws_threshold=selected_kws,
+                command_presence_threshold=float(selected["command_presence_threshold"]),
+                speaker_gate_threshold=selected["speaker_gate_threshold"],
+                command_speaker_gate_threshold=selected["command_speaker_gate_threshold"],
+                intent_confidence_threshold=selected["intent_confidence_threshold"],
+                device=device,
+                save_windows=False,
+                variant=variant_name,
+            )
+            ablation_variants[variant_name] = {
+                "summary": variant_summary,
+                "sessions": variant_details,
+            }
+        ablation_study = {
+            "threshold_source": "full-system tuning split; held-out ablations use the frozen full-system operating point",
+            "variants": ablation_variants,
+            "direct_command_oracle": evaluate_direct_command_oracle(
+                pipeline,
+                test,
+                device=device,
+                use_tse=True,
+            ),
+        }
     study_size_ready = (
         validation["session_count"] >= 3
         and len(validation["drivers"]) >= 3
@@ -1170,6 +1468,7 @@ def main() -> int:
             "summary": test_summary,
             "sessions": test_details,
         },
+        "ablation_study": ablation_study,
         "validation": validation,
         "limitation": (
             "A pilot result is not broad real-world reliability evidence. Report driver/session counts and exposure "

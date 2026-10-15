@@ -171,6 +171,7 @@ def main() -> int:
         cfg["model"]["num_layers"],
         num_classes,
         bool(cfg["model"].get("normalize_input", False)),
+        bidirectional=bool(cfg["model"].get("bidirectional", True)),
     ).to(device)
     pretrained_checkpoint = cfg.get("pretrained_checkpoint")
     if pretrained_checkpoint:
@@ -214,6 +215,11 @@ def main() -> int:
             with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
                 logits = model(wav)
                 loss = F.cross_entropy(logits.float(), target)
+            if not torch.isfinite(loss):
+                raise FloatingPointError(
+                    f"non-finite intent loss at epoch={epoch}; "
+                    f"amp={use_amp} batch_size={target.numel()}"
+                )
             if use_amp:
                 scaler.scale(loss).backward()
                 scaler.unscale_(opt)

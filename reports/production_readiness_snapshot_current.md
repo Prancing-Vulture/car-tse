@@ -1,6 +1,6 @@
 # Production-readiness snapshot
 
-Generated: `2026-10-10T23:27:27.560497+00:00`
+Generated: `2026-10-13T21:38:26.791039+00:00`
 
 Status: **research_engineering_preview**
 
@@ -24,10 +24,11 @@ This report is generated from the selected runtime configuration and the real-dr
 
 ## Release identity
 
-- Git revision: `a2e62deae868b31826dfd111f3bb5ba769e2656c`
+- Git revision: `1c165b7ba59ed34de6efa6cd899f0fdd718b896d`
 - Worktree clean: **False**
-- Changed files: **177**
-- Runtime config SHA-256: `9e2bcd4afac645a3d961103e86028880378c53f4ecaa6362853419abf5610f67`
+- Changed files: **100**
+- Runtime config SHA-256: `000a83a2f7deaf6bb3d409110a5ec8702a9cdb6de1bf0470693ccd4508bcca55`
+- Evaluated-state manifest: `D:\Prawin_New\tse\car-tse-main\logs\release_manifest_current.json` (present=True)
 
 Checkpoint SHA-256 values are stored in the machine-readable JSON snapshot. A production sign-off must archive this revision, configuration hash, and checkpoint manifest together.
 
@@ -42,11 +43,11 @@ The evaluator must not be described as a real-driver benchmark until this valida
 
 ## Reproducibility artifacts
 
-- Runtime config: `D:\Prawin_New\tse\car-tse-main\configs\eval_end_to_end_cavemove_target_kws_dual_domain_stage2_hardneg_aishell5_neg_safety_splitgate_candidate.yaml`
-- Target-absent diagnostic: `D:\Prawin_New\tse\car-tse-main\logs\aishell5_continuous_targetkws_hardneg_aishell5_ft1_p015_sg024_kws050_smooth22_eval2_all18_dedup_2026-10-11.json`
-- Full-pipeline latency: `D:\Prawin_New\tse\car-tse-main\logs\full_pipeline_latency_2026-10-11.json`
-- GPU latency detail: `D:\Prawin_New\tse\car-tse-main\logs\full_pipeline_latency_gpu_2026-10-11.json`
-- CPU latency detail: `D:\Prawin_New\tse\car-tse-main\logs\full_pipeline_latency_cpu_2026-10-11.json`
+- Runtime config: `D:\Prawin_New\tse\car-tse-main\configs\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml`
+- Target-absent diagnostic: `D:\Prawin_New\tse\car-tse-main\logs\aishell5_target_absent_compact_cabin_smart_thr030_hop025_hits4_all18_2026-10-13.json`
+- Full-pipeline latency: `D:\Prawin_New\tse\car-tse-main\logs\full_pipeline_latency_compact_cabin_smart_cpu_2026-10-12.json`
+- GPU latency detail: `D:\Prawin_New\tse\car-tse-main\logs\full_pipeline_latency_compact_cabin_smart_gpu_2026-10-12.json`
+- CPU latency detail: `D:\Prawin_New\tse\car-tse-main\logs\component_latency_cpu_fp32_2026-10-12.json`
 - Regression artifacts: `D:\Prawin_New\tse\car-tse-main\logs\stage1_dual_domain_regression_full_2026-10-10.json`; `D:\Prawin_New\tse\car-tse-main\logs\stage1_dual_domain_regression_ft2_2026-10-11.json`
 
 Decision: Do not label production-ready: the minimum speaker-disjoint pilot, matching capture hardware, and/or a frozen held-out test are missing.

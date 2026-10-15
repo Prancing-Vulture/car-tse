@@ -42,6 +42,23 @@ class PipelineState:
     reference_speaker_embedding: torch.Tensor | None = None
     presence_enrollment_embedding: torch.Tensor | None = None
     target_kws_enrollment_embedding: torch.Tensor | None = None
+    # The normalized Stage-1 frame that produced the accepted wake.  It is
+    # retained only for the opt-in endpoint-aware command window strategy;
+    # the historical fixed-window path leaves this unset.
+    wake_context: torch.Tensor | None = None
+    # Number of post-wake command candidates evaluated by the opt-in
+    # confidence-buffered endpoint.  Keeping this in streaming state avoids
+    # committing a low-confidence partial command and then re-arming on the
+    # overlapping tail of the same utterance.
+    command_candidate_calls: int = 0
+    # Best intent candidate observed while the opt-in command buffer is open.
+    # This prevents a weak trailing hop from replacing a strong earlier one.
+    command_best_confidence: float = -1.0
+    command_best_logits: torch.Tensor | None = None
+    # Per-hop class/confidence history used for a stable buffered decision.
+    command_candidate_history: list[tuple[int, float, torch.Tensor]] = field(
+        default_factory=list
+    )
 
 
 @dataclass
@@ -122,8 +139,14 @@ class InCarPipeline:
         kws_refractory_calls: int = 0,
         intent_sample_rate: int = 16000,
         intent_input_seconds: float = 2.0,
+        intent_window_offset_seconds: float = 0.0,
         command_timeout_calls: int = 4,
         command_delay_calls: int = 0,
+        command_window_strategy: str = "fixed",
+        command_buffer_calls: int = 2,
+        command_confidence_commit_threshold: float = 0.90,
+        command_endpoint_kws_hop_seconds: float = 0.25,
+        command_endpoint_margin_seconds: float = 0.50,
         command_presence_threshold: float | None = None,
         presence_activity_margin_threshold: float | None = None,
         presence_activity_margin_mode: str = "independent_top",
@@ -162,8 +185,31 @@ class InCarPipeline:
         self.kws_refractory_calls = max(0, int(kws_refractory_calls))
         self.intent_sample_rate = int(intent_sample_rate)
         self.intent_input_seconds = max(0.01, float(intent_input_seconds))
+        self.intent_window_offset_seconds = max(0.0, float(intent_window_offset_seconds))
         self.command_timeout_calls = max(1, int(command_timeout_calls))
         self.command_delay_calls = max(0, int(command_delay_calls))
+        self.command_window_strategy = str(command_window_strategy).lower()
+        if self.command_window_strategy not in {
+            "fixed",
+            "kws_trim",
+            "kws_trim_latest",
+            "confidence_buffered",
+            "confidence_buffered_hybrid",
+        }:
+            raise ValueError(
+                "command_window_strategy must be 'fixed', 'kws_trim', 'kws_trim_latest', "
+                "or 'confidence_buffered_hybrid'"
+            )
+        self.command_buffer_calls = max(1, int(command_buffer_calls))
+        self.command_confidence_commit_threshold = min(
+            max(float(command_confidence_commit_threshold), 0.0), 1.0
+        )
+        self.command_endpoint_kws_hop_seconds = max(
+            0.01, float(command_endpoint_kws_hop_seconds)
+        )
+        self.command_endpoint_margin_seconds = max(
+            0.0, float(command_endpoint_margin_seconds)
+        )
         self.command_presence_threshold = (
             float(presence_threshold)
             if command_presence_threshold is None
@@ -245,10 +291,13 @@ class InCarPipeline:
         ckpt_kws: Path,
         ckpt_intent: Path,
         kws_sample_rate: int = 16000,
+        kws_n_mels: int = 40,
+        kws_channels: list[int] | None = None,
         kws_num_classes: int = 2,
         intent_sample_rate: int = 16000,
         intent_type: str = "crnn",
         intent_normalize_input: bool = False,
+        intent_bidirectional: bool = True,
         intent_n_mels: int = 80,
         intent_hidden: int = 256,
         intent_num_layers: int = 2,
@@ -298,11 +347,21 @@ class InCarPipeline:
             presence = PresenceHead()
         else:
             raise ValueError(f"Unsupported presence_type: {presence_type}")
-        kws = KWSModel(sample_rate=kws_sample_rate, num_classes=kws_num_classes)
+        kws = KWSModel(
+            sample_rate=kws_sample_rate,
+            n_mels=int(kws_n_mels),
+            channels=kws_channels,
+            num_classes=kws_num_classes,
+        )
         secondary_checkpoint = pipeline_kwargs.pop("kws_secondary_checkpoint", None)
         kws_secondary = None
         if secondary_checkpoint:
-            kws_secondary = KWSModel(sample_rate=kws_sample_rate, num_classes=kws_num_classes)
+            kws_secondary = KWSModel(
+                sample_rate=kws_sample_rate,
+                n_mels=int(kws_n_mels),
+                channels=kws_channels,
+                num_classes=kws_num_classes,
+            )
         target_kws_checkpoint = pipeline_kwargs.pop("target_kws_checkpoint", None)
         target_kws_secondary_checkpoint = pipeline_kwargs.pop("target_kws_secondary_checkpoint", None)
         compact_speaker_verifier_checkpoint = pipeline_kwargs.pop(
@@ -370,6 +429,7 @@ class InCarPipeline:
                 hidden=int(intent_hidden),
                 num_layers=int(intent_num_layers),
                 normalize_input=bool(intent_normalize_input),
+                bidirectional=bool(intent_bidirectional),
             )
         load_checkpoint(ckpt_presence, presence)
         load_checkpoint(ckpt_kws, kws)
@@ -404,14 +464,85 @@ class InCarPipeline:
     def _reset_command_capture(self, state: PipelineState) -> None:
         state.awaiting_command = False
         state.command_wait_calls = 0
+        state.command_candidate_calls = 0
+        state.command_best_confidence = -1.0
+        state.command_best_logits = None
+        state.command_candidate_history.clear()
+        state.wake_context = None
+
+    def _fit_intent_input(self, wav: torch.Tensor, offset_samples: int = 0) -> torch.Tensor:
+        """Crop/pad a waveform to the fixed Stage-4 input length."""
+
+        samples = max(1, int(round(self.intent_sample_rate * self.intent_input_seconds)))
+        offset = max(0, int(offset_samples))
+        if wav.shape[-1] >= samples + offset:
+            return wav[..., offset : offset + samples]
+        if wav.shape[-1] >= samples:
+            return wav[..., :samples]
+        return torch.nn.functional.pad(wav, (0, samples - wav.shape[-1]))
 
     def _prepare_intent_input(self, wav: torch.Tensor) -> torch.Tensor:
         """Return the fixed-length post-wake command window expected by Stage 4."""
 
-        samples = max(1, int(round(self.intent_sample_rate * self.intent_input_seconds)))
+        offset = int(round(self.intent_sample_rate * self.intent_window_offset_seconds))
+        return self._fit_intent_input(wav, offset)
+
+    def _prepare_kws_input(self, wav: torch.Tensor) -> torch.Tensor:
+        if self.kws_input_seconds <= 0:
+            return wav
+        samples = max(1, int(round(self.kws_sample_rate * self.kws_input_seconds)))
         if wav.shape[-1] >= samples:
             return wav[..., :samples]
         return torch.nn.functional.pad(wav, (0, samples - wav.shape[-1]))
+
+    def _regular_kws_score(self, wav: torch.Tensor) -> float:
+        """Score one local KWS crop without changing temporal wake state."""
+
+        logits = self.kws(self._prepare_kws_input(wav))
+        score = float(torch.softmax(logits, dim=-1)[..., self.wake_class_id].mean().item())
+        if self.kws_secondary is not None:
+            secondary = torch.softmax(
+                self.kws_secondary(self._prepare_kws_input(wav)), dim=-1
+            )[..., self.wake_class_id].mean().item()
+            if self.kws_fusion_mode == "min":
+                score = min(score, float(secondary))
+            elif self.kws_fusion_mode == "max":
+                score = max(score, float(secondary))
+            elif self.kws_fusion_mode == "geomean":
+                score = float(max(score, 0.0) * max(float(secondary), 0.0)) ** 0.5
+            else:
+                score = self.kws_fusion_alpha * score + (1.0 - self.kws_fusion_alpha) * float(secondary)
+        return score
+
+    def _prepare_kws_trimmed_intent_input(self, wav: torch.Tensor) -> torch.Tensor | None:
+        """Trim the accepted wake frame after its last local KWS hit.
+
+        This is deliberately opt-in.  It uses the ordinary KWS model as a
+        local endpoint detector and leaves the temporal wake state untouched.
+        If no local hit is visible, callers should fall back to the current
+        streaming frame, which covers commands that begin after the wake frame.
+        """
+
+        kws_samples = max(1, int(round(self.kws_sample_rate * self.kws_input_seconds)))
+        if wav.shape[-1] < kws_samples:
+            return None
+        hop_samples = max(
+            1, int(round(self.kws_sample_rate * self.command_endpoint_kws_hop_seconds))
+        )
+        last_start = max(0, int(wav.shape[-1] - kws_samples))
+        starts = list(range(0, last_start + 1, hop_samples))
+        if starts[-1] != last_start:
+            starts.append(last_start)
+        scores = [self._regular_kws_score(wav[..., start : start + kws_samples]) for start in starts]
+        active = [start for start, score in zip(starts, scores) if score >= self.kws_threshold]
+        if not active:
+            return None
+        margin = int(round(self.intent_sample_rate * self.command_endpoint_margin_seconds))
+        command_start = max(0, active[-1] + kws_samples - margin)
+        if command_start >= wav.shape[-1]:
+            return None
+        offset = int(round(self.intent_sample_rate * self.intent_window_offset_seconds))
+        return self._fit_intent_input(wav[..., command_start:], offset)
 
     def _prepare_compact_speaker_input(self, wav: torch.Tensor) -> torch.Tensor:
         """Return the one-second waveform expected by the compact verifier."""
@@ -528,7 +659,18 @@ class InCarPipeline:
         enrollment: torch.Tensor,
         state: PipelineState | None = None,
         multichannel: torch.Tensor | None = None,
+        pre_extracted: torch.Tensor | None = None,
+        playback_ref: torch.Tensor | None = None,
     ) -> tuple[PipelineOutput, PipelineState]:
+        """Run one streaming step.
+
+        ``pre_extracted`` is an opt-in evaluation hook for front-end
+        ablations.  When supplied, it is treated as the Stage-1 waveform and
+        the learned TSE forward pass is bypassed.  This lets a spatial
+        beamformer be compared with TSE under the same presence, speaker,
+        wake-word, intent, and action state machine.  It is deliberately not
+        enabled by any production configuration.
+        """
         state = state or PipelineState()
         mixture = mixture.to(self.device)
         enrollment = enrollment.to(self.device)
@@ -538,16 +680,28 @@ class InCarPipeline:
             enrollment = enrollment.unsqueeze(0)
         if multichannel is not None and multichannel.dim() == 2:
             multichannel = multichannel.unsqueeze(0)
-        pb = state.playback_ref
+        # ``state.playback_ref`` remains a backwards-compatible static hook.
+        # Streaming callers should pass the reference for the current window
+        # explicitly so a changing playback signal stays sample-aligned.
+        pb = playback_ref if playback_ref is not None else state.playback_ref
         if pb is not None:
             pb = pb.to(self.device)
         with torch.no_grad():
-            s1, _, _, _ = self.stage1(
-                mixture,
-                enrollment,
-                multichannel=multichannel.to(self.device) if multichannel is not None else None,
-                playback_ref=pb,
-            )
+            if pre_extracted is None:
+                s1, _, _, _ = self.stage1(
+                    mixture,
+                    enrollment,
+                    multichannel=multichannel.to(self.device) if multichannel is not None else None,
+                    playback_ref=pb,
+                )
+            else:
+                s1 = pre_extracted.to(self.device)
+                if s1.dim() == 1:
+                    s1 = s1.unsqueeze(0)
+                if s1.dim() != 2:
+                    raise ValueError(
+                        "pre_extracted must have shape [samples] or [batch, samples]"
+                    )
             if state.reference_speaker_embedding is None:
                 speaker_embedder = getattr(self.stage1, "speaker_embedding", None)
                 if callable(speaker_embedder):
@@ -721,10 +875,148 @@ class InCarPipeline:
                         speaker_similarity=speaker_similarity,
                     ), state
                 intent_input = self._prepare_intent_input(downstream_s1)
-                intent_logits = self.intent(intent_input)
-                intent_probability = torch.softmax(intent_logits, dim=-1)
-                intent_confidence = float(intent_probability.max(dim=-1).values.mean().item())
+                if self.command_window_strategy in {
+                    "kws_trim_latest",
+                    "confidence_buffered",
+                    "confidence_buffered_hybrid",
+                }:
+                    trimmed = self._prepare_kws_trimmed_intent_input(downstream_s1)
+                    if trimmed is None and state.wake_context is not None:
+                        trimmed = self._prepare_kws_trimmed_intent_input(state.wake_context)
+                elif self.command_window_strategy == "kws_trim" and state.wake_context is not None:
+                    trimmed = self._prepare_kws_trimmed_intent_input(state.wake_context)
+                else:
+                    trimmed = None
+                if trimmed is not None:
+                    intent_input = trimmed
+                candidate_inputs = [intent_input]
                 if (
+                    self.command_window_strategy == "confidence_buffered_hybrid"
+                    and trimmed is not None
+                ):
+                    # The fixed crop and endpoint-trimmed crop make different
+                    # errors on short, overlapping command windows.  Keep
+                    # this dual-crop path explicit and opt-in; it costs an
+                    # additional intent forward and is a diagnostic candidate
+                    # until its latency and false-action trade-off are tested.
+                    candidate_inputs.insert(0, self._prepare_intent_input(downstream_s1))
+                candidate_outputs = []
+                for candidate_input in candidate_inputs:
+                    candidate_logits = self.intent(candidate_input)
+                    candidate_probability = torch.softmax(candidate_logits, dim=-1)
+                    candidate_confidence = float(
+                        candidate_probability.max(dim=-1).values.mean().item()
+                    )
+                    candidate_outputs.append(
+                        (candidate_confidence, candidate_logits, candidate_probability)
+                    )
+                intent_confidence, intent_logits, intent_probability = max(
+                    candidate_outputs, key=lambda item: item[0]
+                )
+                if self.command_window_strategy in {
+                    "confidence_buffered",
+                    "confidence_buffered_hybrid",
+                }:
+                    # A short confidence buffer prevents an overlapping,
+                    # partially spoken command from being committed before a
+                    # later frame contains the complete utterance.  A high
+                    # confidence candidate can still commit immediately to
+                    # preserve low latency; otherwise we wait for at most the
+                    # configured number of candidate evaluations.  This is an
+                    # opt-in strategy because its false-action trade-off must
+                    # be measured separately on cabin negatives.
+                    state.command_candidate_calls += 1
+                    if intent_confidence > state.command_best_confidence:
+                        state.command_best_confidence = intent_confidence
+                        state.command_best_logits = intent_logits.detach().clone()
+                    candidate_intent_id = int(torch.argmax(intent_logits, dim=-1).item())
+                    state.command_candidate_history.append(
+                        (candidate_intent_id, intent_confidence, intent_logits.detach().clone())
+                    )
+                    reached_limit = state.command_candidate_calls >= self.command_buffer_calls
+                    high_confidence = (
+                        intent_confidence >= self.command_confidence_commit_threshold
+                    )
+                    if not reached_limit and not high_confidence:
+                        return PipelineOutput(
+                            accepted=True,
+                            wake_detected=False,
+                            intent_logits=intent_logits,
+                            action=None,
+                            s1=s1,
+                            command_pending=True,
+                            intent_ready=False,
+                            presence_probability=presence_probability,
+                            presence_non_target_probability=presence_non_target_probability,
+                            presence_activity_margin=presence_activity_margin,
+                            speaker_similarity=speaker_similarity,
+                        ), state
+                    if state.command_best_logits is not None:
+                        # At the buffer limit, use the strongest candidate seen
+                        # across all post-wake hops, not necessarily the last
+                        # (which can be a trailing or partial frame).
+                        intent_confidence = state.command_best_confidence
+                        intent_logits = state.command_best_logits
+                    if reached_limit and state.command_candidate_history:
+                        # Endpointed command windows can straddle two nearby
+                        # intents.  Prefer the class with the longest
+                        # consecutive run across the buffered hops; break ties
+                        # by the earliest run so a later trailing frame cannot
+                        # replace a stable earlier command solely due to a tiny
+                        # confidence advantage.
+                        best_run: dict[int, tuple[int, int]] = {}
+                        best_by_class: dict[int, tuple[float, torch.Tensor]] = {}
+                        current_id: int | None = None
+                        current_run_length = 0
+                        current_run_start = 0
+                        for index, (candidate_id, confidence, logits) in enumerate(
+                            state.command_candidate_history
+                        ):
+                            if candidate_id == current_id:
+                                current_run_length += 1
+                            else:
+                                current_id = candidate_id
+                                current_run_length = 1
+                                current_run_start = index
+                            previous_run = best_run.get(candidate_id)
+                            current_run = (current_run_length, current_run_start)
+                            if previous_run is None or current_run[0] > previous_run[0] or (
+                                current_run[0] == previous_run[0]
+                                and current_run[1] < previous_run[1]
+                            ):
+                                best_run[candidate_id] = current_run
+                            previous = best_by_class.get(candidate_id)
+                            if previous is None or confidence > previous[0]:
+                                best_by_class[candidate_id] = (confidence, logits)
+                        selected_id = max(
+                            best_run,
+                            key=lambda candidate_id: (
+                                best_run[candidate_id][0],
+                                -best_run[candidate_id][1],
+                            ),
+                        )
+                        intent_confidence, intent_logits = best_by_class[selected_id]
+                    if (
+                        self.intent_confidence_threshold is not None
+                        and intent_confidence < self.intent_confidence_threshold
+                    ):
+                        self._reset_command_capture(state)
+                        state.kws_scores.clear()
+                        return PipelineOutput(
+                            accepted=True,
+                            wake_detected=False,
+                            intent_logits=intent_logits,
+                            action=None,
+                            s1=s1,
+                            command_pending=False,
+                            intent_ready=False,
+                            command_suppressed=True,
+                            presence_probability=presence_probability,
+                            presence_non_target_probability=presence_non_target_probability,
+                            presence_activity_margin=presence_activity_margin,
+                            speaker_similarity=speaker_similarity,
+                        ), state
+                elif (
                     self.intent_confidence_threshold is not None
                     and intent_confidence < self.intent_confidence_threshold
                 ):
@@ -764,13 +1056,7 @@ class InCarPipeline:
                     speaker_similarity=speaker_similarity,
                 ), state
 
-            kws_input = downstream_s1
-            if self.kws_input_seconds > 0:
-                kws_samples = max(1, int(round(self.kws_sample_rate * self.kws_input_seconds)))
-                if kws_input.shape[-1] >= kws_samples:
-                    kws_input = kws_input[..., :kws_samples]
-                else:
-                    kws_input = torch.nn.functional.pad(kws_input, (0, kws_samples - kws_input.shape[-1]))
+            kws_input = self._prepare_kws_input(downstream_s1)
             target_kws_score = None
             if self.target_kws is not None:
                 embedder = getattr(self.stage1, "speaker_embedding", None)
@@ -852,6 +1138,9 @@ class InCarPipeline:
             # frame enters the explicit command-capture branch above.
             state.awaiting_command = True
             state.command_wait_calls = 0
+            state.command_candidate_calls = 0
+            if self.command_window_strategy == "kws_trim":
+                state.wake_context = downstream_s1.detach().clone()
             state.kws_scores.clear()
             return PipelineOutput(
                 accepted=True,

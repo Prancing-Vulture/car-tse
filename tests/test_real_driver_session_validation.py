@@ -10,7 +10,11 @@ import soundfile as sf
 
 from scripts.data.validate_real_driver_sessions import validate
 from scripts.eval import eval_real_driver_sessions as real_driver_eval
-from scripts.eval.eval_real_driver_sessions import aggregate
+from scripts.eval.eval_real_driver_sessions import (
+    ABLATION_VARIANTS,
+    aggregate,
+    event_overlaps_window,
+)
 
 
 def _write_session(root: Path, *, session_id: str = "D01_S01", valid: bool = True) -> None:
@@ -179,3 +183,32 @@ def test_threshold_selection_requires_false_accept_and_false_action_limits(monke
         max_false_actions_per_hour=1.0,
     )
     assert selected["kws_threshold"] == 0.5
+
+
+def test_real_driver_ablation_matrix_has_declared_component_variants():
+    assert set(ABLATION_VARIANTS) == {
+        "full",
+        "no_tse",
+        "no_presence",
+        "no_speaker_matching",
+        "no_wake_smoothing",
+    }
+    assert ABLATION_VARIANTS["full"] == {
+        "use_tse": True,
+        "use_presence": True,
+        "use_speaker_matching": True,
+        "use_wake_smoothing": True,
+    }
+    assert ABLATION_VARIANTS["no_presence"]["use_presence"] is False
+    assert ABLATION_VARIANTS["no_speaker_matching"]["use_speaker_matching"] is False
+    assert ABLATION_VARIANTS["no_wake_smoothing"]["use_wake_smoothing"] is False
+
+
+def test_real_driver_matching_accepts_window_overlap_without_center_hit():
+    event = {
+        "window_start_seconds": 0.0,
+        "window_end_seconds": 3.0,
+        "window_center_seconds": 1.5,
+    }
+    truth = {"start_s": 2.8, "end_s": 3.1}
+    assert event_overlaps_window(event, truth, stage1_seconds=3.0)

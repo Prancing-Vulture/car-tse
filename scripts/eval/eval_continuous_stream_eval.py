@@ -34,6 +34,7 @@ import torch
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.io.audio import read_mono, read_multichannel
 from car_tse.pipeline.in_car_pipeline import PipelineState
+from car_tse.pipeline.windowing import full_context_window_starts
 from car_tse.train.utils import get_device
 from eval_continuous_full_pipeline_proxy import (
     add_at,
@@ -422,7 +423,7 @@ def main() -> int:
     window_count = 0
 
     start_time = time.perf_counter()
-    for start in range(0, max(1, len(mixture)), hop_samples):
+    for start in full_context_window_starts(len(mixture), window_samples, hop_samples):
         end = min(start + window_samples, len(mixture))
         mix_window = np.zeros(window_samples, dtype=np.float32)
         mc_window = np.zeros((multichannel.shape[1], window_samples), dtype=np.float32)

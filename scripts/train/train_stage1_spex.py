@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -17,7 +18,7 @@ from car_tse.data.datasets import TripletExtractionDataset
 from car_tse.losses.stage1 import stage1_loss
 from car_tse.metrics.si_sdr import si_sdr, si_sdr_per_example
 from car_tse.models.stage1_system import Stage1System
-from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, schedule_for_epoch, write_metrics
+from car_tse.train.utils import append_jsonl, get_device, load_checkpoint, save_checkpoint, schedule_for_epoch, write_metrics
 
 
 def collate(batch):
@@ -203,6 +204,20 @@ def main() -> int:
             load_checkpoint(init_path, model)
     out_dir = paths["checkpoint_root"] / cfg["name"]
     out_dir.mkdir(parents=True, exist_ok=True)
+    run_id = uuid.uuid4().hex
+    history_path = paths["log_root"] / cfg["name"] / f"epoch_metrics_{run_id}.jsonl"
+    write_metrics(
+        paths["log_root"] / cfg["name"] / f"run_metadata_{run_id}.json",
+        {
+            "run_id": run_id,
+            "run_name": cfg["name"],
+            "device": str(device),
+            "config": str(args.config),
+            "train_manifest": str(cfg["train"].get("manifest")),
+            "val_manifest": str(cfg["train"].get("val_manifest")),
+            "init_checkpoint": str(init_ckpt) if init_ckpt else None,
+        },
+    )
     use_amp = bool(cfg["train"].get("amp", False)) and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     best_si = float("-inf")
@@ -293,11 +308,19 @@ def main() -> int:
                 epoch,
                 {"train_si_sdr_s1": mean_si, "val": val_stats, "selection_metric": metric},
             )
-        write_metrics(
-            paths["log_root"] / cfg["name"] / "metrics_last.json",
-            {"epoch": epoch, "train_si_sdr_s1": mean_si, "val": val_stats, "best_metric": best_si},
-        )
-    write_metrics(paths["log_root"] / cfg["name"] / "train_last.json", {"best_metric": best_si})
+        metrics = {
+            "epoch": epoch,
+            "run_id": run_id,
+            "train_si_sdr_s1": mean_si,
+            "val": val_stats,
+            "best_metric": best_si,
+        }
+        write_metrics(paths["log_root"] / cfg["name"] / "metrics_last.json", metrics)
+        append_jsonl(history_path, metrics)
+    write_metrics(
+        paths["log_root"] / cfg["name"] / "train_last.json",
+        {"best_metric": best_si, "run_id": run_id, "history": str(history_path)},
+    )
     print(f"Done. Best checkpoint: {out_dir / 'best.pt'}")
     return 0
 

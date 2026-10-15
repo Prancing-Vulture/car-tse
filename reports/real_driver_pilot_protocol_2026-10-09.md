@@ -94,3 +94,16 @@ report before the held-out test is opened. The conservative false-accept rate
 counts every unmatched wake, including one outside a labeled interval, over
 that negative-exposure denominator; a label-covered interval-specific rate and
 the historical total-recording rate are also reported for diagnostics.
+
+The same evaluator can run the predeclared component ablations after the full
+system's tuning thresholds are frozen:
+
+```text
+python scripts/eval/eval_real_driver_sessions.py ... --run-ablations
+```
+
+The held-out ablation variants disable one boundary at a time (TSE, presence,
+speaker matching, or wake smoothing) while retaining the frozen full-system
+operating point. The report also includes a command-only oracle that receives
+the labeled command interval and therefore measures intent recognition without
+claiming wake-word or safety performance. It is not a deployable baseline.

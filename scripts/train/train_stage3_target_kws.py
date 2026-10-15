@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.io.manifest import read_jsonl
 from car_tse.models.kws_model import TargetSpeakerKWSModel
-from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, write_metrics
+from car_tse.train.utils import append_jsonl, get_device, load_checkpoint, save_checkpoint, write_metrics
 
 
 class CachedTargetSpeakerDataset(Dataset):
@@ -188,6 +189,21 @@ def main() -> int:
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     run_name = args.run_name or cfg["name"]
     out_dir = Path(paths["checkpoint_root"]) / run_name
+    run_id = uuid.uuid4().hex
+    history_path = Path(paths["log_root"]) / run_name / f"epoch_metrics_{run_id}.jsonl"
+    write_metrics(
+        Path(paths["log_root"]) / run_name / f"run_metadata_{run_id}.json",
+        {
+            "run_id": run_id,
+            "run_name": run_name,
+            "device": str(device),
+            "config": str(args.config),
+            "train_manifest": str(train_manifest),
+            "val_manifest": str(val_manifest),
+            "cache_dir": str(cache_dir),
+            "init_checkpoint": str(init_checkpoint) if init_checkpoint else None,
+        },
+    )
     best_f1 = float("-inf")
     bad_epochs = 0
     patience = int(cfg["train"].get("patience", 3))
@@ -232,6 +248,7 @@ def main() -> int:
         val = evaluate(model, val_loader, device)
         metrics = {
             "epoch": epoch,
+            "run_id": run_id,
             "train_accuracy": correct / max(total, 1),
             "val": val,
             "lr": scheduler.get_last_lr()[0],
@@ -240,6 +257,7 @@ def main() -> int:
             "distill_temperature": distill_temperature,
         }
         write_metrics(Path(paths["log_root"]) / run_name / "metrics_last.json", metrics)
+        append_jsonl(history_path, metrics)
         print(
             f"epoch {epoch} train_acc={metrics['train_accuracy']:.3f} "
             f"val_acc={val['accuracy']:.3f} val_f1={val['f1']:.3f} "
@@ -255,7 +273,10 @@ def main() -> int:
             if bad_epochs >= patience:
                 print(f"Early stopping after {epoch} epochs", flush=True)
                 break
-    write_metrics(Path(paths["log_root"]) / run_name / "train_last.json", {"best_f1": best_f1})
+    write_metrics(
+        Path(paths["log_root"]) / run_name / "train_last.json",
+        {"best_f1": best_f1, "run_id": run_id, "history": str(history_path)},
+    )
     print(f"Done. Best checkpoint: {out_dir / 'best.pt'}")
     return 0
 

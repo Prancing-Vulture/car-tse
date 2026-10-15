@@ -4,6 +4,13 @@ Date: 2026-10-12
 System status: `research_engineering_preview` (`production_ready=false`)  
 Runtime identity: `configs/eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml`
 
+> **Backend-audit note (2026-10-14):** the Smart Speaker compact-gate rows in
+> this historical report were produced before the batched evaluator was fixed
+> to pass the loaded compact verifier. Use
+> `reports/compact_gate_backend_correction_2026-10-14.md` for the authoritative
+> compact open-set numbers. The AISHELL compact-cabin rows use a separate
+> evaluator path and remain separately identified.
+
 Promoted checkpoint roles:
 
 | Stage | Checkpoint | Parameters |

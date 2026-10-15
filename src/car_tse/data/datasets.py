@@ -289,7 +289,16 @@ class KWSDataset(Dataset):
                 try:
                     cached = np.load(cache_path, mmap_mode="r", allow_pickle=False)
                     expected_shape = (len(self.rows), self.num_samples)
-                    if tuple(cached.shape) == expected_shape:
+                    # A longer cached waveform is still valid: the common
+                    # segment_waveform call below performs the deterministic
+                    # validation crop (or a training-time random crop).  This
+                    # lets short-window experiments reuse a longer aligned
+                    # TSE cache instead of silently falling back to raw audio.
+                    if (
+                        cached.ndim == 2
+                        and cached.shape[0] == expected_shape[0]
+                        and cached.shape[1] >= expected_shape[1]
+                    ):
                         self.waveform_cache = cached
                 except (OSError, ValueError):
                     self.waveform_cache = None
@@ -406,7 +415,13 @@ class IntentDataset(Dataset):
                 try:
                     cached = np.load(cache_path, mmap_mode="r", allow_pickle=False)
                     expected_shape = (len(self.rows), self.num_samples)
-                    if tuple(cached.shape) == expected_shape:
+                    # Reuse a longer aligned cache for a shorter command
+                    # window; segment_waveform below performs the crop.
+                    if (
+                        cached.ndim == 2
+                        and cached.shape[0] == expected_shape[0]
+                        and cached.shape[1] >= expected_shape[1]
+                    ):
                         self.waveform_cache = cached
                 except (OSError, ValueError):
                     self.waveform_cache = None

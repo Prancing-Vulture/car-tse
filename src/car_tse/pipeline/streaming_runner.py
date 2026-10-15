@@ -10,7 +10,8 @@ audio silently.
 ``StreamingRunner`` decouples capture from inference:
 
 * ``push`` accepts arbitrary-size mono/multichannel frames (for example from a
-  ``sounddevice`` callback) into a fixed-capacity ring buffer;
+  ``sounddevice`` callback) into a fixed-capacity ring buffer; an optional
+  sample-aligned playback-reference ring follows the same windows;
 * ``process_available`` runs the existing windowed pipeline whenever at least
   one new hop is buffered, retaining the configured non-causal context;
 * lag is bounded by ``max_lag_seconds``.  ``drop_oldest`` skips whole hops and
@@ -132,6 +133,7 @@ class StreamingRunner:
         max_windows_per_call: int = 8,
         device: torch.device | str | None = None,
         state: Any | None = None,
+        use_playback_ref: bool = False,
         lock: bool = True,
     ) -> None:
         if overload_policy not in ("drop_oldest", "catch_up"):
@@ -148,12 +150,14 @@ class StreamingRunner:
         self.max_windows_per_call = max(1, int(max_windows_per_call))
         self.device = torch.device(device) if device is not None else None
         self.state = state
+        self.use_playback_ref = bool(use_playback_ref)
 
         capacity = self.window_samples + self.max_lag_samples + self.hop_samples * (
             self.max_windows_per_call + 2
         )
         self.ring = RingBuffer(capacity, 1)
         self.multichannel_ring = RingBuffer(capacity, self.num_mics) if self.num_mics > 1 else None
+        self.playback_ref_ring = RingBuffer(capacity, 1) if self.use_playback_ref else None
 
         if isinstance(enrollment, torch.Tensor):
             self.enrollment = enrollment.detach().cpu().numpy().astype(np.float32)
@@ -187,19 +191,68 @@ class StreamingRunner:
         self,
         mixture: np.ndarray | torch.Tensor,
         multichannel: np.ndarray | torch.Tensor | None = None,
+        playback_ref: np.ndarray | torch.Tensor | None = None,
     ) -> float:
         """Append capture audio. Never blocks on inference.
 
         ``push`` is safe to call from a capture callback/thread: it only takes
         the ring-buffer locks, while ``process_available`` serializes inference
-        under a separate lock.
+        under a separate lock. When ``use_playback_ref`` was enabled at
+        construction, ``playback_ref`` must have the same number of samples as
+        ``mixture`` and is forwarded window-aligned to the pipeline.
         """
 
-        self.ring.push(mixture)
+        mixture_array = (
+            mixture.detach().cpu().numpy() if isinstance(mixture, torch.Tensor) else np.asarray(mixture)
+        )
+        if mixture_array.ndim == 0:
+            raise ValueError("mixture must contain at least one sample")
+        frame_samples = int(mixture_array.shape[0])
+
+        # Validate every aligned input before mutating any ring.  A malformed
+        # auxiliary frame must not leave the mixture ring ahead of the
+        # multichannel/playback rings, otherwise a later valid push can pair
+        # the wrong capture samples with a model window.
+        multichannel_array = None
         if multichannel is not None:
             if self.multichannel_ring is None:
                 raise ValueError("multichannel frame pushed but runner is mono")
-            self.multichannel_ring.push(multichannel)
+            multichannel_array = (
+                multichannel.detach().cpu().numpy()
+                if isinstance(multichannel, torch.Tensor)
+                else np.asarray(multichannel)
+            )
+            if (
+                multichannel_array.ndim != 2
+                or multichannel_array.shape[0] != frame_samples
+                or multichannel_array.shape[1] != self.num_mics
+            ):
+                raise ValueError(
+                    "multichannel must have shape "
+                    f"({frame_samples}, {self.num_mics})"
+                )
+
+        playback_array = None
+        if self.playback_ref_ring is not None:
+            if playback_ref is None:
+                raise ValueError("playback_ref is required when use_playback_ref=True")
+            playback_array = (
+                playback_ref.detach().cpu().numpy()
+                if isinstance(playback_ref, torch.Tensor)
+                else np.asarray(playback_ref)
+            )
+            if playback_array.ndim == 2:
+                playback_array = playback_array.mean(axis=1)
+            if playback_array.ndim != 1 or len(playback_array) != frame_samples:
+                raise ValueError("playback_ref must be a mono frame aligned with mixture")
+        elif playback_ref is not None:
+            raise ValueError("playback_ref supplied but runner was created without use_playback_ref")
+
+        self.ring.push(mixture_array)
+        if multichannel_array is not None:
+            self.multichannel_ring.push(multichannel_array)
+        if self.playback_ref_ring is not None:
+            self.playback_ref_ring.push(playback_array)
         return self.lag_seconds()
 
     def _drop_to(self, target: int) -> None:
@@ -242,15 +295,27 @@ class StreamingRunner:
             multichannel_tensor = torch.from_numpy(np.ascontiguousarray(mc.T))
             if self.device is not None:
                 multichannel_tensor = multichannel_tensor.to(self.device)
+        playback_tensor = None
+        if self.playback_ref_ring is not None:
+            try:
+                playback = self.playback_ref_ring.read_absolute(start, end)
+            except ValueError:
+                return None
+            playback_tensor = torch.from_numpy(np.ascontiguousarray(playback)).unsqueeze(0)
+            if self.device is not None:
+                playback_tensor = playback_tensor.to(self.device)
         mixture_tensor = torch.from_numpy(window)
         if self.device is not None:
             mixture_tensor = mixture_tensor.to(self.device)
         started = time.perf_counter()
+        forward_kwargs: dict[str, Any] = {"multichannel": multichannel_tensor}
+        if playback_tensor is not None:
+            forward_kwargs["playback_ref"] = playback_tensor
         output, self.state = self.forward(
             mixture_tensor,
             self._enrollment(),
             self.state,
-            multichannel=multichannel_tensor,
+            **forward_kwargs,
         )
         self.wall_seconds += time.perf_counter() - started
         self.processed_until = end
@@ -309,6 +374,8 @@ class StreamingRunner:
         self.ring = RingBuffer(self.ring.capacity, 1)
         if self.multichannel_ring is not None:
             self.multichannel_ring = RingBuffer(self.ring.capacity, self.num_mics)
+        if self.playback_ref_ring is not None:
+            self.playback_ref_ring = RingBuffer(self.ring.capacity, 1)
         self.processed_until = self.window_samples - self.hop_samples
         self.windows_processed = 0
         self.skipped_samples = 0

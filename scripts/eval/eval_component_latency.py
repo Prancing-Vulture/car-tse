@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.pipeline.in_car_pipeline import (
@@ -114,7 +115,11 @@ def main() -> int:
         kws_wave = normalized[..., : sample_rate].contiguous()
         verifier_enrollment = enrollment[..., :sample_rate].contiguous()
         verifier_extracted = normalized[..., :sample_rate].contiguous()
-        intent_wave = normalized[..., : int(round(sample_rate * 2.0))].contiguous()
+        intent_input_seconds = float(getattr(pipeline, "intent_input_seconds", 2.0))
+        intent_samples = max(1, int(round(sample_rate * intent_input_seconds)))
+        intent_wave = normalized[..., :intent_samples].contiguous()
+        if intent_wave.shape[-1] < intent_samples:
+            intent_wave = F.pad(intent_wave, (0, intent_samples - intent_wave.shape[-1]))
     s1 = s1.detach()
     extracted_embedding = extracted_embedding.detach()
     enrollment_embedding = enrollment_embedding.detach()
@@ -143,7 +148,8 @@ def main() -> int:
             "compact_speaker_verifier_2x1s",
             lambda: pipeline.compact_speaker_verifier(verifier_enrollment, verifier_extracted),
         )
-    timed("intent_wav2vec_2s", lambda: pipeline.intent(intent_wave))
+    intent_component_name = f"intent_wav2vec_{intent_input_seconds:g}s"
+    timed(intent_component_name, lambda: pipeline.intent(intent_wave))
 
     steady_state = PipelineState(target_kws_enrollment_embedding=enrollment_embedding)
 
@@ -203,6 +209,7 @@ def main() -> int:
         "precision": args.precision,
         "sample_rate": sample_rate,
         "context_seconds": context_seconds,
+        "intent_input_seconds": intent_input_seconds,
         "num_mics": num_mics,
         "warmup": int(args.warmup),
         "repeats": int(args.repeats),
@@ -235,7 +242,7 @@ def main() -> int:
             "target_kws_1s": "target_kws",
             "general_kws_1s": "kws",
             "compact_speaker_verifier_2x1s": "compact_speaker_verifier",
-            "intent_wav2vec_2s": "intent",
+        intent_component_name: "intent",
         }.get(name)
         count = parameters.get(parameter_key, 0) if parameter_key else 0
         print(

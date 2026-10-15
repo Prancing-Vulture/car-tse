@@ -29,6 +29,7 @@ from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.data.segment import segment_waveform
 from car_tse.io.audio import read_mono
 from car_tse.pipeline.in_car_pipeline import PipelineState
+from car_tse.pipeline.windowing import full_context_window_starts
 from car_tse.train.utils import get_device, write_metrics
 from eval_continuous_full_pipeline_proxy import load_pipeline, resolve_path
 from eval_aishell5_continuous_kws import evaluate_stream
@@ -59,7 +60,7 @@ def evaluate_file(
     windows = 0
 
     with torch.inference_mode():
-        for start in range(0, max(1, len(wav)), hop_samples):
+        for start in full_context_window_starts(len(wav), window_samples, hop_samples):
             end = min(start + window_samples, len(wav))
             mix_window = np.zeros(window_samples, dtype=np.float32)
             mc_window = np.zeros((num_mics, window_samples), dtype=np.float32)
@@ -107,6 +108,8 @@ def evaluate_file_batched(
     hop_seconds: float,
     batch_size: int,
     device: torch.device,
+    kws_thresholds: list[float] | None = None,
+    speaker_gate_thresholds: list[float] | None = None,
 ) -> dict[str, Any]:
     """Run the wake/presence portion in batches for fast corpus sweeps."""
 
@@ -133,12 +136,23 @@ def evaluate_file_batched(
         int(pipeline.kws_refractory_calls),
         float(pipeline.kws_input_seconds),
         float(pipeline.presence_top_fraction),
+        kws_thresholds=kws_thresholds,
+        speaker_gate_thresholds=speaker_gate_thresholds,
         speaker_fusion_mode=str(getattr(pipeline, "speaker_fusion_mode", "none")),
         speaker_fusion_center=float(getattr(pipeline, "speaker_fusion_center", 0.0)),
         speaker_fusion_scale=float(getattr(pipeline, "speaker_fusion_scale", 0.10)),
         speaker_fusion_alpha=float(getattr(pipeline, "speaker_fusion_alpha", 0.5)),
+        # The batched scorer has its own speaker-score path.  Pass the compact
+        # verifier explicitly when that backend is selected; otherwise a
+        # compact-configured run would silently fall back to the SpEx cosine
+        # scorer while still reporting the compact threshold in its metadata.
+        compact_speaker_verifier=(
+            getattr(pipeline, "compact_speaker_verifier", None)
+            if str(getattr(pipeline, "speaker_gate_backend", "spex")).lower() == "compact"
+            else None
+        ),
     )
-    return {
+    result = {
         "file": str(path),
         "speaker": path.parent.name,
         "source_sample_rate_hz": int(source_rate),
@@ -151,6 +165,13 @@ def evaluate_file_batched(
         "kws_only_smoothed_events": int(metrics["kws_only_smoothed_events"]),
         "kws_only_positive_windows": int(metrics.get("kws_only_smoothed_positive_windows", 0)),
     }
+    if kws_thresholds:
+        result["threshold_sweep"] = list(metrics.get("threshold_sweep", []))
+    if speaker_gate_thresholds:
+        result["speaker_gate_threshold_sweep"] = list(
+            metrics.get("speaker_gate_threshold_sweep", [])
+        )
+    return result
 
 
 def main() -> int:
@@ -186,8 +207,26 @@ def main() -> int:
     parser.add_argument("--hop-seconds", type=float, default=0.25)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--kws-threshold", type=float, default=None)
+    parser.add_argument(
+        "--kws-thresholds",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Replay these KWS thresholds from one shared forward pass",
+    )
+    parser.add_argument(
+        "--speaker-gate-thresholds",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Replay these speaker-gate thresholds from one shared forward pass",
+    )
     parser.add_argument("--speaker-gate-threshold", type=float, default=None)
-    parser.add_argument("--speaker-gate-backend", choices=("spex", "wav2vec", "auto"), default=None)
+    parser.add_argument(
+        "--speaker-gate-backend",
+        choices=("spex", "wav2vec", "compact", "auto"),
+        default=None,
+    )
     parser.add_argument("--speaker-fusion-mode", choices=("none", "min", "product", "mean"), default=None)
     parser.add_argument("--speaker-fusion-center", type=float, default=None)
     parser.add_argument("--speaker-fusion-scale", type=float, default=None)
@@ -244,6 +283,12 @@ def main() -> int:
             hop_seconds=float(args.hop_seconds),
             batch_size=int(args.batch_size),
             device=device,
+            kws_thresholds=[float(value) for value in args.kws_thresholds]
+            if args.kws_thresholds
+            else None,
+            speaker_gate_thresholds=[float(value) for value in args.speaker_gate_thresholds]
+            if args.speaker_gate_thresholds
+            else None,
         )
         results.append(row)
         if index == 1 or index % 50 == 0 or index == len(files):
@@ -259,6 +304,56 @@ def main() -> int:
     false_wake_positive_windows = sum(int(row.get("false_wake_positive_windows", 0)) for row in results)
     kws_only_wakes = sum(int(row["kws_only_smoothed_events"]) for row in results)
     kws_only_positive_windows = sum(int(row.get("kws_only_positive_windows", 0)) for row in results)
+
+    threshold_sweep = []
+    if args.kws_thresholds:
+        for index, threshold in enumerate(args.kws_thresholds):
+            entries = [
+                row["threshold_sweep"][index]
+                for row in results
+                if len(row.get("threshold_sweep", [])) > index
+            ]
+            full_events = sum(int(entry["full_path_smoothed_events"]) for entry in entries)
+            full_positive_windows = sum(
+                int(entry["full_path_smoothed_positive_windows"]) for entry in entries
+            )
+            kws_events = sum(int(entry["kws_only_smoothed_events"]) for entry in entries)
+            kws_positive_windows = sum(
+                int(entry["kws_only_smoothed_positive_windows"]) for entry in entries
+            )
+            threshold_sweep.append(
+                {
+                    "kws_threshold": float(threshold),
+                    "full_path_smoothed_events": full_events,
+                    "false_wakes_per_hour": full_events / max(duration_hours, 1.0e-8),
+                    "full_path_smoothed_positive_windows": full_positive_windows,
+                    "kws_only_smoothed_events": kws_events,
+                    "kws_only_false_wakes_per_hour": kws_events / max(duration_hours, 1.0e-8),
+                    "kws_only_smoothed_positive_windows": kws_positive_windows,
+                }
+            )
+
+    speaker_gate_threshold_sweep = []
+    if args.speaker_gate_thresholds:
+        for index, threshold in enumerate(args.speaker_gate_thresholds):
+            entries = [
+                row["speaker_gate_threshold_sweep"][index]
+                for row in results
+                if len(row.get("speaker_gate_threshold_sweep", [])) > index
+            ]
+            full_events = sum(int(entry["full_path_smoothed_events"]) for entry in entries)
+            full_positive_windows = sum(
+                int(entry["full_path_smoothed_positive_windows"])
+                for entry in entries
+            )
+            speaker_gate_threshold_sweep.append(
+                {
+                    "speaker_gate_threshold": float(threshold),
+                    "full_path_smoothed_events": full_events,
+                    "false_wakes_per_hour": full_events / max(duration_hours, 1.0e-8),
+                    "full_path_smoothed_positive_windows": full_positive_windows,
+                }
+            )
 
     action_sample_files = []
     if int(args.action_sample_files) > 0:
@@ -310,6 +405,10 @@ def main() -> int:
         "kws_threshold": float(pipeline.kws_threshold),
         "speaker_gate_threshold": pipeline.speaker_gate_threshold,
         "speaker_gate_backend": pipeline.speaker_gate_backend,
+        "compact_verifier_passed_to_batched_scorer": bool(
+            str(getattr(pipeline, "speaker_gate_backend", "spex")).lower() == "compact"
+            and getattr(pipeline, "compact_speaker_verifier", None) is not None
+        ),
         "speaker_fusion_mode": pipeline.speaker_fusion_mode,
         "speaker_fusion_center": pipeline.speaker_fusion_center,
         "speaker_fusion_scale": pipeline.speaker_fusion_scale,
@@ -322,6 +421,8 @@ def main() -> int:
         "kws_only_smoothed_events": kws_only_wakes,
         "kws_only_false_wakes_per_hour": kws_only_wakes / max(duration_hours, 1.0e-8),
         "kws_only_positive_windows": kws_only_positive_windows,
+        "threshold_sweep": threshold_sweep,
+        "speaker_gate_threshold_sweep": speaker_gate_threshold_sweep,
         "event_accounting": {
             "smoothed_events": "near-contiguous wake runs merged with a 2-second gap",
             "positive_windows": "raw count of positive smoothed windows, retained as a diagnostic",

@@ -40,7 +40,10 @@ class Stage1System(nn.Module):
         if backend == "transfer_spexplus_16k":
             if not pretrained_dir:
                 raise ValueError("transfer_spexplus_16k requires a checkpoint path")
-            self.spex = SpExPlus16kTransferAdapter(pretrained_dir)
+            self.spex = SpExPlus16kTransferAdapter(
+                pretrained_dir,
+                causal=bool(spex_cfg.get("causal", False)),
+            )
         elif backend == "vendor_8k":
             nnet = load_pretrained_spex(
                 pretrained_dir or ".",

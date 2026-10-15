@@ -1402,6 +1402,406 @@ Artifacts:
 
 - `scripts/data/record_real_driver_session.py`
 - `tests/test_record_real_driver_capture_preflight.py`
+
+### E-2026-10-14 — production playback-reference routing closed
+
+The capture contract was valid syntactically but the runtime boundary had a
+real correctness hole: a six-channel recording could be accepted by the audit,
+then the real-driver evaluator would truncate it to the first four channels
+and never pass the two playback-reference channels to the echo-cancellation
+front-end. That would make a production capture appear to be evaluated while
+silently disabling the AEC input.
+
+The contract now records explicit microphone and playback channel indices. The
+real-driver evaluator maps four microphone channels to the model and averages
+the declared playback-reference channels into the aligned mono reference
+expected by `CabinFrontend`. Wide captures without this mapping are rejected.
+The live `StreamingRunner` also accepts an aligned playback frame per push,
+keeps it in a ring buffer, and forwards the matching window to the pipeline;
+omitting it when playback mode is enabled is an error. Four-channel pilot
+behavior remains backwards compatible.
+
+This is an implementation and data-contract fix, not new model evidence. No
+recording, threshold, checkpoint, or production-readiness gate changed.
+
+Artifacts:
+
+- `src/car_tse/io/capture.py`
+- `scripts/data/validate_real_driver_sessions.py`
+- `scripts/eval/eval_real_driver_sessions.py`
+- `src/car_tse/pipeline/in_car_pipeline.py`
+- `src/car_tse/pipeline/streaming_runner.py`
+- `tests/test_capture_channel_mapping.py`
+- `tests/test_streaming_runner.py`
+
+### E-2026-10-14 — causal CRNN intent candidate (rejected for current runtime)
+
+The compact intent head was extended with an opt-in unidirectional LSTM so it
+can support future streaming accumulation without backward look-ahead. The
+clean causal model has 5.79M parameters, reached 89.0% official FSC test
+accuracy / 89.7% macro-F1, and exports with exact ONNX parity to a 24.3 MB
+graph at 4.40 ms CPU p95. Fine-tuning it on the existing 2-second TSE-domain
+cache improved the standalone clean test to 89.7% accuracy / 90.4% macro-F1,
+but the end-to-end clean proxy remained 53.125% intent and 87.5% wake recall.
+The causal candidate is therefore isolated and not promoted. The result
+separates deployment efficiency from the current cross-corpus command
+contract: the smaller model is fast, but matched same-speaker streaming data
+is still needed before it can be a production head.
+
+Artifacts:
+
+- `src/car_tse/models/intent_classifier.py`
+- `tests/test_onnx_export.py`
+- `configs/stage4_intent_clean_causal_crnn_v1_fp32.yaml`
+- `checkpoints/stage4_intent_clean_causal_crnn_v1_fp32/best.pt`
+- `logs/stage4_intent_clean_causal_crnn_v1_fp32_metrics_test_clean.json`
+- `configs/stage4_intent_causal_clean_to_tse_ft1.yaml`
+- `checkpoints/stage4_intent_causal_clean_to_tse_ft1/best.pt`
+- `logs/stage4_intent_causal_clean_to_tse_ft1_metrics_test_clean.json`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_causal_tse_ft1.yaml`
+- `logs/clean_causal_tse_ft1_32scenes_2026-10-14.json`
+- `output/onnx/causal_crnn_v1_2026-10-14/intent.json`
+- `logs/onnx_causal_crnn_cpu_latency_2026-10-14.json`
+
+### E-2026-10-14 — production capture contract aligned with readiness audit
+
+The production plan requires four cabin microphones plus two playback-reference
+channels for echo cancellation, while the neural model itself still consumes
+four microphone channels. The recorder already enforced this as `production6`,
+but the readiness audit previously compared recordings against `num_mics: 4`.
+The audit now records both values, requires six captured channels and an
+explicit playback-reference declaration, and the session validator rejects a
+six-channel session missing that contract. The four-channel `model4_pilot`
+profile remains valid for diagnostics but cannot satisfy the production
+hardware gate. With no sessions present, the current audit remains blocked as
+expected.
+
+Artifacts:
+
+- `scripts/reporting/audit_production_readiness.py`
+- `scripts/data/validate_real_driver_sessions.py`
+- `configs/eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml`
+- `tests/test_validate_real_driver_sessions.py`
+
+The production6 hardware preflight was rerun explicitly at six input channels
+and 16 kHz. All six visible devices failed (maximum two input channels), no
+recording was made, and the real-driver gate remains correctly blocked. The
+artifact is `logs/capture_hardware_preflight_production6_2026-10-14.json`.
+
+### E-2026-10-14 — clean early-commit and 1.5-second intent experiments (rejected)
+
+Two clean-only latency shortcuts were tested against the confidence-buffered
+baseline. An initial threshold-0.90/0.98 replay used the evaluator's default
+1.0-second hop and reached 87.5% wake recall with 65.6%/59.4% intent; this is
+not a fair threshold-only comparison, but it demonstrates that hop size and
+early commitment interact badly. In the matched 0.5-second-hop study, a 0.90
+early commit reached 100% wake, 96.875% intent and zero false actions, with
+mean/p95 command completion 0.69/1.0 seconds after the wake event versus
+1.5/1.5 seconds for the 1.0-threshold baseline. It is still rejected as a
+release choice because it loses clean actions, has no speaker-consistent held-
+out evidence, and does not solve the production latency budget.
+
+A fresh 12.7M-parameter CRNN was trained on 1.5-second clean FSC windows. It
+reached 88.4% official clean-test accuracy, 99.4% top-5 accuracy and 88.9%
+macro-F1, but only 87.5% wake recall and 53.1% intent accuracy on the 64-scene
+clean end-to-end proxy (zero false actions, 2.5-second p95 wake latency). The
+shorter fixed window is therefore worse than the 2-second compact transfer
+candidate and is isolated. The evidence points to a genuinely streaming
+intent/endpoint design and matched same-speaker data, not simply shortening
+the fixed training crop.
+
+The same 1.5-second checkpoint was then fine-tuned using the existing aligned
+2-second TSE-domain cache. `IntentDataset` was corrected to reuse a longer
+cache for a shorter request instead of silently falling back to raw FSC audio.
+The transfer candidate reached 88.5% official clean-test accuracy / 88.8%
+macro-F1 but fell to 87.5% wake and 40.625% intent on the 64-scene clean
+proxy, with zero false actions. It is also rejected. This confirms that the
+short fixed window is not rescued by a simple TSE-domain fine-tune.
+
+Artifacts:
+
+- `configs/stage4_intent_clean_compact_1p5s_v1_fp32.yaml`
+- `checkpoints/stage4_intent_clean_compact_1p5s_v1_fp32/best.pt`
+- `logs/stage4_intent_clean_compact_1p5s_v1_fp32_metrics_test_clean.json`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_compact_1p5s_v1.yaml`
+- `logs/clean_compact_1p5s_v1_32scenes_2026-10-14.json`
+- `logs/clean_confidence_buffered_early090_32scenes_2026-10-14.json`
+- `logs/clean_confidence_buffered_early098_32scenes_2026-10-14.json`
+- `src/car_tse/data/datasets.py`
+- `tests/test_intent_dataset_cache.py`
+- `configs/stage4_intent_compact_1p5s_clean_to_tse_ft1.yaml`
+- `checkpoints/stage4_intent_compact_1p5s_clean_to_tse_ft1/best.pt`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_compact_1p5s_tse_ft1.yaml`
+- `logs/stage4_intent_compact_1p5s_clean_to_tse_ft1_metrics_test_clean.json`
+- `logs/clean_compact_1p5s_tse_ft1_32scenes_2026-10-14.json`
+
+### E-2026-10-14 — static-int8 compact intent diagnostic (rejected)
+
+Representative cabin-domain calibration was attempted for the compact intent
+ONNX graph using 128 calibration rows and a disjoint 128-row evaluation tail.
+The initial percentile collector hit an ONNX Runtime/NumPy histogram failure
+on a near-constant intermediate tensor, so the diagnostic was made robust with
+MinMax calibration. The resulting graph is not usable: held-out accuracy fell
+from 55.47% (float) to 4.69% (INT8), relative logit L2 error was 1.128,
+cosine similarity was 0.233, and the file was only 97.85% of the float size.
+CPU p95 latency also increased from 7.13 ms to 8.10 ms. The static candidate is
+therefore isolated and rejected; no quantized model was promoted or connected
+to runtime. A target-vendor calibration/QAT study remains necessary.
+
+Artifacts:
+
+- `scripts/export/quantize_static_onnx_intent.py`
+- `logs/onnx_compact_intent_static_int8_2026-10-14.json`
+- `output/onnx/compact_tse_ft1_2026-10-14/static_int8/intent.static_int8.onnx`
+
+The full regression after the export, quantization, endpoint, and non-finite
+loss-guard changes is `66 passed, 1 skipped`.
+
+### E-2026-10-14 — buffered command endpoint experiment (diagnostic)
+
+The scene-level clean diagnosis identified a state-machine weakness: the
+runtime committed the first eligible command frame even when an overlapping
+later frame contained the complete command. An opt-in
+`command_window_strategy=confidence_buffered` path was added. It retains the
+wake-to-command state, evaluates a short candidate buffer, commits immediately
+only for a high-confidence candidate, and otherwise waits for one more
+candidate. A dual-crop diagnostic variant also scores fixed and KWS-trimmed
+windows; both variants have unit coverage.
+
+On the 32-scene clean English proxy, the retained `kws_trim_latest` path gave
+87.5% intent accuracy. The two-candidate buffered path gave **96.875% (31/32)**
+with 100% wake recall and zero observed false events. Extending the buffer to
+three candidates did not change the result. The dual-crop path also remained
+31/32, fixing a different scene rather than improving the aggregate.
+
+The noisy regression prevented promotion. With the clean English Stage-1
+branch, the buffered path gave 75.0% wake / 62.5% intent and 96.4 false
+wakes/hour on 16 CAVEMOVE scenes. With the retained dual-domain configuration,
+it gave 50.0% wake / 0% intent / 0 false wakes on the same small proxy, equal
+in wake recall to the fixed retained run and not better in intent. No retained
+checkpoint, production threshold, or release configuration was changed.
+
+Artifacts:
+
+- `src/car_tse/pipeline/in_car_pipeline.py`
+- `scripts/eval/eval_continuous_full_pipeline_proxy.py`
+- `tests/test_pipeline_drop.py`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_confidence_buffered_candidate.yaml`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_confidence_buffered_hybrid_candidate.yaml`
+- `configs/eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_buffered_candidate_2026-10-14.yaml`
+- `logs/clean_confidence_buffered_32scenes_2026-10-14.json`
+- `logs/clean_confidence_buffered3_32scenes_2026-10-14.json`
+- `logs/clean_confidence_buffered_hybrid_32scenes_2026-10-14.json`
+- `logs/noisy_confidence_buffered_8scenes_2026-10-14.json`
+- `logs/noisy_confidence_buffered_hybrid_8scenes_2026-10-14.json`
+- `logs/noisy_retained_buffered_candidate_8scenes_2026-10-14.json`
+
+Interpretation: endpoint buffering is a plausible clean-path improvement, but
+the current evidence is a cross-corpus proxy and does not justify a production
+promotion. The next decisive experiment remains the same-driver pilot with
+production-equivalent multichannel capture and playback reference.
+
+### E-2026-10-14 — ONNX embedded-deployment preflight
+
+The active Python environment initially had no ONNX exporter/runtime. Optional
+`embedded` dependencies were added to `pyproject.toml` and installed for this
+preflight. The first KWS export exposed a concrete portability issue: the
+shared log-mel frontend used complex `torch.stft`, which the legacy ONNX
+exporter rejected. An export-only fixed real/imaginary DFT-convolution path was
+added. It matches the original log-mel frontend within `3e-4` absolute/relative
+tolerance in its unit test and leaves the normal PyTorch runtime unchanged.
+
+The retained components were exported at opset 18 and executed with
+ONNX Runtime CPU parity checks:
+
+| Component | Status | Relative L2 parity | ONNX size |
+|---|---|---:|---:|
+| Stage 1 TSE + cabin frontend | pass* | 1.93e-4 | 42.3 MB |
+| KWS | pass | 2.88e-7 | 0.66 MB |
+| Frame presence | pass | 2.00e-7 | 1.24 MB |
+| Target-speaker KWS | pass | 5.68e-7 | 1.85 MB |
+| Compact speaker verifier | pass | 3.07e-7 | 1.43 MB |
+| Wav2Vec intent | pass | 2.91e-6 | 379 MB |
+
+`*` Stage 1 has a larger pointwise sample error (`0.108`) but near-unit
+cosine and low relative L2; the export uses fixed traced input lengths and
+still requires target-SoC validation. The Wav2Vec export also emits tracing
+warnings around fixed-length branches and is not an embedded memory win. No
+ONNX model has been promoted into the runtime, quantized, or tested on a
+vehicle SoC. This closes a reproducible workstation export/parity gate only.
+
+Artifacts:
+
+- `scripts/export/export_onnx_components.py`
+- `src/car_tse/models/kws_model.py`
+- `src/car_tse/models/presence_head.py`
+- `src/car_tse/models/speaker_verifier.py`
+- `tests/test_onnx_export.py`
+- `output/onnx/retained_2026-10-14/manifest.json`
+- `logs/onnx_export_retained_2026-10-14.stdout.json`
+
+The same graphs were benchmarked with 5 warmups and 20 timed runs on the
+local ONNX Runtime CPU provider. Stage 1 p50/p95 latency was **371/376 ms**
+for a 3-second window, Wav2Vec intent was **91/94 ms** for 2 seconds, and the
+small always-on components were below 2 ms each on this desktop CPU. These are
+workstation numbers only; they do not satisfy the target-SoC or 24-hour soak
+gate.
+
+Artifact: `logs/onnx_component_cpu_latency_2026-10-14.json`
+
+### E-2026-10-14 — dynamic-int8 feasibility check (rejected)
+
+The exported graphs were passed through ONNX Runtime's weight-only dynamic
+int8 quantizer as a fast feasibility test. It used no representative audio
+calibration and was never intended as a release conversion. The result was
+negative on this CPU provider: the small graphs became roughly 27–29% of their
+float size, but inference became slower rather than faster and output drift was
+too large for the speaker-conditioned gates.
+
+| Component | Size ratio | Relative-L2 drift | Float p95 → int8 p95 |
+|---|---:|---:|---:|
+| Stage 1 | 27.6% | 6.54% | 380 → 5,656 ms |
+| KWS | 29.2% | 1.84% | 0.73 → 10.31 ms |
+| Presence | 29.2% | 0.32% | 4.04 → 11.45 ms |
+| Target-KWS | 26.9% | 12.22% | 0.76 → 10.41 ms |
+| Compact verifier | conversion failed | — | — |
+| Wav2Vec intent | conversion failed | — | — |
+
+The dynamic path is therefore rejected. The next embedded quantization step
+must use representative cabin calibration plus static/QAT quantization and a
+vendor execution provider; it cannot be inferred from this weight-only CPU
+experiment. The float ONNX graphs remain the only export candidates and the
+Python runtime was not changed.
+
+Artifact: `logs/onnx_dynamic_int8_feasibility_2026-10-14.json`
+
+### E-2026-10-14 — buffered clean endpoint stabilization
+
+The confidence-buffered command path had a state bug: it waited for multiple
+post-wake candidates but then committed only the last candidate. A trailing
+partial window could therefore replace a correct earlier window. The state now
+retains candidate history and selects the longest consecutive intent run,
+with the earliest run winning ties. Unit coverage increased the pipeline-drop
+tests to 17 passing tests.
+
+On the 32-scene clean English control replayed at two nominal cabin-condition
+labels (64 scenes, 896 seconds), the run-3 candidate reached 100.0% target
+wake recall, 100.0% intent accuracy, zero false wakes and zero false actions.
+Mean command completion was 2.22 seconds after the wake ended (p95 2.50 s);
+this is a proxy diagnostic and is not close to the production latency target.
+It also uses cross-corpus wake/command clips rather than one real speaker.
+
+The same endpoint policy on 16 noisy CAVEMOVE proxy scenes reached only 50.0%
+wake recall and 0.0% intent accuracy, so it is rejected for the retained noisy
+runtime. The dual-domain noisy configuration and checkpoints remain unchanged.
+The clean candidate is retained only for clean-path analysis until a real
+driver study and a streaming/low-latency intent design are available.
+
+Artifacts:
+
+- `src/car_tse/pipeline/in_car_pipeline.py`
+- `tests/test_pipeline_drop.py`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_confidence_buffered_hybrid_run3.yaml`
+- `logs/clean_confidence_buffered_run3_wait_32scenes_2026-10-14.json`
+- `logs/noisy_confidence_buffered_run4_wait_8scenes_2026-10-14.json`
+
+A 250 ms hop was tested as a latency rescue. Three buffered hops reduced mean
+wake latency to 1.31 s but achieved only 75.0% clean intent accuracy. Four
+hops reached 87.5% intent but produced 8 false wake events in 224 seconds
+(128.6 per hour). Both points are rejected; the shorter hop does not solve the
+endpoint/false-wake trade-off without a genuinely streaming intent model and
+better calibration.
+
+Artifacts:
+
+- `logs/clean_confidence_buffered_run3_hop025_8scenes_2026-10-14.json`
+- `logs/clean_confidence_buffered_run4_hop025_8scenes_2026-10-14.json`
+
+### E-2026-10-14 — compact English intent transfer candidate
+
+The existing compact intent students were too weak to replace Wav2Vec, so a
+new clean-first experiment trained a 12.7M-parameter log-mel CRNN on the
+English FSC train/validation split. The first AMP run produced a non-finite
+loss in epoch 1 and was stopped; its checkpoint is isolated and invalid. A
+FP32 rerun reached **83.7% accuracy / 85.6% macro-F1** on the official FSC
+test set, with approximately 50.9 MB of PyTorch weights and 11.0 ms CPU
+inference for a 2-second input.
+
+The compact model reached 87.5% intent accuracy on the 64-scene clean
+end-to-end proxy (100% wake, zero false actions). It was then fine-tuned from
+that clean checkpoint on the existing Stage-1/TSE cabin-domain cache. The
+transfer candidate reached 59.7% cabin-domain validation accuracy / 0.606
+macro-F1, 86.7% official clean-test accuracy / 0.877 macro-F1, and 93.75%
+intent accuracy on the 64-scene clean end-to-end proxy. On the 16-scene noisy
+proxy it still achieved only 50% wake recall and 6.25% intent accuracy, so it
+is not a noisy-runtime replacement; the retained Wav2Vec pipeline is
+unchanged. The remaining noisy failure is dominated by the front-end/wake
+path, not just the intent head.
+
+The transfer candidate exports to ONNX with 51.9 MB size, 6.75 ms p95 CPU
+latency and relative-L2 parity 3.5e-7. Diagnostic dynamic int8 reduces the
+file to 13.2 MB but causes 6.1% relative-L2 drift and 40.2 ms p95 CPU latency;
+that conversion is rejected. Static calibration/QAT and a target-vendor
+provider remain required.
+
+Artifacts:
+
+- `configs/stage4_intent_clean_compact_v1.yaml`
+- `configs/stage4_intent_clean_compact_v1_fp32.yaml`
+- `configs/stage4_intent_compact_clean_to_tse_ft1.yaml`
+- `checkpoints/stage4_intent_clean_compact_v1_fp32/best.pt`
+- `checkpoints/stage4_intent_compact_clean_to_tse_ft1/best.pt`
+- `logs/stage4_intent_clean_compact_v1_fp32_metrics_test_clean.json`
+- `logs/stage4_intent_compact_clean_to_tse_ft1_metrics_test_clean.json`
+- `logs/clean_compact_v1_32scenes_2026-10-14.json`
+- `logs/clean_compact_tse_ft1_32scenes_2026-10-14.json`
+- `logs/noisy_compact_tse_ft1_8scenes_2026-10-14.json`
+- `output/onnx/compact_tse_ft1_2026-10-14/intent.json`
+- `logs/onnx_compact_intent_cpu_latency_2026-10-14.json`
+- `logs/onnx_compact_intent_dynamic_int8_2026-10-14.json`
+- `logs/full_pipeline_latency_compact_tse_ft1_gpu_2026-10-14.json`
+- `logs/full_pipeline_latency_compact_tse_ft1_cpu_2026-10-14.json`
+
+Full-pipeline resource measurements for the compact transfer candidate were
+also recorded. On this workstation GPU, wake-stage p95 was 60.8 ms and the
+forced post-wake command compute p95 was 104.3 ms; on CPU they were 505.4 ms
+and 526.5 ms. The candidate checkpoint set totals 98.4 MB, but these are
+desktop measurements with random inputs and do not satisfy the target-SoC or
+real-time soak gates.
+
+### E-2026-10-14 — clean component-boundary ablation
+
+An 8-scene / 112-second effectively clean replay separated direct command
+classification from gating. Direct TSE-to-intent reached 100%; KWS without
+presence reached 87.5% wake recall; the full cascade reached 87.5% wake /
+75.0% intent at presence threshold 0.15 and 50.0% wake / 37.5% intent at
+threshold 0.45. No false events occurred in this short proxy. The result
+makes presence calibration a concrete clean-path weakness, while confirming
+that another intent-head or Stage-1 fine-tune is not yet justified by this
+evidence. These are cross-corpus diagnostics, not release metrics.
+
+Artifact: `logs/clean_component_boundary_ablation_8scenes_2026-10-14.json`
+
+### E-2026-10-14 — clean presence-head adaptation (rejected)
+
+The clean boundary result justified one isolated Stage-2 experiment. A new
+balanced FSC presence manifest (2,048 rows, 1,024 positive/1,024 negative,
+77 speakers) was used to fine-tune the presence head from the retained
+dual-domain checkpoint, with frozen clean Stage-1 outputs cached for speed.
+The candidate reached 100% wake and 100% intent on 16 clean proxy scenes, but
+the CAVEMOVE regression fell to 62.5% wake / 62.5% intent with 257.1 false
+wakes/hour. Its validation balanced chunk false-accept rate was 57.4%. It is
+rejected and remains isolated; the retained presence checkpoint is unchanged.
+
+Artifacts:
+
+- `scripts/data/build_clean_presence_manifest.py`
+- `configs/stage2_frame_presence_english_clean_identity_ft1.yaml`
+- `checkpoints/stage2_frame_presence_english_clean_identity_ft1/best.pt`
+- `logs/stage2_frame_presence_english_clean_identity_ft1/metrics_last.json`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_endpoint08_cleanpresence_ft1.yaml`
+- `logs/clean_full_pipeline_cleanpresence_ft1_8scenes_2026-10-14.json`
+- `logs/noisy_full_pipeline_cleanpresence_ft1_8scenes_2026-10-14.json`
 - `reports/capture_hardware_preflight_2026-10-11.md`
 
 ### E-2026-10-12-safe-threshold-selection
@@ -1970,3 +2370,1119 @@ changed.
 Artifacts:
 
 - `logs/aishell5_target_absent_compact_cabin_smart_thr030_hop025_hits8_all18_2026-10-12.json`
+
+### E-2026-10-13-workspace-refresh-and-classical-spatial-baseline
+
+The live workspace was re-audited before continuing production work. The
+canonical branch is `full-pipeline` at `1c165b7`; no training or evaluation
+process was running before the new safety replay, and the full test suite was
+`43 passed, 1 skipped`. The current readiness snapshot was regenerated with
+the compact cabin+Smart runtime configuration and fresh checkpoint hashes. It
+still correctly reports `research_engineering_preview`: there are zero
+consented real-driver sessions and no matching four-channel capture hardware,
+so the same-driver, passenger-rejection, frozen-split, and threshold-freeze
+gates remain blocked.
+
+The production plan's stale wording was corrected: the approximately 423 ms
+figure is a Stage-1 model-forward component measurement, not full product
+latency, and zero events over 3.889 hours corresponds to an approximately
+0.77/hour rule-of-three upper bound. No checkpoint or runtime configuration
+was changed.
+
+As the first architecture-preparation step, added
+`src/car_tse/frontend/spatial.py` with explicit integer-sample delay-and-sum,
+GCC-PHAT delay calibration, and offline MVDR baselines. The component is
+geometry-configurable and opt-in; it is deliberately not called a validated
+seat-zone system until the production microphone positions are measured.
+Focused spatial and readiness tests passed (`13 passed` across the focused
+selection). A full 0.25-second-hop, 4-of-4 confirmation replay over all 18
+AISHELL-5 Eval2 sessions completed on CUDA. Across 3.889 hours and
+approximately 56,000 streaming windows, the complete path produced zero
+smoothed events (0.00 events/hour; a rule-of-three upper bound is
+approximately 0.77/hour). The KWS-only branch produced 218 smoothed events
+(56.05/hour), showing that the presence and compact speaker gates are doing
+the safety filtering in this target-absent proxy. This is useful evidence for
+the gate, but it is still not a real-driver or passenger-rejection result:
+AISHELL-5 is a target-absent Mandarin multi-microphone proxy and contains no
+positive Marvin examples.
+
+Artifacts:
+
+- `src/car_tse/frontend/spatial.py`
+- `tests/test_spatial_frontend.py`
+- `reports/spatial_frontend_baseline_2026-10-13.md`
+- `reports/production_readiness_snapshot_live_2026-10-13.md`
+- `logs/production_readiness_snapshot_live_2026-10-13.json`
+- `logs/aishell5_target_absent_compact_cabin_smart_thr030_hop025_hits4_all18_2026-10-13.json`
+- `reports/production_readiness_snapshot_live_2026-10-13_final.md`
+- `logs/production_readiness_snapshot_live_2026-10-13_final.json`
+
+### E-2026-10-13-english-spatial-ablation-and-data-contract-audit
+
+The first English-only spatial experiment was added without changing the
+promoted runtime. A speaker-disjoint LibriSpeech/CAVEMOVE manifest (384 train,
+96 validation; 201/50 speakers with zero overlap) was generated, and only the
+Stage-1 cabin frontend was adapted for three epochs. The best validation
+SI-SDRi was 3.54 dB at epoch 1; later epochs regressed. The checkpoint remains
+unpromoted because the downstream cascade did not improve.
+
+The full English spatial proxy rendered 8 scene identities at three cabin SNRs
+(-5/0/+5 dB), with -5 dB passenger speech and CAVEMOVE vehicle noise. Over 24
+scenes / 336 seconds, the current strict configuration produced:
+
+| Variant | Wake recall | Intent accuracy | False wakes/h | False actions/h |
+|---|---:|---:|---:|---:|
+| learned `tse_first` | 12.5% | 0.0% | 0.0 | 0.0 |
+| hybrid beamformer + SpEx+ | 4.17% | 0.0% | 0.0 | 0.0 |
+| beamformer-only `zone_only` | 0.0% | 0.0% | 0.0 | 0.0 |
+
+A same-wake enrollment control was also 12.5% / 4.17% / 0% for the three
+variants, with 0% intent. During review, the evaluator's data contract was
+made explicit: Speech Commands supplies wake/enrollment and Fluent Speech
+Commands supplies a command from an unrelated speaker. Thus these numbers are
+not a same-driver result and the command speaker gate can correctly reject the
+cross-corpus command. The harness now writes
+`speaker_consistent=false` and `same_driver_wake_to_command=false` for every
+scene. This is a useful evaluation-integrity correction, not evidence that the
+spatial architecture has failed.
+
+The production plan was updated to make English the current product scope and
+to mark the spatial experiment as started but not release-valid. No promoted
+checkpoint, threshold, or production configuration changed.
+
+Artifacts:
+
+- `reports/english_spatial_ablation_2026-10-13.md`
+- `scripts/eval/eval_english_spatial_zone_ablation.py`
+- `logs/english_spatial_zone_ablation_stage1_spatial_ft1_2026-10-13.json`
+- `logs/english_spatial_zone_ablation_stage1_spatial_ft1_samewake_2026-10-13_retry.json`
+- `checkpoints/stage1_spex_english_spatial_cavemove_ft1/best.pt`
+
+## E-2026-10-13 — clean-English TSE preservation transfer
+
+The clean-control evaluator was corrected to load the Wav2Vec intent head and
+its fine-tuned encoder checkpoint explicitly. The prior near-uniform intent
+confidence was a harness mismatch, not a valid model result. A speaker-
+disjoint FSC identity/preservation manifest was then built with 4,096 train
+and 1,024 validation triplets, and a short Stage 1 adaptation was trained from
+the retained dual-domain checkpoint. The clean candidate reached 75% wake and
+75% overall intent at the 0.45 KWS threshold, with 100% intent conditional on
+wake; at a diagnostic 0.25 threshold it reached 100%/100% on the 8-scene,
+112-second clean proxy. The old Stage 1 produced 75% wake but 0% intent under
+the corrected downstream setup.
+
+A joint clean-plus-CAVEMOVE transfer was also trained from the clean winner.
+It preserved the clean 100% control but did not improve the small noisy proxy,
+so neither clean checkpoint replaces the retained noisy-domain production
+candidate. The clean and noisy proxy scenes remain cross-corpus and are not
+same-driver evidence. Full details are in
+`reports/clean_english_stage1_transfer_2026-10-13.md`.
+
+The clean candidate was then expanded from the 8-scene smoke test to a
+32-speaker, 64-scene / 896-second proxy. At KWS thresholds 0.25 and 0.40 it
+reached respectively 96.9%/93.8% wake recall, 93.8%/90.6% overall intent,
+and 16.1/8.0 proxy false wakes per hour. The 0.40 point has the better
+precision tradeoff, but no threshold is frozen until same-driver tuning and
+held-out no-command recordings exist.
+
+The existing target-speaker KWS verifier was also tested on 16 clean scenes:
+it raised wake recall to 100% with no observed false wakes, but late detections
+reduced command accuracy to 87.5% because the fixed post-wake window captured
+the wrong command segment. This branch remains unpromoted; endpoint-aware
+command capture is the next runtime improvement.
+
+An opt-in local-KWS trim strategy was implemented and tested. With a 0.8 s
+post-wake margin, the target-speaker KWS branch reached 100% wake recall and
+0 observed false wakes/actions on 64 clean scenes / 896 s, but intent remained
+87.5%. It is kept as experimental infrastructure, not the promoted default;
+the next version needs a streaming ring buffer and same-driver endpoint labels.
+
+### E-2026-10-14 — endpoint timing follow-up and noisy regression
+
+The endpoint experiment was isolated from arbitrary post-wake delays. A
+one-call delay, even with an expanded eight-call timeout, reduced clean intent
+to 50% on 32 scenes because call-count timing depends on the inference hop.
+The new opt-in `kws_trim_latest` strategy instead trims the latest accepted
+post-wake frame and falls back to the original wake frame. Focused pipeline
+tests passed (`13 passed` including the new strategy tests), and the
+32-scene clean proxy measured 100% wake recall, 87.5% intent, 0 false wakes,
+and 0 false actions. This equals the prior 0.8-second endpoint aggregate but
+has a better streaming contract, so it is recorded as an implementation
+candidate rather than a promoted configuration.
+
+A direct-clean downstream control bypassing Stage 1 reached 81.25% intent on
+the same 32 scenes, demonstrating that command timing and the cross-corpus
+wake/command construction remain material even when extraction is removed.
+The latest-frame candidate was checked against CAVEMOVE on 16 scenes at -5 and
+0 dB cabin SNR: 75.0% wake recall, 62.5% overall intent, and 96.4 false
+wakes/hour. It is not a noisy replacement for the retained dual-domain
+checkpoint. These are synthetic/cross-corpus diagnostics, not real-driver
+evidence; the production gates remain unchanged.
+
+Artifacts:
+
+- `src/car_tse/pipeline/in_car_pipeline.py`
+- `scripts/eval/eval_continuous_full_pipeline_proxy.py`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_endpoint08_latest.yaml`
+- `logs/clean_full_pipeline_identity_targetkws_endpoint08_latest_32scenes_2026-10-14.json`
+- `logs/clean_full_pipeline_bypass_stage1_targetkws_endpoint08_32scenes_2026-10-14.json`
+- `logs/noisy_full_pipeline_cleanidentity_targetkws_endpoint08_latest_8scenes_2026-10-14.json`
+
+The latest-frame configuration was also replayed through the live-style
+`StreamingRunner` on a 30-second four-channel recording. At a 1x capture
+cadence, CUDA processed 109 windows / 27.25 seconds of audio with 0 skipped
+seconds, 0.2 seconds maximum observed lag, and a 0.293 real-time factor. An
+accelerated injection stress test intentionally overwhelmed the runner and
+skipped 25.25 seconds; that is expected overload behavior and not a real-time
+failure. The source is a synthetic proxy, so its wake/intent event counts are
+not quality evidence.
+
+Artifact:
+
+- `logs/streaming_runner_latest_endpoint08_30s_realtime_2026-10-14.json`
+
+### E-2026-10-14 — target-KWS cache adaptation (rejected)
+
+The clean identity Stage-1 checkpoint changed the extracted waveform
+distribution, so a separate target-KWS cache was built using that checkpoint
+plus CAVEMOVE cabin augmentation: 1,208 balanced train rows, 260 validation,
+and 256 test rows. A full target-speaker KWS fine-tune was initialized from
+the retained smart-speaker checkpoint and early-stopped at epoch 5; best
+validation F1 was 0.667.
+
+The end-to-end regression was negative. On 32 clean scenes, wake recall was
+96.9%, intent was 46.9%, and mean wake latency was 3.05 seconds. On 16 noisy
+CAVEMOVE scenes at -5/0 dB, wake recall was 62.5%, intent was 37.5%, and false
+wakes were 80.4/hour. The existing target-KWS checkpoint is retained; this
+adapted checkpoint is not promoted. The experiment confirms that cache/domain
+matching alone does not solve the current noisy cascade failure.
+
+The previously trained `stage1_spex_gsc_marvin_absent_adapt_ft3` cabin
+candidate was also replayed with the current cascade. It measured 75.0% wake,
+0% intent, 273.2 false wakes/hour, and one false action over 16 CAVEMOVE
+scenes, so it is rejected. Finally, enabling the compact speaker verifier on
+the clean-identity branch yielded 12.5% wake, 0% intent, and 0 false wakes on
+the same proxy. Because the proxy's wake and command are cross-corpus and do
+not provide true enrollment continuity, this is a domain-mismatch diagnostic,
+not a production threshold result.
+
+Artifacts:
+
+- `configs/eval_end_to_end_cavemove_gsc_absent_targetkws_endpoint08_latest.yaml`
+- `logs/noisy_full_pipeline_gsc_absent_targetkws_endpoint08_latest_8scenes_2026-10-14.json`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_endpoint08_latest_compact.yaml`
+- `logs/noisy_full_pipeline_cleanidentity_targetkws_endpoint08_latest_compact_8scenes_2026-10-14.json`
+
+Artifacts:
+
+- `scripts/data/build_target_speaker_kws_cache.py`
+- `configs/stage3_target_kws_gsc_marvin_cleanidentity_cabin_ft1.yaml`
+- `checkpoints/stage3_target_kws_gsc_marvin_cleanidentity_cabin_ft1/best.pt`
+- `logs/stage3_target_kws_gsc_marvin_cleanidentity_cabin_ft1/metrics_last.json`
+- `logs/clean_full_pipeline_identity_targetkws_cleanidentity_cabin_ft1_latest_32scenes_2026-10-14.json`
+- `logs/noisy_full_pipeline_identity_targetkws_cleanidentity_cabin_ft1_latest_8scenes_2026-10-14.json`
+
+### E-2026-10-14 — read-only capture-hardware preflight
+
+Before attempting any real-driver recording, the new preflight utility checked
+every visible input device against the current capture contract: four input
+channels at 16 kHz. Six input devices were visible, but none passed. The
+maximum exposed channel count was two; the one two-channel WASAPI endpoint
+was therefore not eligible for the four-channel check. The preflight is
+read-only, did not open a recording stream, and created no driver session.
+
+This closes an environment-audit item, not the matching-hardware production
+gate. The next external requirement is a production-equivalent array with at
+least four cabin channels; the production plan recommends six channels when
+the two playback-reference channels needed for echo cancellation are
+included. No model, threshold, or checkpoint was changed because of this
+check.
+
+Artifacts:
+
+- `scripts/data/preflight_capture_hardware.py`
+- `tests/test_capture_hardware_preflight.py`
+- `logs/capture_hardware_preflight_2026-10-14.json`
+- `reports/production_readiness_snapshot_post_preflight_2026-10-14.md`
+- `logs/production_readiness_audit_post_preflight_2026-10-14.json`
+- Regression at this point: `54 passed, 1 skipped`; latest after the manifest,
+  capture-contract, and clean-presence experiment changes: `60 passed, 1 skipped`
+
+### E-2026-10-14 — clean endpoint failure diagnosis
+
+The latest clean endpoint candidate was inspected at scene level rather than
+only by its aggregate score. It produced 4 intent misses out of 32 scenes:
+two direct FSC intent-head confusions and two temporal command-window errors.
+The raw command clips classified 30/32 correctly, while the full stateful
+pipeline emitted 28/32 correct actions. One miss had the correct intent in a
+later post-wake candidate but selected an earlier candidate; another emitted
+no intent. All four scenes carry `speaker_consistent=false`, so this is a
+cross-corpus diagnostic, not same-driver evidence.
+
+The next clean software experiment is a buffered multi-frame command decoder
+with a short endpoint/timeout, evaluated against the current first-frame
+behavior on a fresh split and then the noisy regression. The two direct intent
+confusions are a separate model/data problem and should not be attributed to
+TSE. No checkpoint or threshold was changed.
+
+Artifact: `reports/clean_endpoint_failure_diagnosis_2026-10-14.md`
+
+### E-2026-10-14 — evaluated-state release manifest
+
+The retained runtime YAML contained two stale reproducibility references: its
+label map pointed to a nonexistent `configs/labels_fsc.json`, and its test
+manifest omitted the `test/` split. The evaluator did not consume those
+fields, so prior metrics were unchanged, but the configuration was not
+self-contained. The references were corrected to
+`meta/intent_label_map.json` and `split: test`.
+
+`scripts/reporting/build_release_manifest.py` now records 12 runtime artifacts
+with SHA-256 hashes plus Git and environment identity. All artifacts are
+present, while the manifest correctly reports the worktree as dirty. The
+readiness audit now links this evaluated-state manifest but keeps the
+reproducible-release gate blocked until a clean tagged state exists.
+
+Artifacts:
+
+- `scripts/reporting/build_release_manifest.py`
+- `tests/test_release_manifest.py`
+- `logs/release_manifest_current.json`
+- `logs/release_manifest_current_2026-10-14.json`
+
+The corrected clean English endpoint config was replayed on an independent
+8-scene / 224-second smoke subset after the metadata change: 100% wake recall,
+100% intent, and 0 observed false wakes/actions. The run remains explicitly
+cross-corpus (`production_valid=false`); it is a regression check for the
+configuration/runtime path, not new real-driver evidence.
+
+Artifact: `logs/clean_identity_endpoint08_post_manifest_8scenes_2026-10-14.json`
+
+### E-2026-10-14 — clean presence-head adaptation (rejected)
+
+The clean component-boundary result justified one isolated Stage-2 experiment.
+A balanced FSC presence manifest (2,048 rows, 1,024 positive/1,024 negative,
+77 speakers) was used to fine-tune the presence head from the retained
+dual-domain checkpoint, with frozen clean Stage-1 outputs cached for speed.
+The candidate reached 100% wake and 100% intent on 16 clean proxy scenes, but
+the CAVEMOVE regression fell to 62.5% wake / 62.5% intent with 257.1 false
+wakes/hour. Its validation balanced chunk false-accept rate was 57.4%. It is
+rejected and remains isolated; the retained presence checkpoint is unchanged.
+
+Artifacts:
+
+- `scripts/data/build_clean_presence_manifest.py`
+- `configs/stage2_frame_presence_english_clean_identity_ft1.yaml`
+- `checkpoints/stage2_frame_presence_english_clean_identity_ft1/best.pt`
+- `logs/stage2_frame_presence_english_clean_identity_ft1/metrics_last.json`
+- `configs/eval_end_to_end_clean_english_identity_targetkws_endpoint08_cleanpresence_ft1.yaml`
+- `logs/clean_full_pipeline_cleanpresence_ft1_8scenes_2026-10-14.json`
+- `logs/noisy_full_pipeline_cleanpresence_ft1_8scenes_2026-10-14.json`
+- `reports/production_readiness_snapshot_post_presence_ft1_2026-10-14.md`
+- `logs/production_readiness_audit_post_presence_ft1_2026-10-14.json`
+
+Latest full regression: `60 passed, 1 skipped`.
+
+The real-driver recorder was tightened to separate the model-compatible pilot
+from the intended production capture. Its new `production6` profile requires
+at least six input channels and a non-disabled playback-reference declaration;
+the existing `model4_pilot` profile remains available for the current
+four-channel evaluator. Unit coverage passes for both profiles. This prevents
+an otherwise valid-looking pilot folder from silently omitting the AEC
+reference required by the production plan.
+
+Artifacts:
+
+- `scripts/data/record_real_driver_session.py`
+- `tests/test_record_real_driver_capture_preflight.py`
+
+### E-2026-10-14 — real-driver ablation runner completed
+
+The permitted-session evaluator now has a reproducible `--run-ablations` mode.
+After threshold selection on the tuning drivers, it freezes the full-system
+operating point and evaluates the held-out test drivers with the same scene
+windows while disabling, one at a time, TSE, presence gating, speaker matching,
+and wake smoothing. It also records a clearly labeled command-only oracle that
+uses the annotated command interval and therefore measures intent accuracy only;
+it is not an end-to-end or safety result.
+
+The variants are isolated at evaluation time and restored before the next run,
+so the full pipeline and threshold selection are unchanged. No real-driver
+session exists yet, so this capability produced no new metric and the
+production-readiness audit remains blocked.
+
+The complete regression after this work is `76 passed, 1 skipped`; no training
+job is running.
+
+Artifacts:
+
+- `scripts/eval/eval_real_driver_sessions.py`
+- `tests/test_real_driver_session_validation.py`
+- `reports/real_driver_pilot_protocol_2026-10-09.md`
+
+### E-2026-10-14 — ONNX export checkpoint-load correction
+
+The first retained ONNX export was not safe to promote: the Stage-1 TSE and
+compact speaker-verifier exporters wrapped their models before calling the
+checkpoint loader. Because the checkpoints contain the underlying model keys,
+`strict=False` allowed the wrapper load to succeed while leaving the wrapped
+weights at initialization. The exporter’s own parity check therefore compared
+two identically untrained graphs and did not expose the deployment error.
+
+The exporter now routes wrapped components to their underlying checkpoint
+target before export. A new immutable candidate export was generated in
+`output/onnx/retained_ckptfix_2026-10-14/`; the older
+`output/onnx/retained_2026-10-14/` directory remains as historical diagnostic
+evidence and is not the candidate release. A deterministic CAVEMOVE cabin-noise
+golden test now runs the trained PyTorch pipeline and the ONNX handoffs on the
+same preprocessed example. All six exported components pass shape and numeric
+parity, including the previously failing Stage 1 and compact verifier.
+
+The corrected export’s host-CPU reference timings (30 repeats after five
+warmups) are approximately 376 ms for a 3-second Stage-1 window, 88 ms for a
+2-second intent window, and 0.7–2.2 ms for the compact gates. These are not
+target-SoC measurements and do not close the latency, quantization, or real-car
+gates. The release manifest now hashes the corrected export and benchmark, but
+release sign-off remains false because the worktree is dirty and there are no
+consented real-driver sessions or matching six-channel capture hardware.
+
+Artifacts:
+
+- `scripts/export/export_onnx_components.py`
+- `scripts/eval/eval_onnx_pipeline_golden_parity.py`
+- `tests/test_onnx_pipeline_golden_parity.py`
+- `tests/test_onnx_export.py`
+- `output/onnx/retained_ckptfix_2026-10-14/manifest.json`
+- `logs/onnx_pipeline_golden_parity_ckptfix_cpu_2026-10-14.json`
+- `logs/onnx_pipeline_components_ckptfix_cpu_latency_2026-10-14.json`
+- `logs/release_manifest_current.json`
+
+The corrected export is deployment-consistent on this reference sample; it is
+not evidence that the full assistant is production-ready.
+
+### E-2026-10-14 — multi-row ONNX parity and export manifest promotion
+
+The exporter’s internal Stage-1 waveform check was made explicit rather than
+silently weakening all component checks: waveform separators may use a 0.1%
+relative-L2 tolerance with cosine ≥0.99999, while logits and gate outputs keep
+the tighter pointwise/relative criterion. This removes the false
+`parity_failed` status caused by harmless waveform-kernel variation while
+keeping the checkpoint-loading correction intact.
+
+The candidate was regenerated as
+`output/onnx/retained_ckptfix2_2026-10-14/`; its manifest reports `status: ok`
+for all six components. The trained PyTorch pipeline and ONNX graphs were then
+compared on eight consecutive deterministic CAVEMOVE cabin-noise rows spanning
+the recorded -5, 0, 5, 10, 15, and 20 dB cabin-noise conditions. Every row and
+every handoff passed. Worst relative-L2 errors across the eight rows were
+8.60e-5 for Stage 1, 9.31e-5 for KWS, 1.35e-5 for presence, 4.18e-5 for
+target-KWS, 1.63e-4 for the compact verifier, and 1.06e-5 for intent.
+
+The refreshed host-CPU benchmark remains approximately 374–379 ms p95 for
+Stage 1, 92.6 ms p95 for intent, and 0.7–1.9 ms p95 for the smaller gates.
+The release manifest now hashes this `ckptfix2` export and benchmark. These
+results strengthen deployment reproducibility only; they are not accuracy,
+quantization, target-SoC, or real-driver evidence.
+
+Artifacts:
+
+- `scripts/export/export_onnx_components.py`
+- `scripts/eval/eval_onnx_pipeline_golden_parity.py`
+- `tests/test_onnx_pipeline_golden_parity.py`
+- `output/onnx/retained_ckptfix2_2026-10-14/manifest.json`
+- `logs/onnx_pipeline_golden_parity_ckptfix2_cpu_8samples_2026-10-14.json`
+- `logs/onnx_pipeline_components_ckptfix2_cpu_latency_2026-10-14.json`
+- `logs/release_manifest_current.json`
+
+### E-2026-10-14 — speaker-embedding ONNX handoff and variable-length validation
+
+The retained export was extended with a seventh, separately verifiable
+component: the SpEx+ speaker encoder used for enrollment and target-speaker
+matching. The wrapper now loads the underlying SpEx+ checkpoint explicitly and
+returns the enrollment/extracted embedding pair. The golden harness feeds those
+exported embeddings into the exported target-KWS graph, so the handoff is no
+longer a PyTorch-only reference path.
+
+The candidate was regenerated at
+`output/onnx/retained_ckptfix3_2026-10-14/`. All seven components passed on
+eight deterministic CAVEMOVE cabin rows. Worst relative-L2 errors were
+8.60e-5 (Stage 1), 1.80e-7 (speaker embedding), 9.31e-5 (KWS), 1.35e-5
+(presence), 4.14e-5 (target-KWS), 1.63e-4 (compact verifier), and 1.06e-5
+(intent). A separate variable-length stress check also passed for 1.0→2.0 s,
+1.5→3.0 s, and 2.0→4.0 s enrollment/extracted windows; all embedding outputs
+matched with relative L2 below 1.8e-7 and cosine similarity approximately 1.
+
+The seven-component host-CPU p95 reference is approximately 379.3 ms for the
+3-second Stage-1 separator, 50.9 ms for the speaker encoder, 92.9 ms for the
+2-second intent graph, and 0.7–2.1 ms for the smaller gates. These are local
+CPU measurements only; they do not establish target-SoC latency, quantized
+accuracy, streaming continuity, or real-driver behavior. The release manifest
+now hashes the `ckptfix3` export, benchmark, eight-row parity report, and
+variable-length check. All 23 manifest artifacts are present, but release
+sign-off is still false because the worktree is dirty and the real-driver and
+matching-hardware gates remain blocked.
+
+Artifacts:
+
+- `scripts/eval/eval_onnx_speaker_embedding_variable_length.py`
+- `output/onnx/retained_ckptfix3_2026-10-14/manifest.json`
+- `logs/onnx_pipeline_golden_parity_ckptfix3_cpu_8samples_2026-10-14.json`
+- `logs/onnx_speaker_embedding_variable_length_2026-10-14.json`
+- `logs/onnx_pipeline_components_ckptfix3_cpu_latency_2026-10-14.json`
+- `logs/release_manifest_current.json`
+
+### E-2026-10-14 — lazy intent execution and host thread sweep
+
+The retained streaming runtime was evaluating the 2-second wav2vec intent
+graph on every 250 ms hop, even before a wake word had been accepted. The
+state machine cannot use that result until it is awaiting a command, so the
+ONNX runtime now exposes `include_intent` and the live path computes intent
+only in the post-wake command state. The PyTorch↔ONNX parity harness retains
+full-component mode; focused runtime tests pass 18/18 and the 8-row composed
+parity artifact remains `status: ok`.
+
+A host sweep on the actual `StreamingRunner` found 8 intra-op / 1 inter-op
+threads best among 1, 2, 4, 8, 12, and 16 threads in the short replay. In a
+longer 10-second replay, lazy intent reduced inference wall time from 18.765 s
+to 16.161 s for the same 7.25 s of processed hop audio (2.588x to 2.229x
+inference RTF), and capture-wall RTF from 1.878x to 1.618x. Both runs
+processed 29 windows with zero dropped seconds. The replay was a repeated
+CAVEMOVE proxy row and produced no wake/intent events; it is runtime evidence,
+not real-driver accuracy.
+
+The component profile confirms that the 3-second four-channel Stage-1 graph
+(about 375 ms p95 on this CPU) dominates. This optimization improves
+efficiency but does not close the target-SoC, causal/chunked-front-end,
+quantization, real-driver, or production-signoff gates.
+
+For a cadence sensitivity check, the same replay at a 500 ms hop processed
+15 windows with zero dropped seconds and reached 1.093x inference RTF / 0.824x
+capture-wall RTF. That is a host fallback with roughly 500 ms decision cadence,
+not evidence for the intended sub-100 ms deployment budget; the 250 ms result
+remains the canonical benchmark.
+
+Artifact: `reports/onnx_runtime_optimization_2026-10-14.md`
+
+### E-2026-10-14 — dynamic-int8 edge feasibility rejection
+
+The seven-component `ckptfix3` export was passed through the existing
+weight-only dynamic-int8 diagnostic to test the production plan's edge-resource
+assumption. This was intentionally not connected to the runtime and used no
+representative calibration data. The result is rejected for promotion:
+
+- Stage 1 shrank from 42.3 MB to 11.7 MB, but relative-L2 drift was 0.121 and
+  CPU p95 grew from about 0.38 s to 5.61 s for a 3-second window.
+- KWS, presence, and target-KWS converted but had relative-L2 drift of 0.018,
+  0.0032, and 0.122 respectively, while CPU p95 became about 10–13 ms versus
+  0.7–2.1 ms in float.
+- Speaker embedding and the compact verifier failed conversion because the
+  current quantizer could not resolve convolution initializers; the wav2vec
+  intent graph failed for the same class of initializer problem.
+
+This confirms that an uncalibrated dynamic-int8 swap is not a valid production
+optimization. The float `ckptfix3` graphs remain the only retained export. The
+next optimization requires representative cabin calibration, quantization-aware
+training or a vendor-specific compiler, and measurement on the selected target
+SoC. The diagnostic outputs are isolated under the candidate's
+`dynamic_int8/` directory and are not part of the release manifest.
+
+Artifact: `logs/onnx_dynamic_int8_feasibility_ckptfix3_2026-10-14.json`
+
+## 2026-10-14 — ckptfix4 export contract and live-ring benchmark
+
+The speaker-embedding exporter previously gave enrollment and extracted audio
+the same symbolic ONNX time dimension even though the retained contract uses
+different lengths. The exporter now names those dimensions independently
+(enrollment_time and extracted_time) and disables ORT memory-pattern reuse for
+the composed runtime's intentionally mixed fixed windows. The earlier ckptfix3
+candidate is preserved; ckptfix4 is the current candidate.
+
+Validation results for ckptfix4:
+
+- all seven component exports passed export-time parity;
+- the 8-row golden parity and 32-row composed parity reports passed;
+- variable-length speaker embedding passed 1.0→2.0 s, 1.5→3.0 s, and
+  2.0→4.0 s cases;
+- the 10-second StreamingRunner replay processed 29 windows with 0 skipped
+  seconds and no ONNX shape warnings.
+
+The live-ring benchmark also quantified the current host-CPU deployment gap:
+18.70 seconds of inference for 7.25 seconds of processed hop audio, a
+real-time factor of 2.58× (wall time including feeding: about 1.87× the
+10-second capture duration). This is not a target-SoC result, but it is a
+clear reason not to call the current Python/float ONNX path production-ready.
+The next performance step requires streaming/chunk-aware Stage 1, a smaller
+intent path, calibrated quantization or a vendor runtime, and measurement on
+the selected automotive device.
+
+The release manifest now contains 25 present, hashed artifacts, including the
+corrected export, 32-row composed parity, and live-ring benchmark. The
+readiness audit still reports production_ready=false, zero real-driver
+sessions, and the seven blocked evidence gates.
+
+Artifacts:
+
+- src/car_tse/deployment/onnx_runtime.py
+- scripts/export/export_onnx_components.py
+- scripts/eval/benchmark_onnx_streaming_runner.py
+- output/onnx/retained_ckptfix4_2026-10-14/manifest.json
+- logs/onnx_composed_pipeline_parity_ckptfix4_cpu_32samples_2026-10-14.json
+- logs/onnx_speaker_embedding_variable_length_ckptfix4_2026-10-14.json
+- logs/onnx_streaming_runner_cpu_ckptfix4_10s_2026-10-14.json
+- logs/onnx_pipeline_components_ckptfix4_cpu_latency_2026-10-14.json
+- logs/release_manifest_current.json
+
+## 2026-10-14 composed ONNX runtime bridge
+
+The deployment work now includes a reusable ONNX composition layer rather than
+only isolated exported graphs. `OnnxComponentRuntime` enforces the retained
+four-microphone plus sample-aligned playback-reference contract, runs the
+speaker-embedding handoff into target-KWS, and exposes the seven component
+outputs in the same order as the PyTorch reference. `OnnxInCarPipeline` mirrors
+the retained fixed-window presence → speaker gate → wake smoothing → command
+intent state machine. It deliberately rejects endpoint strategies and
+pre-extracted shortcuts until they have their own parity evidence.
+
+The new composed parity harness compared PyTorch and ONNX on eight consecutive
+deterministic CAVEMOVE cabin rows covering the proxy cabin-noise sweep. All
+seven handoffs passed on every row, and all compared state-machine fields
+(acceptance, wake state, command pending, intent readiness, suppression, gate
+scalars, and intent logits) matched. This is a deployment-contract result,
+not a real-driver accuracy result: it uses CPU ONNX Runtime, fixed windows,
+the existing proxy rows, and no target-SoC or quantization measurement.
+
+The runtime bridge is covered by focused contract tests; the focused ONNX and
+manifest suite is 15/15 passed. The release manifest now contains 24 hashed
+artifacts, including the composed parity report. The readiness audit remains
+`research_engineering_preview` with `production_ready=false`: zero real-driver
+sessions, no matching six-input capture hardware, a dirty worktree, and the
+same seven blocked release gates remain unchanged.
+
+Artifacts:
+
+- `src/car_tse/deployment/onnx_runtime.py`
+- `src/car_tse/deployment/__init__.py`
+- `scripts/eval/eval_onnx_composed_pipeline_parity.py`
+- `tests/test_onnx_runtime.py`
+- `logs/onnx_composed_pipeline_parity_ckptfix3_cpu_8samples_2026-10-14.json`
+- `logs/release_manifest_current.json`
+- `logs/production_readiness_audit_current_2026-10-14.json`
+- `reports/production_readiness_snapshot_current_2026-10-14.md`
+
+## 2026-10-14 — 32-scene composed parity extension
+
+The composed bridge was extended from the eight-row smoke tranche to all 32
+rows in the retained CAVEMOVE proxy manifest. The behavioral state machine
+matched PyTorch on all 32 rows: acceptance, wake state, command pending,
+intent readiness, and suppression decisions all matched.
+
+The original isolated numeric criterion was intentionally retained and is
+visible in the artifact. Five component-row comparisons (one KWS, one compact
+verifier, and three intent rows across three scenes) exceeded that tighter
+criterion, although their state decisions still matched. The integration
+report therefore also applies an explicit bounded deployment criterion of
+relative L2 ≤0.2% or absolute error ≤0.01; all seven components pass that
+criterion across all 32 rows. This is a documented runtime-tolerance result,
+not a claim of bitwise equality or target-device accuracy. The raw strict
+counts remain in the JSON so the tolerance choice is auditable.
+
+The 32-scene report now replaces the eight-scene composed report in the hashed
+release manifest. The manifest still has 24 present artifacts and
+`release_signoff_ready=false`; real-driver, six-input hardware, frozen-split,
+threshold-freeze, and clean-release gates remain open.
+
+Artifact: `logs/onnx_composed_pipeline_parity_ckptfix3_cpu_32samples_2026-10-14.json`
+
+## E-2026-10-14 — current runtime optimization and release snapshot
+
+The canonical current state is the `ckptfix4` ONNX export with lazy intent
+execution in the streaming path. The 32-row composed parity rerun is green,
+the full regression is 87 passed / 1 skipped, and the release manifest now
+contains 26 present, hashed artifacts, including the 250 ms lazy-intent
+streaming benchmark and the 500 ms cadence diagnostic. The readiness audit was
+refreshed after the manifest update and remains
+`research_engineering_preview` / `production_ready=false`: seven critical
+evidence gates are blocked, zero real-driver sessions are present, and the
+matching six-input capture hardware is still unavailable.
+
+This entry supersedes earlier artifact-count statements in the historical
+entries above; those entries remain unchanged as an audit trail.
+
+## E-2026-10-14 — clean generalization and noisy transfer follow-up
+
+The earlier 32-scene clean proxy had reached 100% wake recall and 96.9%
+intent with confidence-buffered decoding. A larger run using 64 target wake
+groups at the evaluator's two SNR labels (128 generated rows, 1,792 seconds;
+both rows are noise-free under `--clean`) reduced the same policy to 87.5%
+wake recall, 76.6% overall intent, and 87.5% intent conditioned on wake, with
+zero observed false events. A same-command-speaker enrollment diagnostic was
+slightly lower at 84.4% wake / 73.4% overall intent, so cross-corpus
+enrollment mismatch is not the sole cause.
+
+The matched noisy CAVEMOVE run with the same two-call/0.90 command policy
+reached 45.3% wake recall, 25.8% overall intent, and 56.9% intent conditioned
+on wake, with zero observed false events. This confirms that the clean Stage-1
+branch cannot replace the retained cabin-trained branch. The buffered policy
+is not promoted; further clean-only tuning would risk proxy fitting without
+same-driver recordings.
+
+The three-candidate/0.90 variant was also checked on the larger clean split:
+87.5% wake, 60.9% overall intent, and 69.6% conditioned intent. It is worse
+than the two-candidate setting and is rejected. No clean decoder policy is
+promoted from these cross-corpus proxies.
+
+Artifact: `reports/clean_generalization_and_noise_transfer_2026-10-14.md`
+
+## 2026-10-14 clean endpoint-trim cross-check
+
+The same 128-row noise-free cross-corpus scenes were replayed with the
+retained checkpoints, a 500 ms hop, and the existing `kws_trim` endpoint
+decoder. It reached 100.0% wake recall and 84.375% intent accuracy, with no
+observed false wakes or actions. This is stronger than the 1 s-hop buffered
+variant (87.5% wake / 76.6% intent), so endpoint trim is the best clean proxy
+operating point currently measured. It remains diagnostic only: the rows are
+synthetic, wake and command speakers are not verified to be the same person,
+and the negative exposure is too short for a release claim.
+
+Artifact: `logs/clean_endpoint08_64scenes_clean_hop05_2026-10-14.json`.
+
+## 2026-10-14 open-set safety cross-check
+
+The clean endpoint candidate was replayed on 2,110 non-Marvin Smart Speaker
+clips (3.193 hours). With clean-only KWS and no speaker gate it generated
+3,861 full-path false wakes (1,209.38/hour) and the 14-file sequential action
+sample generated 8 false actions (419.51/hour). The positive-only 84.375%
+intent result is therefore unsafe to promote.
+
+Replacing the clean KWS with the TSE-domain hard-negative KWS and enabling the
+SpEx speaker gate produced the opposite trade-off on the invalid cross-corpus
+positive proxy: 4.6875% wake recall and 0% intent, with zero false events.
+The result is dominated by the fact that wake and command speakers are not
+the same person. This is evidence that the missing same-driver dataset—not
+another clean threshold sweep—is the next decision point.
+
+Artifacts: `logs/smart_speaker_command_negative_endpoint08_2026-10-14.json`
+and `logs/clean_endpoint08_hardneg_gate_64scenes_clean_hop05_2026-10-14.json`.
+
+## 2026-10-14 causal Stage 1 candidate — rejected before promotion
+
+The active 16 kHz SpEx+ transfer model was audited for a strict streaming
+variant. An opt-in causal implementation was added with left-only TCN
+depthwise convolutions and per-frame channel normalization; default behavior
+remains unchanged. Structural loading and a prefix-invariance check passed.
+
+On the matched clean validation split, however, swapping the causal layers
+into the existing checkpoint reduced mean SI-SDR from 41.67 dB to 4.16 dB.
+This is an initialization mismatch, not a trained causal result. A separately
+named clean causal fine-tune then produced NaN train/validation SI-SDR in its
+first epoch under mixed precision and was stopped. No checkpoint was promoted
+and the retained release path was not changed. The detailed record is
+`reports/causal_stage1_candidate_2026-10-14.md`.
+
+## 2026-10-14 full open-set hard-negative KWS sweep
+
+The TSE-domain hard-negative KWS candidate was evaluated on all 2,110
+non-Marvin Smart Speaker clips (3.193 hours), using the clean endpoint
+configuration without an explicit speaker gate. KWS-only smoothing produced
+234 false wake events (73.30/hour); the full path with the frame-presence gate
+produced 155 (48.55/hour). Thus presence gating removed 79 events, or 33.8%,
+on this open-set corpus. The largest per-speaker full-path rate was
+205.27/hour, so the candidate remains far above the <=0.1/hour release target.
+
+The sequential 14-file action diagnostic had zero false actions, but its
+68.65-second exposure is too short for a safety claim. This is a useful
+component ablation and an improvement over the clean-only KWS result, not a
+production result: the clips are clean single-channel studio audio duplicated
+to four channels, and there are still zero real-driver sessions. Artifact:
+`logs/smart_speaker_command_negative_endpoint08_hardneg_nogate_all_2026-10-14.json`.
+
+## 2026-10-14 command-duration correction and clean baseline
+
+The proxy evaluator previously reserved only two seconds for every FSC command
+and supplied a two-second intent window. That silently clipped longer source
+utterances and created a misleading clean-path failure cluster around bedroom
+heat/light commands. The evaluator now exposes the proxy command duration and
+intent input duration explicitly.
+
+With a 3.5-second command placement and a 3.25-second intent input, the
+retained endpoint-trim pipeline reached 100.0% wake recall and 100.0% intent
+accuracy on 64 clean proxy scenes (896 seconds), with zero false actions and
+one event-level false wake. Mean wake latency was 1.914 seconds and p95 was
+3.0 seconds. This supports the interpretation that the earlier clean errors
+were predominantly a windowing/data-placement artifact, not evidence that the
+clean FSC intent head needs another training run.
+
+The same setting on 32 noisy CAVEMOVE scene/SNR rows improved wake recall from
+64.1% to 75.0% and overall intent from 51.6% to 70.3%; intent accuracy given a
+wake improved from 80.5% to 93.8%. False wakes remained 84.4/hour in this
+short proxy, so the wake stage remains the primary transfer gap. Raising the
+KWS threshold to 0.50 removed observed false wakes but reduced wake recall to
+21.9%; it is not promoted.
+
+An intermediate threshold of 0.48 was also rejected: it produced 73.4% wake,
+57.8% overall intent, 78.7% intent given wake, and the same 84.4 false
+wakes/hour. The 0.45 setting remains the better diagnostic point, not a frozen
+release threshold.
+
+Artifact: `reports/clean_command_duration_followup_2026-10-14.md`.
+
+The read-only capture preflight was rerun for the production six-channel
+contract. Six input devices were visible, but none accepted 6 channels at
+16 kHz; the available devices exposed at most two channels. No recording was
+created. This confirms that the real-driver/target-hardware gate is an external
+capture-hardware dependency, not a missing software switch.
+
+Artifact: `logs/capture_preflight_6ch_2026-10-14.json`.
+
+The same preflight for the four-channel model pilot also found no supported
+device. The current workstation therefore cannot collect either the pilot
+4-channel sessions or the recommended 6-channel production sessions.
+
+Artifact: `logs/capture_preflight_4ch_2026-10-14.json`.
+
+## 2026-10-14 target-KWS checkpoint ablation
+
+The older GSC-only target-speaker KWS checkpoint had a stronger cached
+validation F1 than the AISHELL-5/Smart Speaker hard-negative candidate, so it
+was tested in the corrected 64-scene clean endpoint proxy. Both reached 100%
+wake recall, but the GSC-only checkpoint reached only 89.1% intent accuracy and
+generated 384 repeated false wake events (six per scene). The retained
+hard-negative candidate reached 100% intent accuracy with one false wake and no
+false actions on the same synthetic exposure. The GSC-only checkpoint is
+rejected for the cascade despite its better isolated validation F1; the result
+shows why continuous open-set behavior matters more than a positive/negative
+cached F1 alone.
+
+Artifact: `reports/target_kws_checkpoint_ablation_2026-10-14.md`.
+
+The same study also tried a full-model warm start from the positive-heavy
+target-KWS checkpoint on the Smart Speaker hard-negative cache. Its best
+validation F1 was 0.402 versus 0.474 for the retained hard-negative model, so
+it was rejected before cascade testing. A min-fusion ensemble with the
+positive-heavy model matched the retained model exactly on the 64-scene clean
+proxy (100% wake/intent, one false wake) and the 32-scene noisy transfer (75%
+wake, 70.3% intent, 84.4 false wakes/hour), so the simpler single hard-negative
+checkpoint remains preferred.
+
+## 2026-10-14 larger target-KWS candidate
+
+The Smart Speaker/AISHELL hard-negative target-KWS cache was used to train a
+larger `[48, 96, 192, 256]` acoustic head. It improved cached validation F1
+from 0.474 to 0.667, with a validation-sweep F1 of 0.761 and held-out test
+sweep F1 of 0.830. However, at the validation-selected threshold it detected
+only 1.6% of wakes on the current cross-corpus clean proxy; a diagnostic lower
+threshold reached only 12.5% on 16 scenes. It is not promoted because the
+current proxy wake/command identity mismatch makes the transfer failure
+unresolved. The checkpoint is retained for speaker-consistent testing.
+
+On 250 Smart Speaker negative files, the larger head at its validation-selected
+threshold produced 86.5 false wakes/hour and zero actions in a 14-file action
+sample, worse than the retained hard-negative candidate. It is rejected for
+the current runtime despite its higher cached F1.
+
+This run also exposed and fixed a loader bug: the continuous proxy evaluator
+was not forwarding non-default target-KWS channel settings to the pipeline,
+which caused shape-mismatch failures for larger target heads. The loader now
+passes target-KWS architecture parameters explicitly. Artifact:
+`reports/target_kws_large_candidate_2026-10-14.md`.
+
+## 2026-10-14 corrected per-component latency benchmark
+
+The per-component latency evaluator had one remaining measurement mismatch: it
+always constructed a two-second intent tensor, even when the evaluated
+configuration specified `intent_input_seconds: 3.25`. The evaluator now reads
+the configured duration, pads the synthetic Stage-1 output when necessary, and
+names the result with the actual intent duration. No model or checkpoint was
+changed.
+
+The corrected CUDA FP32 run (3 warmup iterations, 10 timed repetitions) measured
+42.20 ms mean / 48.69 ms p95 for 3-second four-channel Stage 1, 10.92 / 11.00
+ms for the 3.25-second Wav2Vec intent stage, 45.90 / 46.13 ms for the forced
+composite wake stage, and 58.30 / 80.88 ms for the forced composite command
+stage. These remain workstation model-forward measurements rather than Jetson
+or end-to-end capture latency. Artifact:
+`logs/component_latency_clean_longcommand_3p25_2026-10-14.json` and the detailed
+table in `reports/clean_command_duration_followup_2026-10-14.md`.
+
+The full regression suite after this change is **90 passed, 1 skipped**.
+
+## 2026-10-14 stale-problem audit and provenance correction
+
+The earlier problem note was rechecked against the current English workspace.
+The Stage-2 manifest/backend guard, official FSC split handling, runtime-matched
+KWS cache path, interval-overlap event scoring, and new training metadata are
+now corrected for new runs. Historical pre-fix logs remain identifiable as
+stale rather than being silently relabelled. The v9 command-timing figures are
+still invalid and must remain superseded by the v10 trace and later corrected
+proxy artifacts.
+
+One live reporting issue remained: the proxy previously set top-level
+`speaker_consistent=true` when enrollment used another utterance from the FSC
+command speaker, even though the Marvin wake clip came from a separate public
+corpus and was not verified to be that speaker. The evaluator now compares the
+wake and command speaker identities, writes both IDs into each scene truth
+record, reports `speaker_consistent=false` for the current cross-corpus setup,
+and correctly marks the clean control as having no passenger wake ground truth.
+The post-fix one-scene smoke run retained 100% wake/intent on that tiny clean
+probe, but correctly reported `production_valid=false`.
+
+The permitted-session evaluator had one analogous edge case: it associated
+driver and negative events by window centre only. It now records window end
+times and uses interval overlap for wake, command, and negative-event
+association, with a regression test for a label that crosses the centre-time
+boundary. This changes only future real-session scoring; no existing session
+result was rewritten. Full verification after these fixes is **92 passed, 1
+skipped**. The itemized audit is in `reports/stale_audit_2026-10-14.md`.
+
+The full 64-scene clean and 64-row noisy proxy runs were then regenerated after
+the provenance fix. Scores were unchanged, while both new artifacts now report
+`speaker_consistent=false` and `production_valid=false`:
+
+- `logs/clean_interval_overlap_endpoint_trim_fullcommand_64scenes_v2_provenance_2026-10-14.json`
+- `logs/noisy_interval_overlap_endpoint_trim_fullcommand_32scenes_v2_provenance_2026-10-14.json`
+
+The clean result remains 100.0% wake / 100.0% intent with one false wake and
+zero false actions. The v2 noisy result retained 75.0% wake / 70.3% overall
+intent / 93.8% intent given wake, but its 84.4 diagnostic false wakes/hour is
+now superseded by the full-context v3 rerun below. These are cross-corpus
+engineering proxies, not real-driver evidence.
+
+The readiness audit was refreshed against the long-command English candidate;
+it remains `research_engineering_preview` / `production_ready=false` with zero
+permitted real-driver sessions and blocked same-driver, hardware, split, and
+threshold gates. Artifact:
+`reports/production_readiness_snapshot_current_2026-10-14_v2.md`.
+
+## 2026-10-14 full-context window correction
+
+The noisy proxy then exposed a measurement flaw that affected earlier false
+accept claims. The continuous evaluators processed a final partial model
+window and zero-padded the missing tail. In the 14-second proxy scenes, every
+one of the 21 previously reported false wakes occurred at the invalid `13.0 s`
+tail start. A shared `full_context_window_starts` rule now excludes incomplete
+tails, matching the actual streaming runner; clips shorter than one context
+still receive one deliberate padded window.
+
+The corrected clean v3 run remains 100.0% wake / 100.0% intent with one false
+wake and zero false actions. The corrected noisy v3 run remains 75.0% wake /
+70.3% overall intent / 93.8% intent given wake, but its observed false wakes
+fall from 21 (84.4/hour) to **0** over 896 seconds. The earlier 84.4/hour value
+is superseded and must not be used for a FAR claim.
+
+The same correction was applied to continuous ablation, spatial, AISHELL/KWS,
+Smart Speaker, and real-session evaluators. The full 2,110-file Smart Speaker
+negative corpus now reports 76 full-path false wakes over 3.193 hours
+(23.81/hour), down from the old 155 (48.55/hour); this remains unsafe and is
+still not real-cabin evidence. New regression tests cover the shared window
+rule. Verification is **95 passed, 1 skipped**.
+
+The KWS threshold sweep was replayed under the corrected policy on 16 scenes at
+both `-5 dB` and `0 dB` CAVEMOVE SNR. Thresholds 0.45, 0.48, 0.50, and 0.55
+produced wake recall of 78.1%, 75.0%, 21.9%, and 0.0%, respectively; all had
+zero observed false wakes in the 448-second-per-setting proxy. The 0.45 point
+is the best diagnostic choice, not a frozen release threshold because the
+proxy lacks same-driver continuity and long negative exposure. Details are in
+`reports/clean_command_duration_followup_2026-10-14.md`.
+
+## 2026-10-14 open-set threshold replay and streaming input guard
+
+The Smart Speaker negative corpus was replayed at KWS thresholds 0.35, 0.40,
+0.45, 0.50, 0.55, and 0.60 in one shared Stage-1/presence/KWS forward pass.
+Over 2,110 files and 3.1925356 hours, the corrected full-path event rates were
+926.54, 925.28, 538.13, 23.81, 0.00, and 0.00 events/hour respectively. The
+current 0.50 candidate therefore still has 76 false wakes, while 0.55 removes
+all observed negative events on this clean studio corpus. A threshold cannot be
+promoted from this result because the corrected noisy proxy at 0.55 loses all
+target wakes; real same-driver tuning and held-out data remain required.
+
+The negative per-file maximum wake-score distribution also exposes the
+separation issue: median 0.4924, p90 0.5043, p99 0.5096, maximum 0.5126. Thus
+the current 0.50 cutoff sits inside the non-Marvin negative tail, while 0.55
+is above the observed negative maximum but also above the useful noisy-positive
+region. This supports collecting speaker-consistent positive and passenger
+negative examples before changing the detector again.
+
+The Smart Speaker evaluator now exposes threshold replay without recomputing
+the expensive Stage-1 forward pass. The live `StreamingRunner` also validates
+mixture, multichannel, and playback-reference frame alignment before mutating
+any ring buffer, preventing a malformed capture callback from permanently
+desynchronizing the streams. Focused tests pass, and the full-context window
+policy remains covered by regression tests.
+
+## 2026-10-14 compact cabin+Smart gate full-context recheck
+
+> **Superseded by the backend-attribution correction below.** The historical
+> full-context window result was valid as a windowing check, but its batched
+> “compact” label was not reliable because the compact verifier was not passed
+> into the scorer.
+
+The compact cabin+Smart speaker-verifier candidate was rerun on all 2,110
+Smart Speaker negatives after the full-context evaluator correction. At gate
+threshold 0.30 it recorded **0 full-path events/hour** over 3.193 hours,
+compared with 23.81/hour for the retained no-compact-gate candidate. Its
+KWS-only rate was 38.21/hour versus 49.80/hour, and the 14-file sequential
+action sample produced zero false actions.
+
+This is a strong negative-domain safety improvement, but not production
+evidence: the corpus is clean single-channel studio audio duplicated to four
+channels and has no driver positives. Earlier same-speaker synthetic proxy
+runs with compact gating reached only 37.5% target-wake recall, so the gate is
+held as a research candidate rather than promoted. Details:
+`reports/compact_gate_fullcontext_recheck_2026-10-14.md`.
+
+A matched clean wake/enrollment check makes the trade-off sharper: the retained
+no-gate path detected 15/16 wakes (93.75%), while the compact gate detected
+3/16 (18.75%). The command portion remains cross-corpus and was intentionally
+not interpreted. The compact gate is therefore a strong negative-domain veto
+candidate but currently over-suppresses positives; it must be calibrated or
+retrained on speaker-consistent wake data before promotion.
+
+## 2026-10-14 target-KWS training contract audit
+
+The retained hard-negative target-KWS checkpoint was audited against its cache
+and runtime. The 16 kHz, 1.0-second/16,000-sample crop, 40-mel frontend,
+`[32, 64, 128]` audio channels, and 256-dimensional enrollment/extracted
+embeddings all match. The cache contains 4,684 train, 1,629 validation, and
+1,625 test rows; the stored class counts are 604/4,080, 130/1,499, and
+128/1,497 positives/negatives respectively, with balanced sampling during
+training.
+
+The remaining weakness is therefore score separation rather than the earlier
+crop/scale contract bug. Held-out clip calibration is only F1 0.523 at 0.51,
+and the existing larger/positive-heavy/distilled candidates were not promoted
+because their proxy transfer was not better. Details are in
+`reports/target_kws_training_contract_audit_2026-10-14.md`.
+
+## 2026-10-14 compact-gate backend attribution correction
+
+The Smart Speaker batched evaluator was audited after the compact-gate
+recheck. It accepted the compact threshold but did not pass the loaded compact
+verifier into `evaluate_stream`; the resulting “compact” report could silently
+use the SpEx cosine path. The evaluator now passes the compact verifier only
+when the compact backend is selected and supports one-pass speaker-threshold
+sweeps. Historical logs are retained and reclassified rather than rewritten.
+
+With the actual compact verifier, 2,110 Smart Speaker negatives (3.193 hours)
+produced 6 full-path events at KWS 0.50 and compact threshold 0.30, or 1.88/h;
+at KWS 0.46 the rate was 154.74/h. A gate-threshold sweep at KWS 0.46 remained
+24.12/h even at gate 0.80. The earlier 0.00/h compact claim is therefore not
+valid. The positive wake/enrollment proxy still reached 15/16 at KWS 0.46,
+but the noisy proxy reached only 20/32 wakes and 1/32 intent rows; neither is
+same-driver evidence. The candidate is not promoted. See
+`reports/compact_gate_backend_correction_2026-10-14.md`.
+
+## 2026-10-15 clean E2E v2 confirmation and cabin-noise transfer
+
+The clean E2E v2 benchmark was rebuilt with explicit speaker-consistent
+synthetic pairing: held-out `marvin` clips were converted with official kNN-VC
+into ten FSC test speakers, and wake/command rows were interleaved so the
+1,000-scene prefix covers all ten speakers. The existing
+`confidence_buffered_hybrid` command decoder was evaluated with frozen
+component checkpoints. The balanced 1,000-scene clean result was 901/1,000
+task successes (90.1%), 999/1,000 wake recall, 0 observed false wake events,
+and 0 observed false actions. The 95% Wilson lower bound for task success was
+88.1%. This clears the clean synthetic engineering target but is not
+real-driver evidence.
+
+The same candidate was then transferred without retraining to 100 matched
+synthetic scenes at each of -5 dB and 0 dB CAVEMOVE cabin SNR, with passenger
+wake/non-wake speech enabled. Across 200 rows it reached 45.5% wake recall,
+31.0% end-to-end task success, and 68.1% intent accuracy conditioned on wake;
+no false events were observed in this short positive-scene exposure. The
+large clean-to-cabin drop confirms that the next improvement is cabin-domain
+front-end/TSE/KWS robustness and real-cabin calibration, not further clean
+threshold tuning. Full details and raw logs are in
+`reports/e2e_v2_clean_results_2026-10-15.md` and
+`logs/noisy_e2e_v2_knnvc_matched_balanced_buffer3_pilot100_2026-10-15.json`.
+
+The same 200 noisy rows were also evaluated with the retained dual-domain
+Stage-1/TSE and cabin-trained KWS configuration. It recovered 99.5% wake
+recall and 81.0% end-to-end task success, but produced 254 false wake events
+(326.6/h) and 76 false actions (97.7/h). This candidate is not promotable:
+positive noisy recall improved, but the safety operating point is unacceptable.
+The next step is threshold and target-speaker-gate calibration against long
+negative cabin streams, followed by a positive-regression check.
+
+## 2026-10-15 command-buffer horizon follow-up
+
+The confidence-buffered hybrid decoder was evaluated with four post-wake
+candidate calls on the full 1,000-scene clean matched-speaker benchmark. It
+reached 906/1,000 task successes (90.6%), compared with 901/1,000 (90.1%) for
+the three-call setting. Wake recall stayed at 999/1,000 and the Wilson lower
+bound was approximately 88.6%. The weakest speaker remained
+`NgQEvO2x7Vh3xy2xz` at 49/100, so this is a windowing improvement, not a fix
+for speaker/domain variation.
+
+On the 200-row dual-domain noisy pilot, buffer four reached 84.0% task
+success, 230.1 false wakes/hour, and 88.7 false actions/hour. A five-call
+buffer reduced false actions to 5.1/hour and false wakes to 212.1/hour but
+also reduced task success to 80.5%. Neither noisy setting is safe; buffer four
+is retained only as the clean candidate and for subsequent calibrated noisy
+experiments. No checkpoint changed.
+
+## 2026-10-15 long-negative calibration and gate regression
+
+The dual-domain candidate was evaluated on all 2,110 University of Rochester
+Smart Speaker Command negatives (3.193 hours) with shared-forward KWS
+threshold replay. With no speaker gate, full-path false wakes were 739.2/h at
+KWS 0.50, 154.1/h at 0.75, and 0/h at 0.80. The last operating point has no
+measured positive recall and therefore was not promoted.
+
+The AISHELL-5-negative split-gate candidate was then evaluated with both KWS
+and speaker-threshold sweeps. At its base KWS 0.50 / SpEx gate 0.24 setting it
+produced 303 false wakes, or 94.9/h. The one-dimensional sweeps reached 9.1/h
+at KWS 0.75 and 8.8/h at speaker threshold 0.30, but neither setting is a
+jointly calibrated production operating point. A 100-scene clean,
+speaker-consistent positive pilot at KWS 0.50 / gate 0.24 detected only 52.0%
+of target wakes and achieved 41.0% task success. This confirms that the gate
+improves open-set rejection at the cost of severe positive over-suppression
+when its speaker-score distribution is not calibrated to the synthetic
+same-speaker wake data.
+
+These experiments did not modify checkpoints. The next calibration data must
+contain driver-consistent positives, passenger "Marvin" impostors, and long
+target-absent cabin streams in the same microphone/domain family; otherwise a
+low false-accept number is purchased by rejecting the driver.
+
+## 2026-10-15 existing target-KWS candidate regression
+
+Previously trained target-KWS alternatives were replayed on the new clean,
+matched-speaker pilot. The larger Smart Speaker/AISHELL hard-negative head
+detected only 10/100 target wakes and achieved 2/100 task successes. The
+clean-identity cabin head detected 76/100 wakes and achieved 33/100 task
+successes. The retained no-gate clean candidate remains materially stronger
+(999/1,000 wakes and 901/1,000 task successes on the full benchmark), so
+neither alternative was promoted. This reinforces that isolated validation
+F1 and larger model capacity do not predict the full cascade operating point.
+
+## 2026-10-15 LibriSpeech hard-negative KWS experiment
+
+The implementation plan identified open-set negative diversity as a likely
+missing ingredient in the wake path. An append-only LibriSpeech
+train-clean-100 cache was therefore built using the frozen Stage-1 extractor:
+36,000 train windows (10 hours), 7,200 validation windows (2 hours), and
+36,000 held-out test windows (10 hours). LibriSpeech speakers were kept
+disjoint from the wake positives. This is clean read speech and is useful for
+open-set training/diagnostics, but it is not cabin-noise or real-driver data.
+
+A new target-KWS head was initialized from
+`stage3_target_kws_gsc_marvin_hardneg_ft1` and trained for 12 epochs in a new
+checkpoint directory. The best cached validation score was F1 0.493 with
+0.962 recall. On the 2,110-file University of Rochester Smart Speaker
+negative corpus (3.193 hours), the candidate produced 1 false wake at KWS
+threshold 0.50 (0.31/h) and zero events at thresholds 0.60–0.80. However,
+the clean 1,000-scene matched-speaker E2E regression detected only 68.0% of
+target wakes and achieved 0.0% task success. The checkpoint was rejected and
+was not promoted.
+
+This experiment confirms that generic negative speech improves rejection but
+can destroy positive speaker/domain matching when it dominates the training
+mix. Future KWS training must preserve speaker-consistent, TSE-processed
+positive wakes and select thresholds/checkpoints using both clean positive
+recall and long-negative false-wake rate. The full result is in
+`reports/e2e_v2_clean_results_2026-10-15.md`.
+
+A threshold-only rescue check on a separate 100-scene clean pilot increased
+wake recall from 68.0% at KWS 0.45 to 89.0% at KWS 0.25, but still produced
+0/100 task successes. The failure is therefore not just threshold selection;
+the candidate's target-speaker conditioning/gating behavior is incompatible
+with the retained clean cascade.

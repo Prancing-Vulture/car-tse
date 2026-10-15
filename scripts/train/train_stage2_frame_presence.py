@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import random
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -29,7 +30,7 @@ from car_tse.models.presence_head import (
 )
 from car_tse.models.stage1_system import Stage1System
 from car_tse.io.manifest import read_jsonl
-from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, write_metrics
+from car_tse.train.utils import append_jsonl, get_device, load_checkpoint, save_checkpoint, write_metrics
 
 
 def collate(batch: list[dict]) -> dict:
@@ -532,6 +533,20 @@ def main() -> int:
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     max_epochs = int(args.epochs or cfg["train"].get("max_epochs", 4))
     out_dir = Path(paths["checkpoint_root"]) / cfg["name"]
+    run_id = uuid.uuid4().hex
+    history_path = Path(paths["log_root"]) / cfg["name"] / f"epoch_metrics_{run_id}.jsonl"
+    write_metrics(
+        Path(paths["log_root"]) / cfg["name"] / f"run_metadata_{run_id}.json",
+        {
+            "run_id": run_id,
+            "run_name": cfg["name"],
+            "device": str(device),
+            "config": str(args.config),
+            "train_manifest": str(manifest),
+            "additional_train_manifests": [str(value) for value in manifest_names[1:]],
+            "init_checkpoint": str(init_checkpoint) if init_checkpoint else None,
+        },
+    )
     best_f1 = float("-inf")
     for epoch in range(1, max_epochs + 1):
         head.train()
@@ -640,6 +655,7 @@ def main() -> int:
         )
         metrics = {
             "epoch": epoch,
+            "run_id": run_id,
             "train_loss": float(np.mean(losses)) if losses else None,
             "train_examples": len(train_ds),
             "val_examples": len(val_ds),
@@ -659,6 +675,7 @@ def main() -> int:
             },
         }
         write_metrics(Path(paths["log_root"]) / cfg["name"] / "metrics_last.json", metrics)
+        append_jsonl(history_path, metrics)
         best = validation["best_chunk_f1"]
         print(
             f"epoch {epoch} loss={metrics['train_loss']:.4f} "
@@ -672,7 +689,12 @@ def main() -> int:
 
     write_metrics(
         Path(paths["log_root"]) / cfg["name"] / "train_last.json",
-        {"best_chunk_f1": best_f1, "checkpoint": str(out_dir / "best.pt")},
+        {
+            "best_chunk_f1": best_f1,
+            "checkpoint": str(out_dir / "best.pt"),
+            "run_id": run_id,
+            "history": str(history_path),
+        },
     )
     print(f"Done. Best checkpoint: {out_dir / 'best.pt'}", flush=True)
     return 0

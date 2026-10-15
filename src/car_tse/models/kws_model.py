@@ -8,13 +8,31 @@ import torch.nn.functional as F
 
 
 class LogMelFront(nn.Module):
-    def __init__(self, sample_rate: int = 8000, n_mels: int = 40, n_fft: int = 256, hop: int = 80):
+    def __init__(
+        self,
+        sample_rate: int = 8000,
+        n_mels: int = 40,
+        n_fft: int = 256,
+        hop: int = 80,
+        exportable_frontend: bool = False,
+    ):
         super().__init__()
         self.sample_rate = sample_rate
         self.n_fft = n_fft
         self.hop = hop
+        self.exportable_frontend = bool(exportable_frontend)
         self.register_buffer("mel_fb", torch.tensor(self._mel_filterbank(sample_rate, n_fft, n_mels)))
         self.register_buffer("window", torch.hann_window(n_fft))
+        if self.exportable_frontend:
+            frequencies = torch.arange(n_fft // 2 + 1, dtype=torch.float32).view(-1, 1)
+            samples = torch.arange(n_fft, dtype=torch.float32).view(1, -1)
+            phase = 2.0 * torch.pi * frequencies * samples / float(n_fft)
+            real = torch.cos(phase) * self.window.view(1, -1)
+            imag = -torch.sin(phase) * self.window.view(1, -1)
+            # Interleave real/imaginary rows so a single fixed Conv1d produces
+            # the same one-sided DFT coefficients as torch.stft.
+            kernel = torch.stack((real, imag), dim=1).reshape(-1, 1, n_fft)
+            self.register_buffer("dft_kernel", kernel)
 
     @staticmethod
     def _mel_filterbank(sr: int, n_fft: int, n_mels: int) -> list[list[float]]:
@@ -41,6 +59,8 @@ class LogMelFront(nn.Module):
         return fb.tolist()
 
     def forward(self, wav: torch.Tensor) -> torch.Tensor:
+        if self.exportable_frontend:
+            return self._forward_exportable(wav)
         spec = torch.stft(
             wav,
             n_fft=self.n_fft,
@@ -53,12 +73,39 @@ class LogMelFront(nn.Module):
         mel = torch.matmul(self.mel_fb, power)
         return torch.log(mel + 1e-6)
 
+    def _forward_exportable(self, wav: torch.Tensor) -> torch.Tensor:
+        """Real-valued STFT equivalent that can be lowered to ONNX.
+
+        The ordinary path uses ``torch.stft(return_complex=True)``, which is
+        numerically convenient but is not accepted by the legacy ONNX
+        exporter used by several embedded toolchains.  A fixed real/imaginary
+        DFT convolution preserves the same centered, reflect-padded framing
+        without complex tensors.
+        """
+
+        if wav.dim() == 1:
+            wav = wav.unsqueeze(0)
+        padded = F.pad(wav.unsqueeze(1), (self.n_fft // 2, self.n_fft // 2), mode="reflect")
+        coefficients = F.conv1d(padded, self.dft_kernel, stride=self.hop)
+        real = coefficients[:, 0::2, :]
+        imag = coefficients[:, 1::2, :]
+        power = real.square() + imag.square()
+        mel = torch.matmul(self.mel_fb, power)
+        return torch.log(mel + 1e-6)
+
 
 class KWSModel(nn.Module):
-    def __init__(self, sample_rate: int = 8000, n_mels: int = 40, channels: list[int] | None = None, num_classes: int = 36):
+    def __init__(
+        self,
+        sample_rate: int = 8000,
+        n_mels: int = 40,
+        channels: list[int] | None = None,
+        num_classes: int = 36,
+        exportable_frontend: bool = False,
+    ):
         super().__init__()
         channels = channels or [32, 64, 128]
-        self.mel = LogMelFront(sample_rate, n_mels)
+        self.mel = LogMelFront(sample_rate, n_mels, exportable_frontend=exportable_frontend)
         layers: list[nn.Module] = []
         in_ch = 1
         for ch in channels:
@@ -104,6 +151,7 @@ class TargetSpeakerKWSModel(nn.Module):
         num_classes: int = 2,
         speaker_embedding_dim: int = 256,
         hidden: int = 256,
+        exportable_frontend: bool = False,
     ):
         super().__init__()
         self.audio = KWSModel(
@@ -111,6 +159,7 @@ class TargetSpeakerKWSModel(nn.Module):
             n_mels=n_mels,
             channels=channels,
             num_classes=num_classes,
+            exportable_frontend=exportable_frontend,
         )
         audio_dim = int((channels or [32, 64, 128])[-1])
         relation_dim = int(speaker_embedding_dim) * 4 + 1

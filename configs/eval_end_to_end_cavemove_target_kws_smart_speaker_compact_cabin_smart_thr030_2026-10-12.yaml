@@ -2,6 +2,7 @@ name: eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr0
 sample_rate: 16000
 segment_seconds: 3.0
 manifest: stage1_cavemove_cabin.jsonl
+split: test
 stage1_config: configs/stage1_spex_dual_domain_rms010_ft1.yaml
 presence_type: frame
 presence_sample_rate: 16000
@@ -30,10 +31,14 @@ kws_required_hits: 2
 kws_num_classes: 2
 intent_input_seconds: 2.0
 command_timeout_calls: 4
-label_map: configs/labels_fsc.json
+label_map: meta/intent_label_map.json
 
 cabin_noise: true
 num_mics: 4
+# The model consumes four microphone channels, while production capture also
+# records two line-in playback-reference channels for echo cancellation.
+capture_expected_channel_count: 6
+capture_playback_reference_required: true
 cabin_noise_channels: [0, 2, 4, 6]
 cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
 cabin_noise_cache_size: 32

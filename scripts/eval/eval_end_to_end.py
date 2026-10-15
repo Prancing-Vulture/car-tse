@@ -69,6 +69,7 @@ def main() -> int:
         intent_sample_rate=cfg["sample_rate"],
         kws_num_classes=int(cfg.get("kws_num_classes", 2)),
         intent_type=str(cfg.get("intent_type", "crnn")),
+        intent_bidirectional=bool(cfg.get("intent_bidirectional", True)),
         intent_encoder=str(cfg.get("intent_encoder", "facebook/wav2vec2-base-960h")),
         intent_encoder_checkpoint=(
             Path(paths["checkpoint_root"]) / cfg["intent_encoder_checkpoint"]

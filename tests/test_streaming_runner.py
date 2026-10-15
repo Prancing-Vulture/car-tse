@@ -3,8 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from car_tse.pipeline.streaming_runner import RingBuffer, StreamingRunner
+from car_tse.pipeline.windowing import full_context_window_starts
 
 
 class FakePipeline:
@@ -12,7 +14,7 @@ class FakePipeline:
         self.calls = 0
         self.window_lengths: list[int] = []
 
-    def forward(self, mixture, enrollment, state=None, multichannel=None):
+    def forward(self, mixture, enrollment, state=None, multichannel=None, playback_ref=None):
         self.calls += 1
         self.window_lengths.append(int(mixture.shape[-1]))
         if state is None:
@@ -20,6 +22,23 @@ class FakePipeline:
         state["windows"] += 1
         output = SimpleNamespace(wake_detected=False, intent_ready=False)
         return output, state
+
+
+class PlaybackCheckingPipeline(FakePipeline):
+    def __init__(self) -> None:
+        super().__init__()
+        self.playback_windows: list[np.ndarray] = []
+
+    def forward(self, mixture, enrollment, state=None, multichannel=None, playback_ref=None):
+        assert playback_ref is not None
+        self.playback_windows.append(playback_ref.detach().cpu().numpy().copy())
+        return super().forward(
+            mixture,
+            enrollment,
+            state=state,
+            multichannel=multichannel,
+            playback_ref=playback_ref,
+        )
 
 
 def make_runner(
@@ -58,6 +77,32 @@ def test_ring_buffer_overwrite_accounting() -> None:
     ring.push(np.arange(20, dtype=np.float32))
     assert ring.total_written == 24
     assert ring.overwritten_samples == 14
+
+
+def test_push_validates_aligned_frames_before_mutating_rings() -> None:
+    pipeline = FakePipeline()
+    runner = StreamingRunner(
+        forward=pipeline.forward,
+        enrollment=np.zeros(160, dtype=np.float32),
+        sample_rate=1000,
+        window_seconds=0.3,
+        hop_seconds=0.1,
+        num_mics=2,
+        use_playback_ref=True,
+    )
+
+    with pytest.raises(ValueError, match="multichannel"):
+        runner.push(
+            np.zeros(100, dtype=np.float32),
+            multichannel=np.zeros((99, 2), dtype=np.float32),
+            playback_ref=np.zeros(100, dtype=np.float32),
+        )
+
+    assert runner.ring.total_written == 0
+    assert runner.multichannel_ring is not None
+    assert runner.multichannel_ring.total_written == 0
+    assert runner.playback_ref_ring is not None
+    assert runner.playback_ref_ring.total_written == 0
 
 
 def test_does_not_skip_when_consumer_keeps_up() -> None:
@@ -116,3 +161,36 @@ def test_second_process_call_after_more_audio() -> None:
     second = runner.stats()["processed_windows"]
     assert second > first
     assert runner.stats()["skipped_seconds"] == 0.0
+
+
+def test_playback_reference_is_window_aligned_and_forwarded() -> None:
+    pipeline = PlaybackCheckingPipeline()
+    runner = StreamingRunner(
+        forward=pipeline.forward,
+        enrollment=np.zeros(160, dtype=np.float32),
+        sample_rate=1000,
+        window_seconds=0.3,
+        hop_seconds=0.1,
+        num_mics=1,
+        max_lag_seconds=5.0,
+        use_playback_ref=True,
+    )
+    mixture = np.arange(1000, dtype=np.float32)
+    playback = mixture * 2.0
+    runner.push(mixture, playback_ref=playback)
+    assert runner.process_available() == 8
+    assert len(pipeline.playback_windows) == 8
+    # The first window is [0, 300); subsequent windows advance by 100 samples.
+    assert np.allclose(pipeline.playback_windows[0][0], playback[:300])
+    assert np.allclose(pipeline.playback_windows[1][0], playback[100:400])
+
+
+def test_full_context_window_starts_excludes_padded_tail():
+    starts = list(full_context_window_starts(14_000, 3_000, 500))
+    assert starts[0] == 0
+    assert starts[-1] == 11_000
+    assert 13_000 not in starts
+
+
+def test_full_context_window_starts_keeps_one_short_clip():
+    assert list(full_context_window_starts(1_000, 3_000, 500)) == [0]

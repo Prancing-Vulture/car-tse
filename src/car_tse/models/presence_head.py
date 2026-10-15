@@ -46,9 +46,16 @@ class FramePresenceHead(nn.Module):
         hidden: int = 64,
         n_fft: int = 512,
         hop: int = 160,
+        exportable_frontend: bool = False,
     ):
         super().__init__()
-        self.mel = LogMelFront(sample_rate, n_mels, n_fft=n_fft, hop=hop)
+        self.mel = LogMelFront(
+            sample_rate,
+            n_mels,
+            n_fft=n_fft,
+            hop=hop,
+            exportable_frontend=exportable_frontend,
+        )
         groups = 8 if hidden % 8 == 0 else 1
         self.net = nn.Sequential(
             nn.Conv1d(n_mels, hidden, kernel_size=5, padding=2),
@@ -110,9 +117,16 @@ class PersonalFramePresenceHead(nn.Module):
         n_fft: int = 512,
         hop: int = 160,
         speaker_embedding_dim: int = 256,
+        exportable_frontend: bool = False,
     ):
         super().__init__()
-        self.mel = LogMelFront(sample_rate, n_mels, n_fft=n_fft, hop=hop)
+        self.mel = LogMelFront(
+            sample_rate,
+            n_mels,
+            n_fft=n_fft,
+            hop=hop,
+            exportable_frontend=exportable_frontend,
+        )
         groups = 8 if hidden % 8 == 0 else 1
         self.acoustic = nn.Sequential(
             nn.Conv1d(n_mels, hidden, kernel_size=5, padding=2),
@@ -187,9 +201,16 @@ class PersonalActivityHead(nn.Module):
         n_fft: int = 512,
         hop: int = 160,
         speaker_embedding_dim: int = 256,
+        exportable_frontend: bool = False,
     ):
         super().__init__()
-        self.mel = LogMelFront(sample_rate, n_mels, n_fft=n_fft, hop=hop)
+        self.mel = LogMelFront(
+            sample_rate,
+            n_mels,
+            n_fft=n_fft,
+            hop=hop,
+            exportable_frontend=exportable_frontend,
+        )
         groups = 8 if hidden % 8 == 0 else 1
         self.acoustic = nn.Sequential(
             nn.Conv1d(n_mels, hidden, kernel_size=5, padding=2),

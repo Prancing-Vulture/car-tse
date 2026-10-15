@@ -35,6 +35,14 @@ def write_metrics(path: Path, metrics: dict[str, Any]) -> None:
         json.dump(metrics, f, indent=2)
 
 
+def append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    """Append one durable JSON record without destroying prior run history."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def schedule_for_epoch(schedule: list[dict], epoch: int) -> dict[str, Any]:
     for block in schedule:
         lo, hi = block["epochs"]

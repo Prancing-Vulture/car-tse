@@ -1,0 +1,36 @@
+{
+  "component": "intent",
+  "status": "ok",
+  "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_clean_english_identity_targetkws_compact_tse_ft1.yaml",
+  "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\stage4_intent_compact_clean_to_tse_ft1\\best.pt",
+  "checkpoint_sha256": "c17abb4c48f57746770847f58794a784b4cdd8c11991ee248366d30b486575cd",
+  "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\compact_tse_ft1_2026-10-14\\intent.onnx",
+  "output_sha256": "b419516f172e76c28f4367438b5fc9fe4fe692aa24280b75511a3a7c4415b4a7",
+  "opset": 18,
+  "input_names": [
+    "audio"
+  ],
+  "input_shapes": [
+    [
+      1,
+      32000
+    ]
+  ],
+  "output_names": [
+    "intent_logits"
+  ],
+  "onnx_ir_version": 8,
+  "onnxruntime_providers": [
+    "AzureExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "parity": {
+    "passed": true,
+    "max_abs_error": 1.6689300537109375e-06,
+    "max_relative_error": 2.0991262772440678e-06,
+    "relative_l2_error": 3.5201327364120516e-07,
+    "cosine_similarity": 1.0
+  },
+  "torch_version": "2.14.0+cu130",
+  "python_version": "3.14.7"
+}

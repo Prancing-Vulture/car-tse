@@ -10,8 +10,9 @@ Example (after installing ``sounddevice``):
 
     python scripts/data/record_real_driver_session.py \
       --session-id D01_S01 --driver-id D01 --split tuning \
-      --duration-seconds 180 --channel-count 4 \
+      --duration-seconds 180 --capture-profile production6 --channel-count 6 \
       --microphone-setup "production cabin array" \
+      --playback "two line-in playback reference channels" \
       --consent-record-id consent-D01-20261010 \
       --owner "project consent record" \
       --permitted-purpose "research evaluation" \
@@ -74,6 +75,43 @@ def validate_capture_device(sd: Any, device: int | str | None, *, channel_count:
     }
 
 
+def validate_capture_contract(
+    *,
+    channel_count: int,
+    playback: str,
+    capture_profile: str,
+) -> dict[str, Any]:
+    """Validate the declared model-compatible or production capture profile."""
+
+    profile = str(capture_profile).strip().lower()
+    if profile not in {"model4_pilot", "production6"}:
+        raise ValueError("capture_profile must be model4_pilot or production6")
+    channels = int(channel_count)
+    if channels < 1:
+        raise ValueError("channel_count must be positive")
+    playback_value = str(playback).strip()
+    playback_disabled = playback_value.lower() in {"", "off", "none", "no", "false"}
+    if profile == "production6":
+        if channels < 6:
+            raise ValueError("production6 requires at least 6 input channels")
+        if playback_disabled:
+            raise ValueError("production6 requires a playback reference declaration")
+    microphone_channel_indices = list(range(min(channels, 4)))
+    playback_reference_channel_indices = (
+        [4, 5] if profile == "production6" and channels >= 6 else []
+    )
+    return {
+        "capture_profile": profile,
+        "minimum_input_channels": 6 if profile == "production6" else 4,
+        "model_input_channel_count": 4,
+        "microphone_channel_indices": microphone_channel_indices,
+        "playback_reference_channel_indices": playback_reference_channel_indices,
+        "playback_reference_mix": "mean" if playback_reference_channel_indices else None,
+        "playback_reference_required": profile == "production6",
+        "playback_reference_declared": not playback_disabled,
+    }
+
+
 def write_metadata(
     session_dir: Path,
     *,
@@ -125,6 +163,15 @@ def main() -> int:
     parser.add_argument("--split", choices=("tuning", "test"))
     parser.add_argument("--duration-seconds", type=float)
     parser.add_argument("--channel-count", type=int, default=4)
+    parser.add_argument(
+        "--capture-profile",
+        choices=("model4_pilot", "production6"),
+        default="model4_pilot",
+        help=(
+            "model4_pilot keeps the current four-channel evaluator contract; "
+            "production6 requires at least six inputs and declared playback reference"
+        ),
+    )
     parser.add_argument("--device", help="sounddevice input device index or name")
     parser.add_argument("--microphone-setup")
     parser.add_argument("--consent-record-id")
@@ -180,6 +227,15 @@ def main() -> int:
         parser.error("--duration-seconds must be positive")
     if args.channel_count < 1:
         parser.error("--channel-count must be positive")
+
+    try:
+        capture_contract = validate_capture_contract(
+            channel_count=int(args.channel_count),
+            playback=str(args.playback),
+            capture_profile=str(args.capture_profile),
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
 
     device = parse_device(args.device)
     try:
@@ -244,6 +300,7 @@ def main() -> int:
     metadata_path = session_dir / "session_metadata.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     metadata["capture_device"] = device_info
+    metadata["capture_contract"] = capture_contract
     metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"Saved audio and consent metadata under {session_dir}")
     print("Next: add timestamped labels to annotations.jsonl, then run validate_real_driver_sessions.py.")

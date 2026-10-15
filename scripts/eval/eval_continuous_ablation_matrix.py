@@ -43,6 +43,7 @@ from car_tse.pipeline.in_car_pipeline import (
     normalize_extracted_waveform,
     update_kws_state,
 )
+from car_tse.pipeline.windowing import full_context_window_starts
 from car_tse.train.utils import get_device, write_metrics
 from eval_continuous_full_pipeline_proxy import (
     build_scene,
@@ -176,7 +177,7 @@ def collect_window_scores(
     with torch.inference_mode():
         enrollment_embedding = pipeline.stage1.speaker_embedding(enrollment_tensor)
         rows: list[dict[str, Any]] = []
-        for start in range(0, max(1, len(mixture)), hop_samples):
+        for start in full_context_window_starts(len(mixture), window_samples, hop_samples):
             end = min(start + window_samples, len(mixture))
             mix_window = np.zeros(window_samples, dtype=np.float32)
             mc_window = np.zeros((multichannel.shape[1], window_samples), dtype=np.float32)

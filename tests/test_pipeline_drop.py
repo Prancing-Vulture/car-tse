@@ -129,6 +129,18 @@ class _LowConfidenceIntent(nn.Module):
         return torch.zeros((wav.shape[0], 2), dtype=wav.dtype, device=wav.device)
 
 
+class _SequencedIntent(nn.Module):
+    def __init__(self, logits: list[tuple[float, float]]):
+        super().__init__()
+        self.logits = [torch.tensor(row, dtype=torch.float32) for row in logits]
+        self.calls = 0
+
+    def forward(self, wav):
+        index = min(self.calls, len(self.logits) - 1)
+        self.calls += 1
+        return self.logits[index].to(wav.device, wav.dtype).expand(wav.shape[0], -1)
+
+
 def test_pipeline_runs_intent_on_post_wake_frame_only():
     intent = _CountingIntent()
     pipe = InCarPipeline(
@@ -209,6 +221,201 @@ def test_pipeline_can_delay_command_window_after_wake():
     assert delayed_output.intent_ready is False
     command_output, _ = pipe.forward(mixture, enrollment, state)
     assert command_output.intent_ready is True
+
+
+def test_confidence_buffered_command_waits_for_a_better_candidate():
+    intent = _SequencedIntent([(1.0, 2.0), (0.0, 5.0)])
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        intent,
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        command_window_strategy="confidence_buffered",
+        command_buffer_calls=2,
+        command_confidence_commit_threshold=0.90,
+        intent_confidence_threshold=0.53,
+    )
+    pipe._prepare_kws_trimmed_intent_input = lambda wav: wav
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    _, state = pipe.forward(mixture, enrollment)
+    pending, state = pipe.forward(mixture, enrollment, state)
+    assert pending.command_pending is True
+    assert pending.intent_ready is False
+    assert state.awaiting_command is True
+    committed, state = pipe.forward(mixture, enrollment, state)
+    assert committed.intent_ready is True
+    assert committed.intent_logits is not None
+    assert intent.calls == 2
+    assert state.awaiting_command is False
+
+
+def test_confidence_buffered_command_suppresses_after_buffer_exhaustion():
+    intent = _SequencedIntent([(0.0, 0.0), (0.0, 0.0)])
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        intent,
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        command_window_strategy="confidence_buffered",
+        command_buffer_calls=2,
+        command_confidence_commit_threshold=0.90,
+        intent_confidence_threshold=0.60,
+    )
+    pipe._prepare_kws_trimmed_intent_input = lambda wav: wav
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    _, state = pipe.forward(mixture, enrollment)
+    pending, state = pipe.forward(mixture, enrollment, state)
+    assert pending.command_pending is True
+    suppressed, state = pipe.forward(mixture, enrollment, state)
+    assert suppressed.command_suppressed is True
+    assert suppressed.intent_ready is False
+    assert state.awaiting_command is False
+
+
+def test_confidence_buffered_command_commits_best_candidate_not_last():
+    intent = _SequencedIntent([(5.0, 0.0), (0.0, 0.0)])
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        intent,
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        command_window_strategy="confidence_buffered",
+        command_buffer_calls=2,
+        command_confidence_commit_threshold=1.0,
+        intent_confidence_threshold=0.53,
+    )
+    pipe._prepare_kws_trimmed_intent_input = lambda wav: wav
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    _, state = pipe.forward(mixture, enrollment)
+    pending, state = pipe.forward(mixture, enrollment, state)
+    assert pending.command_pending is True
+    committed, state = pipe.forward(mixture, enrollment, state)
+    assert committed.intent_ready is True
+    assert int(torch.argmax(committed.intent_logits, dim=-1).item()) == 0
+    assert state.awaiting_command is False
+
+
+def test_confidence_buffered_command_uses_longest_consecutive_run():
+    intent = _SequencedIntent([(5.0, 0.0), (0.0, 5.0), (0.0, 6.0), (5.0, 0.0)])
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        intent,
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        command_window_strategy="confidence_buffered",
+        command_buffer_calls=4,
+        command_confidence_commit_threshold=1.0,
+        intent_confidence_threshold=0.53,
+    )
+    pipe._prepare_kws_trimmed_intent_input = lambda wav: wav
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    _, state = pipe.forward(mixture, enrollment)
+    for _ in range(3):
+        pending, state = pipe.forward(mixture, enrollment, state)
+        assert pending.command_pending is True
+    committed, state = pipe.forward(mixture, enrollment, state)
+    assert committed.intent_ready is True
+    assert int(torch.argmax(committed.intent_logits, dim=-1).item()) == 1
+    assert state.awaiting_command is False
+
+
+def test_intent_window_offset_selects_post_wake_samples():
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        intent_sample_rate=10,
+        intent_input_seconds=1.0,
+        intent_window_offset_seconds=0.1,
+    )
+    waveform = torch.arange(20, dtype=torch.float32)
+    selected = pipe._prepare_intent_input(waveform)
+    assert torch.equal(selected, torch.arange(1, 11, dtype=torch.float32))
+
+
+def test_kws_trim_command_window_uses_last_local_wake_hit():
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        kws_sample_rate=10,
+        kws_input_seconds=1.0,
+        intent_sample_rate=10,
+        intent_input_seconds=1.0,
+        command_window_strategy="kws_trim",
+        command_endpoint_kws_hop_seconds=0.5,
+        command_endpoint_margin_seconds=0.2,
+        kws_threshold=0.5,
+    )
+    pipe._regular_kws_score = lambda wav: 0.9 if float(wav[..., 0].item()) in {0.0, 5.0} else 0.1
+    waveform = torch.arange(30, dtype=torch.float32)
+    selected = pipe._prepare_kws_trimmed_intent_input(waveform)
+    assert selected is not None
+    assert torch.equal(selected, torch.arange(13, 23, dtype=torch.float32))
+
+
+def test_kws_trim_latest_strategy_is_accepted():
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        command_window_strategy="kws_trim_latest",
+    )
+    assert pipe.command_window_strategy == "kws_trim_latest"
+
+
+def test_kws_trim_latest_uses_post_wake_frame():
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _CountingIntent(),
+        command_window_strategy="kws_trim_latest",
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+    )
+    seen = []
+
+    def capture(wav):
+        seen.append(wav.detach().clone())
+        return wav[..., : 2 * 16000]
+
+    pipe._prepare_kws_trimmed_intent_input = capture
+    enrollment = torch.randn(16000)
+    _, state = pipe.forward(torch.ones(3 * 16000), enrollment)
+    output, _ = pipe.forward(torch.full((3 * 16000,), 2.0), enrollment, state)
+    assert output.intent_ready is True
+    assert len(seen) == 1
+    assert torch.all(seen[0] == 0.95)
 
 
 def test_pipeline_suppresses_low_confidence_command():

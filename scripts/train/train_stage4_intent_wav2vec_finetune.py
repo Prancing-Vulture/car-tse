@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -18,7 +19,7 @@ from transformers import AutoModel
 
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.data.datasets import IntentDataset
-from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, write_metrics
+from car_tse.train.utils import append_jsonl, get_device, load_checkpoint, save_checkpoint, write_metrics
 from train_stage4_intent_wav2vec import IntentHead, evaluate, normalize_waveform
 
 
@@ -126,6 +127,20 @@ def main() -> int:
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     out_dir = Path(paths["checkpoint_root"]) / args.run_name
     log_dir = Path(paths["log_root"]) / args.run_name
+    run_id = uuid.uuid4().hex
+    history_path = log_dir / f"epoch_metrics_{run_id}.jsonl"
+    write_metrics(
+        log_dir / f"run_metadata_{run_id}.json",
+        {
+            "run_id": run_id,
+            "run_name": args.run_name,
+            "device": str(device),
+            "config": str(args.config),
+            "init_head_checkpoint": str(args.head_checkpoint),
+            "encoder_checkpoint": str(args.encoder_checkpoint) if args.encoder_checkpoint else None,
+            "unfreeze_layers": args.unfreeze_layers,
+        },
+    )
     best_f1 = float("-inf")
     bad_epochs = 0
     print(
@@ -190,6 +205,7 @@ def main() -> int:
         }
         metrics = {
             "epoch": epoch,
+            "run_id": run_id,
             "device": str(device),
             "encoder": args.encoder,
             "unfreeze_layers": args.unfreeze_layers,
@@ -199,6 +215,7 @@ def main() -> int:
             "lr": [group["lr"] for group in optimizer.param_groups],
         }
         write_metrics(log_dir / "metrics_last.json", metrics)
+        append_jsonl(history_path, metrics)
         print(
             f"epoch {epoch} train_loss={metrics['train_loss']:.4f} train_acc={metrics['train_accuracy']:.3f} "
             f"val_acc={val['accuracy']:.3f} val_top5={val['top5_accuracy']:.3f} val_macro_f1={val['macro_f1']:.3f}",
@@ -215,7 +232,15 @@ def main() -> int:
             if bad_epochs >= args.patience:
                 print(f"Early stopping after {epoch} epochs", flush=True)
                 break
-    write_metrics(log_dir / "train_last.json", {"best_macro_f1": best_f1, "epochs_completed": epoch})
+    write_metrics(
+        log_dir / "train_last.json",
+        {
+            "best_macro_f1": best_f1,
+            "epochs_completed": epoch,
+            "run_id": run_id,
+            "history": str(history_path),
+        },
+    )
     print(f"Done. Best head checkpoint: {out_dir / 'best.pt'}", flush=True)
     return 0
 

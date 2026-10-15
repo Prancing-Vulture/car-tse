@@ -38,6 +38,15 @@ def read_json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def first_existing(candidates: list[Path]) -> Path:
+    """Return the newest intended candidate that is currently available."""
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
 def file_record(path: Path) -> dict[str, Any]:
     digest = None
     if path.exists() and path.is_file():
@@ -106,30 +115,61 @@ def build_snapshot(
 
     validation = validate(sessions_root, tuning_drivers, test_drivers)
     source_state = git_state(repo_root)
+    evaluated_release_manifest = repo_root / "logs" / "release_manifest_current.json"
+    evaluated_manifest_payload = read_json(evaluated_release_manifest)
     selected_short_log = repo_root / "logs" / "aishell5_continuous_targetkws_hardneg_aishell5_ft1_p015_sg024_kws050_smooth22_1200s_2026-10-11.json"
     selected_long_log = repo_root / "logs" / "aishell5_continuous_targetkws_hardneg_aishell5_ft1_p015_sg024_kws050_smooth22_eval2_all18_2026-10-10.json"
     selected_long_log_dedup = repo_root / "logs" / "aishell5_continuous_targetkws_hardneg_aishell5_ft1_p015_sg024_kws050_smooth22_eval2_all18_dedup_2026-10-11.json"
-    selected_log = (
-        selected_long_log_dedup
-        if selected_long_log_dedup.exists()
-        else selected_long_log
-        if selected_long_log.exists()
-        else selected_short_log
+    current_compact_log = repo_root / "logs" / "aishell5_target_absent_compact_cabin_smart_thr030_hop025_hits8_all18_2026-10-12.json"
+    current_compact_fast_log = repo_root / "logs" / "aishell5_target_absent_compact_cabin_smart_thr030_hop025_hits4_all18_2026-10-13.json"
+    selected_log = first_existing(
+        [
+            current_compact_fast_log,
+            current_compact_log,
+            selected_long_log_dedup,
+            selected_long_log,
+            selected_short_log,
+        ]
     )
     selected_proxy_logs = [
+        repo_root / "logs" / "continuous_stream_eval_samewake_15min_p025_2026-10-12.json",
+        repo_root / "logs" / "continuous_stream_eval_samecommand_15min_p025_2026-10-12.json",
+        repo_root / "logs" / "continuous_full_pipeline_proxy_remasc_personal_activity_margin_m067_fast_stream_hop025_8scenes_2026-10-12.json",
         repo_root / "logs" / "continuous_full_pipeline_proxy_hardneg_aishell5_neg_splitgate_p015_wake024_cmd022_same_speaker_m10_2026-10-11.json",
         repo_root / "logs" / "continuous_full_pipeline_proxy_hardneg_aishell5_neg_splitgate_p015_wake024_cmd022_same_speaker_p10_2026-10-11.json",
     ]
-    latency_log = repo_root / "logs" / "full_pipeline_latency_2026-10-11.json"
-    latency_gpu_log = repo_root / "logs" / "full_pipeline_latency_gpu_2026-10-11.json"
-    latency_cpu_log = repo_root / "logs" / "full_pipeline_latency_cpu_2026-10-11.json"
+    latency_log = first_existing(
+        [
+            repo_root / "logs" / "full_pipeline_latency_compact_cabin_smart_cpu_2026-10-12.json",
+            repo_root / "logs" / "full_pipeline_latency_2026-10-11.json",
+        ]
+    )
+    latency_gpu_log = first_existing(
+        [
+            repo_root / "logs" / "full_pipeline_latency_compact_cabin_smart_gpu_2026-10-12.json",
+            repo_root / "logs" / "full_pipeline_latency_gpu_2026-10-11.json",
+        ]
+    )
+    latency_cpu_log = first_existing(
+        [
+            repo_root / "logs" / "component_latency_cpu_fp32_2026-10-12.json",
+            repo_root / "logs" / "full_pipeline_latency_cpu_2026-10-11.json",
+        ]
+    )
     regression_logs = [
         repo_root / "logs" / "stage1_dual_domain_regression_full_2026-10-10.json",
         repo_root / "logs" / "stage1_dual_domain_regression_ft2_2026-10-11.json",
     ]
 
     observed_drivers = set(validation["drivers"])
-    expected_channel_count = int(cfg.get("num_mics", 0) or 0)
+    # ``num_mics`` describes the model waveform input. Production capture
+    # additionally reserves two playback-reference channels for AEC, so the
+    # readiness gate uses the explicit capture contract instead.
+    model_channel_count = int(cfg.get("num_mics", 0) or 0)
+    expected_channel_count = int(cfg.get("capture_expected_channel_count", 6) or 0)
+    playback_reference_required = bool(
+        cfg.get("capture_playback_reference_required", True)
+    )
     observed_channel_counts = sorted({int(row.get("channel_count", 0)) for row in validation["sessions"]})
     capture_hardware_match = (
         validation["valid"]
@@ -137,11 +177,23 @@ def build_snapshot(
         and bool(validation["sessions"])
         and all(int(row.get("recording_sample_rate_hz", 0)) == 16000 for row in validation["sessions"])
         and all(int(row.get("channel_count", 0)) == expected_channel_count for row in validation["sessions"])
+        and (
+            not playback_reference_required
+            or all(bool(row.get("playback_reference_declared")) for row in validation["sessions"])
+        )
     )
-    release_artifacts_complete = bool(source_state["revision"]) and all(
-        row["exists"] and bool(row["sha256"])
-        for row in checkpoints
-    ) and config_path.exists() and paths_path.exists()
+    evaluated_manifest_complete = bool(
+        evaluated_manifest_payload
+        and evaluated_manifest_payload.get("all_artifacts_present") is True
+        and evaluated_manifest_payload.get("git", {}).get("revision")
+    )
+    release_artifacts_complete = (
+        bool(source_state["revision"])
+        and all(row["exists"] and bool(row["sha256"]) for row in checkpoints)
+        and config_path.exists()
+        and paths_path.exists()
+        and evaluated_manifest_complete
+    )
     split_ready = (
         validation["valid"]
         and bool(tuning_drivers)
@@ -191,7 +243,9 @@ def build_snapshot(
             "required_nonempty_splits": True,
             "observed_sessions": validation["session_count"],
             "observed_drivers": len(observed_drivers),
+            "model_channel_count": model_channel_count,
             "expected_channel_count": expected_channel_count,
+            "playback_reference_required": playback_reference_required,
             "observed_channel_counts": observed_channel_counts,
         },
         "release_manifest": {
@@ -199,6 +253,8 @@ def build_snapshot(
             "config": file_record(config_path),
             "paths_config": file_record(paths_path),
             "checkpoints": checkpoints,
+            "evaluated_state_manifest": file_record(evaluated_release_manifest),
+            "evaluated_state_manifest_complete": evaluated_manifest_complete,
         },
         "critical_gates": {
             name: {"status": "pass" if value else "blocked"}
@@ -257,6 +313,7 @@ def render_markdown(snapshot: dict[str, Any]) -> str:
             f"- Worktree clean: **{release['git']['worktree_clean']}**",
             f"- Changed files: **{release['git']['changed_file_count'] if release['git']['changed_file_count'] is not None else 'unavailable'}**",
             f"- Runtime config SHA-256: `{release['config']['sha256'] or 'unavailable'}`",
+            f"- Evaluated-state manifest: `{release['evaluated_state_manifest']['path']}` (present={release['evaluated_state_manifest']['exists']})",
             "",
             "Checkpoint SHA-256 values are stored in the machine-readable JSON snapshot. A production sign-off must archive this revision, configuration hash, and checkpoint manifest together.",
         ]
@@ -297,7 +354,7 @@ def main() -> int:
         type=Path,
         default=REPO_ROOT
         / "configs"
-        / "eval_end_to_end_cavemove_target_kws_dual_domain_stage2_hardneg_aishell5_neg_safety_splitgate_candidate.yaml",
+        / "eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
     )
     parser.add_argument("--paths", type=Path, default=REPO_ROOT / "configs" / "paths.yaml")
     parser.add_argument(
@@ -310,12 +367,12 @@ def main() -> int:
     parser.add_argument(
         "--output-json",
         type=Path,
-        default=REPO_ROOT / "logs" / "production_readiness_snapshot_2026-10-11.json",
+        default=REPO_ROOT / "logs" / "production_readiness_snapshot_current.json",
     )
     parser.add_argument(
         "--output-md",
         type=Path,
-        default=REPO_ROOT / "reports" / "production_readiness_snapshot_2026-10-11.md",
+        default=REPO_ROOT / "reports" / "production_readiness_snapshot_current.md",
     )
     args = parser.parse_args()
     snapshot = build_snapshot(

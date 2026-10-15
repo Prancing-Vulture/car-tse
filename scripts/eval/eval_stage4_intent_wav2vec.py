@@ -56,7 +56,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--paths", type=Path, default=REPO_ROOT / "configs" / "paths.yaml")
-    parser.add_argument("--split", choices=("train", "val"), default="val")
+    parser.add_argument("--split", choices=("train", "val", "test"), default="val")
     parser.add_argument("--manifest", type=Path, default=None, help="Optional explicit manifest override")
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--encoder", default="facebook/wav2vec2-base-960h")
@@ -74,9 +74,19 @@ def main() -> int:
     manifest_root = Path(paths["manifest_root"])
     manifest = args.manifest
     if manifest is None:
-        manifest = manifest_root / args.split / (cfg["manifest_train"] if args.split == "train" else cfg["manifest_eval"])
+        if args.split == "train":
+            manifest_name = cfg["manifest_train"]
+        elif args.split == "val":
+            manifest_name = cfg["manifest_eval"]
+        else:
+            manifest_name = cfg.get("manifest_test")
+            if not manifest_name:
+                raise ValueError("--split test requires --manifest or a manifest_test entry in the config")
+        manifest = manifest_root / args.split / manifest_name
     elif not manifest.is_absolute():
         manifest = REPO_ROOT / manifest
+    if not manifest.exists():
+        raise FileNotFoundError(f"Intent manifest not found: {manifest}")
     cache_dir = Path(cfg.get("waveform_cache_dir", ""))
     if not cache_dir.is_absolute():
         cache_dir = REPO_ROOT / cache_dir
@@ -101,7 +111,15 @@ def main() -> int:
     head = IntentHead(int(encoder.config.hidden_size), 512, num_classes, 0.2).to(device)
     load_checkpoint(args.head_checkpoint, head)
     metrics = evaluate(head, encoder, loader, device, num_classes)
-    metrics.update({"split": args.split, "clean": args.clean, "head_checkpoint": str(args.head_checkpoint), "encoder_checkpoint": str(args.encoder_checkpoint)})
+    metrics.update(
+        {
+            "split": args.split,
+            "clean": args.clean,
+            "manifest": str(manifest),
+            "head_checkpoint": str(args.head_checkpoint),
+            "encoder_checkpoint": str(args.encoder_checkpoint),
+        }
+    )
     output = args.output
     if output is None:
         output = Path(paths["log_root"]) / "stage4_intent_wav2vec_ft4_tse_domain" / f"metrics_{args.split}_{'clean' if args.clean else 'cabin'}.json"

@@ -45,6 +45,11 @@ def main() -> int:
     parser.add_argument("--paths", type=Path, default=REPO_ROOT / "configs" / "paths.yaml")
     parser.add_argument("--split", default="val")
     parser.add_argument("--manifest", type=Path, default=None, help="Optional explicit manifest override")
+    parser.add_argument(
+        "--allow-generated-val",
+        action="store_true",
+        help="Allow the legacy deterministic validation split from the training manifest when no val manifest exists",
+    )
     parser.add_argument("--checkpoint", type=Path, default=None, help="Optional presence checkpoint override")
     parser.add_argument("--output", type=Path, default=None, help="Optional metrics output override")
     args = parser.parse_args()
@@ -83,15 +88,18 @@ def main() -> int:
         "cabin_noise_snr_db": cfg.get("cabin_noise_snr_db"),
         "cabin_noise_cache_size": int(cfg.get("cabin_noise_cache_size", 32)),
     }
+    manifest_mode = "explicit_or_configured"
     if manifest.exists():
         ds = PresenceDataset(
             manifest, cfg["sample_rate"], cfg["segment_seconds"], training=False, **dataset_kwargs
         )
-    elif args.split == "val":
+    elif args.split == "val" and args.manifest is None and args.allow_generated_val:
         # The CAVEMOVE presence trainer creates its validation split from the
         # training manifest. Recreate that exact deterministic split when no
         # standalone validation manifest was exported.
         source_manifest = manifest_root / "train" / cfg["manifest"]
+        if not source_manifest.exists():
+            raise FileNotFoundError(f"Training manifest for generated validation split not found: {source_manifest}")
         ds_base = PresenceDataset(
             source_manifest,
             cfg["sample_rate"],
@@ -112,8 +120,10 @@ def main() -> int:
         rng.shuffle(val_indices)
         ds = Subset(ds_base, val_indices)
         manifest = source_manifest
+        manifest_mode = "generated_from_training_manifest"
     else:
-        raise FileNotFoundError(f"Presence manifest not found: {manifest}")
+        hint = "; pass --allow-generated-val only for the legacy deterministic split" if args.split == "val" else ""
+        raise FileNotFoundError(f"Presence manifest not found: {manifest}{hint}")
     expected_mics = int(getattr(stage1.frontend, "num_mics", cfg.get("num_mics", 4)))
     loader = DataLoader(ds, batch_size=8, collate_fn=lambda batch: collate_presence(batch, expected_mics))
     # Older stage-2 training configs did not persist the inference threshold.
@@ -198,6 +208,8 @@ def main() -> int:
             "threshold": thr,
             "examples": tp + fp + tn + fn,
             "manifest": str(manifest),
+            "manifest_mode": manifest_mode,
+            "requested_split": args.split,
             "best_f1": best_f1,
             "best_balanced_accuracy": best_balanced,
         },

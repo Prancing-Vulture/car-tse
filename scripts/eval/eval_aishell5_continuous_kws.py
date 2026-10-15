@@ -247,6 +247,7 @@ def evaluate_stream(
     presence_top_fraction: float = 0.20,
     kws_thresholds: list[float] | None = None,
     presence_thresholds: list[float] | None = None,
+    speaker_gate_thresholds: list[float] | None = None,
     speaker_fusion_mode: str = "none",
     speaker_fusion_center: float = 0.0,
     speaker_fusion_scale: float = 0.10,
@@ -278,7 +279,11 @@ def evaluate_stream(
             batch_mix = torch.from_numpy(mixture_windows[start : start + batch_size, 0, :]).to(device)
             batch_enroll = torch.from_numpy(np.repeat(enrollment[None, :], batch_mc.shape[0], axis=0)).to(device)
             extracted, _, _, _ = stage1(batch_mix, batch_enroll, multichannel=batch_mc)
-            if speaker_gate_threshold is not None or str(speaker_fusion_mode).lower() != "none":
+            if (
+                speaker_gate_threshold is not None
+                or speaker_gate_thresholds
+                or str(speaker_fusion_mode).lower() != "none"
+            ):
                 if compact_speaker_verifier is not None:
                     compact_extracted = normalize_extracted_waveform(extracted)
                     if compact_extracted.shape[-1] >= sample_rate:
@@ -363,7 +368,11 @@ def evaluate_stream(
     score_array = np.asarray(kws_scores, dtype=np.float32)
     speaker_array = (
         np.asarray(speaker_scores, dtype=np.float32)
-        if speaker_gate_threshold is not None or str(speaker_fusion_mode).lower() != "none"
+        if (
+            speaker_gate_threshold is not None
+            or speaker_gate_thresholds
+            or str(speaker_fusion_mode).lower() != "none"
+        )
         else None
     )
     duration = len(multichannel) / sample_rate
@@ -411,6 +420,32 @@ def evaluate_stream(
                 activity_margin_array, presence_activity_margin_threshold,
             )}
             for threshold in kws_thresholds
+        ]
+    if speaker_gate_thresholds:
+        result["speaker_gate_threshold_sweep"] = [
+            {
+                "speaker_gate_threshold": float(threshold),
+                **summarize_kws_threshold(
+                    presence_array,
+                    score_array,
+                    duration,
+                    presence_threshold,
+                    kws_threshold,
+                    smooth_window,
+                    required_hits,
+                    refractory_calls,
+                    hop_seconds,
+                    speaker_array,
+                    float(threshold),
+                    speaker_fusion_mode,
+                    speaker_fusion_center,
+                    speaker_fusion_scale,
+                    speaker_fusion_alpha,
+                    activity_margin_array,
+                    presence_activity_margin_threshold,
+                ),
+            }
+            for threshold in speaker_gate_thresholds
         ]
     if presence_thresholds:
         result["presence_threshold_sweep"] = [

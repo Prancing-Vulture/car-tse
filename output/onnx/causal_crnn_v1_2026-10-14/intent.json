@@ -1,0 +1,36 @@
+{
+  "component": "intent",
+  "status": "ok",
+  "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_clean_english_identity_targetkws_causal_crnn_v1.yaml",
+  "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\stage4_intent_clean_causal_crnn_v1_fp32\\best.pt",
+  "checkpoint_sha256": "b8a6459e51a12e23f8633d5711435424708dba6afaa6f7a417dd6567f55f4904",
+  "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\causal_crnn_v1_2026-10-14\\intent.onnx",
+  "output_sha256": "050b1d95d49039707ba23a1a198837bdae5024699270623f672ae97853230e71",
+  "opset": 18,
+  "input_names": [
+    "audio"
+  ],
+  "input_shapes": [
+    [
+      1,
+      32000
+    ]
+  ],
+  "output_names": [
+    "intent_logits"
+  ],
+  "onnx_ir_version": 8,
+  "onnxruntime_providers": [
+    "AzureExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "parity": {
+    "passed": true,
+    "max_abs_error": 9.5367431640625e-07,
+    "max_relative_error": 1.7842169199866476e-06,
+    "relative_l2_error": 3.364771714586823e-07,
+    "cosine_similarity": 1.0
+  },
+  "torch_version": "2.14.0+cu130",
+  "python_version": "3.14.7"
+}

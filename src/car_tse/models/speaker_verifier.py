@@ -20,9 +20,16 @@ class CompactSpeakerEncoder(nn.Module):
         n_fft: int = 400,
         hop: int = 160,
         channels: tuple[int, ...] = (32, 64, 128),
+        exportable_frontend: bool = False,
     ) -> None:
         super().__init__()
-        self.front = LogMelFront(sample_rate, n_mels, n_fft=n_fft, hop=hop)
+        self.front = LogMelFront(
+            sample_rate,
+            n_mels,
+            n_fft=n_fft,
+            hop=hop,
+            exportable_frontend=exportable_frontend,
+        )
         layers: list[nn.Module] = []
         input_channels = 1
         for output_channels in channels:
