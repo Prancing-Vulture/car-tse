@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -20,6 +22,26 @@ from transformers import AutoModel
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.data.datasets import IntentDataset
 from car_tse.train.utils import get_device, save_checkpoint, write_metrics
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def encoder_weights_path(encoder_name: str) -> Path | None:
+    source = Path(encoder_name)
+    if source.is_file():
+        return source
+    if source.is_dir():
+        for filename in ("model.safetensors", "pytorch_model.bin"):
+            candidate = source / filename
+            if candidate.is_file():
+                return candidate
+    return None
 
 
 class FeatureDataset(Dataset):
@@ -152,15 +174,29 @@ def main() -> int:
     parser.add_argument("--lr", type=float, default=1.0e-3)
     parser.add_argument("--head-hidden", type=int, default=512)
     parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--run-name", default=None)
+    parser.add_argument("--wandb", action="store_true")
+    parser.add_argument("--wandb-project", default="car-tse")
+    parser.add_argument("--wandb-entity", default=None)
+    parser.add_argument("--wandb-mode", choices=("online", "offline", "disabled"), default="online")
+    parser.add_argument("--wandb-dir", type=Path, default=None)
     parser.add_argument("--amp", action="store_true")
     args = parser.parse_args()
 
     cfg = load_stage_config(args.config, args.paths)
     paths = cfg["paths"]
+    seed = int(args.seed if args.seed is not None else cfg["train"].get("seed", 20261014))
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
     device = get_device()
     torch.set_float32_matmul_precision("high")
-    if device.type == "cuda":
-        torch.backends.cudnn.benchmark = True
+    run_name = args.run_name or str(cfg["name"])
 
     label_map_path = Path(paths["manifest_root"]) / "meta" / cfg["label_map"]
     num_classes = len(json.loads(label_map_path.read_text(encoding="utf-8")))
@@ -199,7 +235,9 @@ def main() -> int:
     for parameter in encoder.parameters():
         parameter.requires_grad = False
     encoder.eval()
-    feature_dir = REPO_ROOT / "data" / "cache" / "stage4_intent_wav2vec_tse_domain"
+    feature_dir = Path(cfg.get("feature_cache_dir", Path(paths["log_root"]) / run_name / "features"))
+    if not feature_dir.is_absolute():
+        feature_dir = REPO_ROOT / feature_dir
     train_features = feature_dir / "train_features.npy"
     val_features = feature_dir / "val_features.npy"
     hidden = cache_features(encoder, train_audio, train_features, device, args.feature_batch_size, args.amp and device.type == "cuda")
@@ -210,19 +248,73 @@ def main() -> int:
     labels = torch.from_numpy(train_ds.labels)
     counts = torch.bincount(labels, minlength=num_classes).float()
     weights = 1.0 / counts[labels].clamp_min(1.0)
-    sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, sampler=sampler, num_workers=0, pin_memory=device.type == "cuda")
+    sampler = WeightedRandomSampler(
+        weights,
+        num_samples=len(weights),
+        replacement=True,
+        generator=torch.Generator().manual_seed(seed),
+    )
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=args.batch_size,
+        sampler=sampler,
+        generator=torch.Generator().manual_seed(seed),
+        num_workers=0,
+        pin_memory=device.type == "cuda",
+    )
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=device.type == "cuda")
 
     model = IntentHead(hidden, args.head_hidden, num_classes, args.dropout).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1.0e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.max_epochs)
-    out_dir = Path(paths["checkpoint_root"]) / "stage4_intent_wav2vec_tse_domain"
-    log_dir = Path(paths["log_root"]) / "stage4_intent_wav2vec_tse_domain"
+    out_dir = Path(paths["checkpoint_root"]) / run_name
+    log_dir = Path(paths["log_root"]) / run_name
     best_f1 = float("-inf")
     bad_epochs = 0
     print(f"device={device} encoder={args.encoder} hidden={hidden} train={len(train_ds)} val={len(val_ds)} classes={num_classes}", flush=True)
+    wandb_run = None
+    if args.wandb:
+        import wandb
+
+        if args.wandb_dir is not None:
+            args.wandb_dir.mkdir(parents=True, exist_ok=True)
+        config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
+        encoder_weights = encoder_weights_path(args.encoder)
+        wandb_run = wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            name=run_name,
+            job_type="train-stage4-intent-wav2vec-head",
+            mode=args.wandb_mode,
+            dir=str(args.wandb_dir) if args.wandb_dir is not None else None,
+            config={
+                "stage": "stage4_intent_wav2vec_head",
+                "seed": seed,
+                "config": config_path.name,
+                "config_sha256": sha256_file(config_path),
+                "train_manifest": str(train_manifest),
+                "train_manifest_sha256": sha256_file(train_manifest),
+                "validation_manifest": str(val_manifest),
+                "validation_manifest_sha256": sha256_file(val_manifest),
+                "feature_cache_dir": str(feature_dir),
+                "encoder": args.encoder,
+                "encoder_weights_sha256": sha256_file(encoder_weights) if encoder_weights else None,
+                "batch_size": args.batch_size,
+                "max_epochs": args.max_epochs,
+                "patience": args.patience,
+                "learning_rate": args.lr,
+                "head_hidden": args.head_hidden,
+                "dropout": args.dropout,
+                "device": str(device),
+                "torch_version": torch.__version__,
+            },
+        )
+        wandb_run.define_metric("epoch")
+        wandb_run.define_metric("train/*", step_metric="epoch")
+        wandb_run.define_metric("validation/*", step_metric="epoch")
+        wandb_run.define_metric("learning_rate/*", step_metric="epoch")
     for epoch in range(1, args.max_epochs + 1):
+        stop_early = False
         model.train()
         train_loss = train_correct = train_total = 0
         for batch in train_loader:
@@ -241,6 +333,7 @@ def main() -> int:
         val = evaluate(model, val_loader, device, num_classes)
         metrics = {
             "epoch": epoch,
+            "seed": seed,
             "device": str(device),
             "encoder": args.encoder,
             "train_loss": train_loss / max(train_total, 1),
@@ -264,8 +357,33 @@ def main() -> int:
             bad_epochs += 1
             if bad_epochs >= args.patience:
                 print(f"Early stopping after {epoch} epochs", flush=True)
-                break
-    write_metrics(log_dir / "train_last.json", {"best_macro_f1": best_f1, "epochs_completed": epoch})
+                stop_early = True
+        if wandb_run is not None:
+            wandb_run.log(
+                {
+                    "epoch": epoch,
+                    "train/loss": metrics["train_loss"],
+                    "train/accuracy": metrics["train_accuracy"],
+                    "validation/accuracy": val["accuracy"],
+                    "validation/top5_accuracy": val["top5_accuracy"],
+                    "validation/macro_precision": val["macro_precision"],
+                    "validation/macro_recall": val["macro_recall"],
+                    "validation/macro_f1": val["macro_f1"],
+                    "learning_rate": scheduler.get_last_lr()[0],
+                    "best_validation/macro_f1": best_f1,
+                },
+                step=epoch,
+                commit=True,
+            )
+        if stop_early:
+            break
+    write_metrics(log_dir / "train_last.json", {"best_macro_f1": best_f1, "epochs_completed": epoch, "seed": seed})
+    if wandb_run is not None:
+        wandb_run.summary["best_validation_macro_f1"] = best_f1
+        wandb_run.summary["epochs_completed"] = epoch
+        wandb_run.summary["seed"] = seed
+        wandb_run.summary["best_checkpoint"] = str(out_dir / "best.pt")
+        wandb_run.finish()
     print(f"Done. Best checkpoint: {out_dir / 'best.pt'}", flush=True)
     return 0
 

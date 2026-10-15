@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import random
 import sys
 from pathlib import Path
@@ -21,6 +22,14 @@ from car_tse.models.presence_head import FramePresenceHead
 from car_tse.models.stage1_system import Stage1System
 from car_tse.io.manifest import read_jsonl
 from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, write_metrics
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def collate(batch: list[dict]) -> dict:
@@ -226,6 +235,8 @@ def evaluate(
     return {
         "frame_at_0.5": binary_metrics(frame_score_array, frame_label_array, 0.5),
         "chunk_at_0.5": binary_metrics(chunk_score_array, chunk_label_array, 0.5),
+        "frame_threshold_sweep": frame_sweep,
+        "chunk_threshold_sweep": chunk_sweep,
         "best_frame_f1": best_frame,
         "best_chunk_f1": best_chunk,
         "best_chunk_balanced": balanced_chunk,
@@ -240,6 +251,12 @@ def main() -> int:
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--init-checkpoint", type=Path, default=None)
+    parser.add_argument("--run-name", default=None)
+    parser.add_argument("--wandb", action="store_true", help="Log epoch metrics to Weights & Biases")
+    parser.add_argument("--wandb-project", default="car-tse")
+    parser.add_argument("--wandb-entity", default=None)
+    parser.add_argument("--wandb-mode", choices=("online", "offline", "disabled"), default="online")
+    parser.add_argument("--wandb-dir", type=Path, default=None)
     args = parser.parse_args()
     cfg = load_stage_config(args.config, args.paths)
     paths = cfg["paths"]
@@ -248,6 +265,10 @@ def main() -> int:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
     stage1_cfg_path = Path(cfg["stage1_config"])
     if not stage1_cfg_path.is_absolute():
@@ -297,18 +318,46 @@ def main() -> int:
     for extra_name in list(manifest_names)[1:]:
         extra_path = Path(paths["manifest_root"]) / "train" / str(extra_name)
         train_base.rows.extend(read_jsonl(extra_path))
-    train_indices, val_indices = split_indices(
-        train_base.rows,
-        float(cfg["train"].get("val_fraction", 0.2)),
-        seed,
-        max_rows=int(args.max_rows or 0),
-    )
-    val_base = PresenceDataset(manifest, cfg["sample_rate"], cfg["segment_seconds"], training=False, **dataset_kwargs)
-    for extra_name in list(manifest_names)[1:]:
-        extra_path = Path(paths["manifest_root"]) / "train" / str(extra_name)
-        val_base.rows.extend(read_jsonl(extra_path))
-    train_ds = Subset(train_base, train_indices)
-    val_ds = Subset(val_base, val_indices)
+    explicit_val_manifest = cfg.get("manifest_val")
+    if explicit_val_manifest:
+        # Prefer an explicitly speaker-disjoint validation manifest when one
+        # is available; legacy configs retain their deterministic row split.
+        val_manifest = Path(paths["manifest_root"]) / "val" / str(explicit_val_manifest)
+        if not val_manifest.is_file():
+            raise FileNotFoundError(f"Configured Stage 2 validation manifest not found: {val_manifest}")
+        train_ds = train_base
+        val_ds = PresenceDataset(
+            val_manifest,
+            cfg["sample_rate"],
+            cfg["segment_seconds"],
+            training=False,
+            **dataset_kwargs,
+        )
+        if not train_ds.rows or not val_ds.rows:
+            raise RuntimeError("Stage 2 train and validation manifests must both be non-empty")
+        train_speakers = {str(row.get("speaker_id", "")) for row in train_ds.rows}
+        val_speakers = {str(row.get("speaker_id", "")) for row in val_ds.rows}
+        overlap = (train_speakers & val_speakers) - {""}
+        if overlap and bool(cfg["train"].get("require_speaker_disjoint", False)):
+            raise ValueError(f"Speaker leakage between train and validation manifests: {len(overlap)} IDs")
+        print(
+            f"explicit_validation={val_manifest} train_speakers={len(train_speakers)} "
+            f"val_speakers={len(val_speakers)} speaker_overlap={len(overlap)}",
+            flush=True,
+        )
+    else:
+        train_indices, val_indices = split_indices(
+            train_base.rows,
+            float(cfg["train"].get("val_fraction", 0.2)),
+            seed,
+            max_rows=int(args.max_rows or 0),
+        )
+        val_base = PresenceDataset(manifest, cfg["sample_rate"], cfg["segment_seconds"], training=False, **dataset_kwargs)
+        for extra_name in list(manifest_names)[1:]:
+            extra_path = Path(paths["manifest_root"]) / "train" / str(extra_name)
+            val_base.rows.extend(read_jsonl(extra_path))
+        train_ds = Subset(train_base, train_indices)
+        val_ds = Subset(val_base, val_indices)
     workers = int(cfg["train"].get("num_workers", 0))
     loader_args = {
         "num_workers": workers,
@@ -342,7 +391,14 @@ def main() -> int:
             int(cfg.get("model", {}).get("hop", 160)),
             float(cfg.get("model", {}).get("target_threshold_db_below_peak", 30.0)),
         )
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate, **loader_args)
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=torch.Generator().manual_seed(seed),
+        collate_fn=collate,
+        **loader_args,
+    )
     val_loader = DataLoader(
         val_ds,
         batch_size=int(cfg["train"].get("val_batch_size", batch_size)),
@@ -364,18 +420,93 @@ def main() -> int:
         hop=hop,
     ).to(device)
     init_checkpoint = args.init_checkpoint or cfg["train"].get("init_checkpoint")
+    init_path = None
     if init_checkpoint:
         init_path = Path(init_checkpoint)
         if not init_path.is_absolute():
             init_path = Path(paths["checkpoint_root"]) / init_path
         load_checkpoint(init_path, head)
         print(f"Initialized frame presence head from {init_path}", flush=True)
+    run_name = args.run_name or str(cfg["name"])
+    wandb_run = None
+    if args.wandb:
+        import wandb
+
+        if args.wandb_dir is not None:
+            args.wandb_dir.mkdir(parents=True, exist_ok=True)
+        config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
+        wandb_run = wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            name=run_name,
+            job_type="train-stage2-frame-presence",
+            mode=args.wandb_mode,
+            dir=str(args.wandb_dir) if args.wandb_dir is not None else None,
+            config={
+                "stage": "stage2_frame_presence",
+                "config": str(args.config),
+                "config_sha256": sha256_file(config_path),
+                "train_manifest": str(manifest),
+                "train_manifest_sha256": sha256_file(manifest),
+                "validation_manifest": str(val_manifest) if explicit_val_manifest else "row_split_from_train",
+                "validation_manifest_sha256": sha256_file(val_manifest) if explicit_val_manifest else None,
+                "stage1_checkpoint": str(checkpoint),
+                "stage1_checkpoint_sha256": sha256_file(checkpoint),
+                "init_checkpoint": str(init_checkpoint) if init_checkpoint else None,
+                "init_checkpoint_sha256": sha256_file(init_path) if init_path is not None else None,
+                "sample_rate": int(cfg["sample_rate"]),
+                "segment_seconds": float(cfg["segment_seconds"]),
+                "model": {"n_mels": int(model_cfg.get("n_mels", 40)), "hidden": int(model_cfg.get("hidden", 64))},
+                "train": cfg["train"],
+                "device": str(device),
+                "speaker_disjoint_validation": not bool(overlap) if explicit_val_manifest else False,
+            },
+        )
+        wandb_run.define_metric("epoch")
+        wandb_run.define_metric("train/*", step_metric="epoch")
+        wandb_run.define_metric("validation/*", step_metric="epoch")
+
     optimizer = torch.optim.AdamW(head.parameters(), lr=float(cfg["train"]["lr"]))
     use_amp = cache_use_amp
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     max_epochs = int(args.epochs or cfg["train"].get("max_epochs", 4))
-    out_dir = Path(paths["checkpoint_root"]) / cfg["name"]
+    out_dir = Path(paths["checkpoint_root"]) / run_name
     best_f1 = float("-inf")
+    if init_checkpoint:
+        initial_validation = evaluate(
+            head,
+            stage1,
+            val_loader,
+            device,
+            use_amp,
+            n_fft,
+            hop,
+            target_threshold_db,
+            top_fraction,
+        )
+        initial_f1 = float(initial_validation["best_chunk_f1"].get("f1", 0.0))
+        best_f1 = initial_f1
+        save_checkpoint(
+            out_dir / "best.pt",
+            head,
+            0,
+            {"epoch": 0, "validation": initial_validation, "initialized_from": str(init_checkpoint)},
+        )
+        print(f"warm_start_best_chunk_f1={initial_f1:.3f}", flush=True)
+        if wandb_run is not None:
+            warm = initial_validation["best_chunk_f1"]
+            wandb_run.log(
+                {
+                    "epoch": 0,
+                    "validation/chunk_f1": float(warm.get("f1", 0.0)),
+                    "validation/chunk_precision": float(warm.get("precision", 0.0)),
+                    "validation/chunk_recall": float(warm.get("recall", 0.0)),
+                    "validation/chunk_threshold": float(warm.get("threshold", 0.0)),
+                    "validation/false_accept_rate": float(warm.get("false_accept_rate", 0.0)),
+                },
+                step=0,
+                commit=True,
+            )
     for epoch in range(1, max_epochs + 1):
         head.train()
         losses: list[float] = []
@@ -458,7 +589,28 @@ def main() -> int:
                 "target_threshold_db_below_peak": target_threshold_db,
             },
         }
-        write_metrics(Path(paths["log_root"]) / cfg["name"] / "metrics_last.json", metrics)
+        write_metrics(Path(paths["log_root"]) / run_name / "metrics_last.json", metrics)
+        if wandb_run is not None:
+            best_chunk = validation["best_chunk_f1"]
+            balanced_chunk = validation["best_chunk_balanced"]
+            wandb_run.log(
+                {
+                    "epoch": epoch,
+                    "train/loss": metrics["train_loss"],
+                    "validation/chunk_f1": float(best_chunk.get("f1", 0.0)),
+                    "validation/chunk_precision": float(best_chunk.get("precision", 0.0)),
+                    "validation/chunk_recall": float(best_chunk.get("recall", 0.0)),
+                    "validation/chunk_threshold": float(best_chunk.get("threshold", 0.0)),
+                    "validation/false_accept_rate": float(best_chunk.get("false_accept_rate", 0.0)),
+                    "validation/balanced_accuracy": (
+                        float(balanced_chunk.get("recall", 0.0)) + float(balanced_chunk.get("specificity", 0.0))
+                    ) / 2.0,
+                    "validation/balanced_threshold": float(balanced_chunk.get("threshold", 0.0)),
+                    "validation/frame_f1": float(validation["best_frame_f1"].get("f1", 0.0)),
+                },
+                step=epoch,
+                commit=True,
+            )
         best = validation["best_chunk_f1"]
         print(
             f"epoch {epoch} loss={metrics['train_loss']:.4f} "
@@ -471,9 +623,13 @@ def main() -> int:
             save_checkpoint(out_dir / "best.pt", head, epoch, metrics)
 
     write_metrics(
-        Path(paths["log_root"]) / cfg["name"] / "train_last.json",
+        Path(paths["log_root"]) / run_name / "train_last.json",
         {"best_chunk_f1": best_f1, "checkpoint": str(out_dir / "best.pt")},
     )
+    if wandb_run is not None:
+        wandb_run.summary["best_validation_chunk_f1"] = best_f1
+        wandb_run.summary["best_checkpoint"] = str(out_dir / "best.pt")
+        wandb_run.finish()
     print(f"Done. Best checkpoint: {out_dir / 'best.pt'}", flush=True)
     return 0
 

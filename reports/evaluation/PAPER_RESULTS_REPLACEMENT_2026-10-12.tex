@@ -51,14 +51,14 @@ The offline evaluation replays assembled audio sequentially through the stateful
 \hline
 Wake decision & Target wakes detected & Correct end-to-end commands & False wake events & False action events \\
 \hline
-Hard gate: presence $0.50$, wake $0.29$ & 14/16 ($87.5\%$) & 2/16 ($12.5\%$) & 15 & 11 \\
-Validation-selected hard gate: presence $0.70$, wake $0.45$ & 7/16 ($43.8\%$) & 0/16 ($0\%$) & 4 & 4 \\
-Learned Stage~2/3 fusion: fusion score $0.60$ & 5/16 ($31.3\%$) & 0/16 ($0\%$) & 3 & 3 \\
+Hard gate: presence $0.50$, wake $0.29$ & 14/16 ($87.5\%$) & 9/16 ($56.3\%$) & 15 & 11 \\
+Validation-selected hard gate: presence $0.70$, wake $0.45$ & 7/16 ($43.8\%$) & 6/16 ($37.5\%$) & 4 & 4 \\
+Learned Stage~2/3 fusion: fusion score $0.60$ & 5/16 ($31.3\%$) & 5/16 ($31.3\%$) & 3 & 3 \\
 \hline
 \end{tabular}
 \end{table}
 
-On this matched stream sample, the ordinary hard gate produced the highest end-to-end command accuracy, at $2/16$ scenes. The learned fusion gate reduced false wake events from 15 to 3 and false action events from 11 to 3, but detected fewer target wakes and produced no correct end-to-end commands. Thus, its higher validation-window F1 did not translate into a higher full-stream score in this replay. The hard gate with validation-selected thresholds also produced no correct end-to-end commands. These short-run event counts must not be converted to false events per hour.
+On this matched stream sample, the ordinary hard gate produced the highest end-to-end command accuracy, at $9/16$ scenes. The learned fusion gate reduced false wake events from 15 to 3 and false action events from 11 to 3, but detected fewer target wakes and produced $5/16$ correct end-to-end commands. Thus, its higher validation-window F1 did not translate into the highest full-stream score in this replay. The hard gate with validation-selected thresholds produced $6/16$ correct end-to-end commands. These short-run event counts must not be converted to false events per hour.
 
 The wake and enrollment recordings in this comparison came from Speech Commands speakers, while commands came from Fluent Speech Commands speakers. Consequently, enrollment and command voices were not matched. Since Stage~1 is conditioned on the enrolled speaker, this proxy can suppress a command spoken by another person; the result is not a same-speaker in-car accuracy estimate and does not isolate Stage~1 from Stage~4 as the cause of command errors. The run reported a mean wake-decision latency of approximately $3.1$~s and a median Stage~4 decision time of $6.0$~s from scene start; these values include the synthetic scene timing and should not be presented as an isolated model-forward latency.
 

@@ -4,11 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import random
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
 
@@ -28,6 +32,20 @@ def collate(batch):
         else:
             out[k] = [b[k] for b in batch]
     return out
+
+
+def seed_worker(worker_id: int) -> None:
+    worker_seed = torch.initial_seed() % (2**32)
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def apply_schedule(model: Stage1System, block: dict) -> None:
@@ -124,9 +142,24 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "stage1_spex_sc.yaml")
     parser.add_argument("--paths", type=Path, default=REPO_ROOT / "configs" / "paths.yaml")
     parser.add_argument("--split", default="train")
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--run-name", default=None)
+    parser.add_argument("--wandb", action="store_true")
+    parser.add_argument("--wandb-project", default="car-tse")
+    parser.add_argument("--wandb-entity", default=None)
+    parser.add_argument("--wandb-mode", choices=("online", "offline", "disabled"), default="online")
+    parser.add_argument("--wandb-dir", type=Path, default=None)
     args = parser.parse_args()
     cfg = load_stage_config(args.config, args.paths)
     paths = cfg["paths"]
+    seed = int(args.seed if args.seed is not None else cfg["train"].get("seed", 20261014))
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
     device = get_device()
     manifest = Path(paths["manifest_root"]) / args.split / cfg["train"]["manifest"]
     dataset_kwargs = {
@@ -180,6 +213,9 @@ def main() -> int:
     if not pretrained.is_absolute():
         pretrained = REPO_ROOT / pretrained
     init_ckpt = cfg["train"].get("init_checkpoint")
+    init_checkpoint_payload = None
+    start_epoch = 1
+    best_si = float("-inf")
     model = Stage1System(
         spex_cfg=cfg["spex"],
         sample_rate=cfg["sample_rate"],
@@ -192,12 +228,16 @@ def main() -> int:
     if init_ckpt:
         init_path = paths["checkpoint_root"] / init_ckpt
         if init_path.exists():
-            load_checkpoint(init_path, model)
-    out_dir = paths["checkpoint_root"] / cfg["name"]
+            init_checkpoint_payload = load_checkpoint(init_path, model)
+            start_epoch = max(1, int(init_checkpoint_payload.get("epoch", 0)) + 1)
+            best_si = float(
+                init_checkpoint_payload.get("extra", {}).get("selection_metric", float("-inf"))
+            )
+    run_name = args.run_name or str(cfg["name"])
+    out_dir = paths["checkpoint_root"] / run_name
     out_dir.mkdir(parents=True, exist_ok=True)
     use_amp = bool(cfg["train"].get("amp", False)) and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
-    best_si = float("-inf")
     optimizer = None
     previous_block = None
     train_workers = int(cfg["train"].get("num_workers", 0))
@@ -210,8 +250,72 @@ def main() -> int:
         pin_memory=device.type == "cuda",
         persistent_workers=train_workers > 0,
         prefetch_factor=2 if train_workers > 0 else None,
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(seed),
     )
-    for epoch in range(1, cfg["train"]["max_epochs"] + 1):
+    wandb_run = None
+    if args.wandb:
+        import wandb
+
+        if args.wandb_dir is not None:
+            args.wandb_dir.mkdir(parents=True, exist_ok=True)
+        config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
+        manifest_path = Path(paths["manifest_root"]) / args.split / cfg["train"]["manifest"]
+        wandb_run = wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            name=run_name,
+            job_type="train-stage1-spex",
+            mode=args.wandb_mode,
+            dir=str(args.wandb_dir) if args.wandb_dir is not None else None,
+            config={
+                "stage": "stage1_spex",
+                "config": config_path.name,
+                "config_sha256": sha256_file(config_path),
+                "pretrained_checkpoint": str(pretrained),
+                "pretrained_checkpoint_sha256": sha256_file(pretrained) if pretrained.is_file() else None,
+                "manifest": str(manifest_path),
+                "manifest_sha256": sha256_file(manifest_path),
+                "seed": seed,
+                "sample_rate": int(cfg["sample_rate"]),
+                "segment_seconds": float(cfg["segment_seconds"]),
+                "batch_size": int(cfg["train"]["batch_size"]),
+                "max_epochs": int(cfg["train"]["max_epochs"]),
+                "start_epoch": start_epoch,
+                "device": str(device),
+                "torch_version": torch.__version__,
+            },
+        )
+        wandb_run.define_metric("epoch")
+        wandb_run.define_metric("train/*", step_metric="epoch")
+        wandb_run.define_metric("validation/*", step_metric="epoch")
+        wandb_run.define_metric("learning_rate/*", step_metric="epoch")
+        resume_history = cfg["train"].get("resume_metrics_history")
+        if start_epoch > 1 and resume_history:
+            resume_history_path = Path(resume_history)
+            if not resume_history_path.is_absolute():
+                resume_history_path = REPO_ROOT / resume_history_path
+            prior_rows = [
+                json.loads(line)
+                for line in resume_history_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            if prior_rows:
+                prior = prior_rows[-1]
+                prior_train = prior.get("train", {})
+                prior_val = prior.get("val", {})
+                prior_epoch = int(prior["epoch"])
+                resume_row = {
+                    "epoch": prior_epoch,
+                    "train/loss": prior.get("train_loss"),
+                    "train/si_sdr_s1": prior_train.get("si_sdr_s1"),
+                    "validation/si_sdri": prior_val.get("si_sdri"),
+                    "best_validation/si_sdri": prior.get("best_metric"),
+                }
+                resume_row.update({f"train/{key}": value for key, value in prior_train.items()})
+                resume_row.update({f"validation/{key}": value for key, value in prior_val.items()})
+                wandb_run.log(resume_row, step=prior_epoch, commit=True)
+    for epoch in range(start_epoch, cfg["train"]["max_epochs"] + 1):
         block = schedule_for_epoch(cfg["train"]["schedule"], epoch)
         apply_schedule(model, block)
         if optimizer is None or block != previous_block:
@@ -219,6 +323,7 @@ def main() -> int:
             previous_block = block.copy()
         model.train()
         stats_acc = {}
+        loss_sum = 0.0
         n = 0
         for batch in train_loader:
             mix = batch["mixture"].to(device)
@@ -269,6 +374,7 @@ def main() -> int:
                 optimizer.step()
             for k, v in st.items():
                 stats_acc[k] = stats_acc.get(k, 0) + v
+            loss_sum += float(loss.detach())
             n += 1
         mean_si = stats_acc.get("si_sdr_s1", 0) / max(n, 1)
         val_stats = evaluate(model, val_loader, device) if val_loader is not None else {}
@@ -283,13 +389,39 @@ def main() -> int:
                 out_dir / "best.pt",
                 model,
                 epoch,
-                {"train_si_sdr_s1": mean_si, "val": val_stats, "selection_metric": metric},
+                {"train_si_sdr_s1": mean_si, "val": val_stats, "selection_metric": metric, "seed": seed},
             )
+        train_stats = {key: value / max(n, 1) for key, value in stats_acc.items()}
+        metrics = {
+            "epoch": epoch,
+            "seed": seed,
+            "train_loss": loss_sum / max(n, 1),
+            "train": train_stats,
+            "val": val_stats,
+            "best_metric": best_si,
+        }
         write_metrics(
-            paths["log_root"] / cfg["name"] / "metrics_last.json",
-            {"epoch": epoch, "train_si_sdr_s1": mean_si, "val": val_stats, "best_metric": best_si},
+            paths["log_root"] / run_name / "metrics_last.json",
+            metrics,
         )
-    write_metrics(paths["log_root"] / cfg["name"] / "train_last.json", {"best_metric": best_si})
+        if wandb_run is not None:
+            log_row = {
+                "epoch": epoch,
+                "train/loss": loss_sum / max(n, 1),
+                "train/si_sdr_s1": mean_si,
+                "validation/si_sdri": metric,
+                "best_validation/si_sdri": best_si,
+            }
+            log_row.update({f"train/{key}": value for key, value in train_stats.items()})
+            log_row.update({f"validation/{key}": value for key, value in val_stats.items()})
+            log_row.update({f"learning_rate/group_{index}": group["lr"] for index, group in enumerate(optimizer.param_groups)})
+            wandb_run.log(log_row, step=epoch, commit=True)
+    write_metrics(paths["log_root"] / run_name / "train_last.json", {"best_metric": best_si, "seed": seed})
+    if wandb_run is not None:
+        wandb_run.summary["best_validation_si_sdri"] = best_si
+        wandb_run.summary["seed"] = seed
+        wandb_run.summary["best_checkpoint"] = str(out_dir / "best.pt")
+        wandb_run.finish()
     print(f"Done. Best checkpoint: {out_dir / 'best.pt'}")
     return 0
 

@@ -28,6 +28,6 @@ presence_hop: 160
 presence_top_fraction: 0.20
 checkpoints:
   spex: stage1_spex_transfer_mc_cavemove_cabin/best.pt
-  presence: stage2_presence_cavemove_cabin/best.pt
+  presence: stage2_frame_presence_gsc_aishell_ft1/best.pt
   kws: stage3_kws_tse_hybrid_ft1/best.pt
   intent: stage4_intent_wav2vec_ft8_resume_tse_domain/best.pt

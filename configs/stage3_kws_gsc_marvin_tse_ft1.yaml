@@ -9,6 +9,8 @@ cabin_noise: false
 audio_cache_size: 0
 waveform_cache_dir: data/cache/stage3_kws_gsc_marvin_16k
 waveform_cache_includes_cabin_noise: true
+waveform_cache_crop_start_seconds: 0.0
+validation_threshold: 0.29
 
 model:
   n_mels: 40
@@ -16,6 +18,7 @@ model:
   num_classes: 2
 
 train:
+  seed: 20261011
   batch_size: 512
   val_batch_size: 512
   max_epochs: 8

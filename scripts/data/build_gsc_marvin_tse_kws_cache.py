@@ -20,6 +20,12 @@ from car_tse.models.stage1_system import Stage1System
 from car_tse.train.utils import get_device, load_checkpoint
 
 
+def kws_label_for_source(source: dict) -> int:
+    """Keep wake-word truth separate from target-speaker presence truth."""
+
+    return int(source.get("kws_label", source.get("target_present", 0)))
+
+
 def collate(batch: list[dict]) -> dict:
     output: dict = {}
     for key in batch[0]:
@@ -39,6 +45,12 @@ def main() -> int:
     parser.add_argument("--manifest-name", default="stage1_gsc_marvin_cabin.jsonl")
     parser.add_argument("--output-prefix", default="stage3_kws_gsc_marvin_tse")
     parser.add_argument("--output-cache-dir", type=Path, default=REPO_ROOT / "data/cache/stage3_kws_gsc_marvin_16k")
+    parser.add_argument(
+        "--crop-start-seconds",
+        type=float,
+        default=0.0,
+        help="Offset for the one-second KWS cache crop; 0 matches the runtime's first-second crop.",
+    )
     parser.add_argument("--batch-size", type=int, default=8)
     args = parser.parse_args()
 
@@ -64,6 +76,9 @@ def main() -> int:
     args.output_cache_dir.mkdir(parents=True, exist_ok=True)
     sample_rate = int(stage1_cfg["sample_rate"])
     segment_seconds = float(stage1_cfg.get("segment_seconds", 3.0))
+    crop_start = int(round(float(args.crop_start_seconds) * sample_rate))
+    if crop_start < 0 or crop_start + sample_rate > int(round(segment_seconds * sample_rate)):
+        raise ValueError("The requested one-second cache crop must fit within the Stage-1 input segment")
     manifest_root = Path(paths["manifest_root"])
     for split in ("train", "val", "test"):
         source_manifest = manifest_root / split / args.manifest_name
@@ -101,7 +116,6 @@ def main() -> int:
                 if isinstance(multichannel, torch.Tensor):
                     multichannel = multichannel.to(device)
                 extracted, _, _, _ = stage1(mixture, enrollment, multichannel=multichannel)
-                crop_start = int(round(0.5 * sample_rate))
                 extracted = extracted[:, crop_start : crop_start + sample_rate].detach().cpu().numpy().astype(np.float32)
                 for index, waveform in enumerate(extracted):
                     peak = float(np.max(np.abs(waveform)))
@@ -112,9 +126,10 @@ def main() -> int:
                     manifest_rows.append(
                         {
                             "wav": str(source["mixture_wav"]),
-                            "label": int(float(source.get("target_present", 0)) >= 0.5),
+                            "label": kws_label_for_source(source),
                             "source_stage1_tse": True,
                             "source_manifest": str(source_manifest),
+                            "kws_crop_start_seconds": float(args.crop_start_seconds),
                         }
                     )
                 offset += len(extracted)

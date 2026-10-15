@@ -27,9 +27,20 @@ def find_librimix_subset(root: Path, split: str) -> Path | None:
     for subset in SPLIT_MAP[split]:
         for sr in ("wav8k", "wav16k"):
             for kind in ("min", "max"):
-                mix_dir = root / subset / sr / kind / "mix_both"
-                if mix_dir.exists():
-                    return mix_dir
+                # Support both layouts published by LibriMix: one with the
+                # subset first (``train-360/wav8k/min/mix_both``), and the
+                # canonical archive layout with sample rate/kind first
+                # (``wav8k/min/train-360/mix_both``).
+                for mix_dir in (
+                    root / subset / sr / kind / "mix_both",
+                    root / sr / kind / subset / "mix_both",
+                ):
+                    # A partially restored corpus can leave the preferred
+                    # train-360 directory in place but empty.  Continue to
+                    # train-100 rather than creating a valid-looking empty
+                    # manifest from that directory.
+                    if mix_dir.is_dir() and next(mix_dir.glob("*.wav"), None) is not None:
+                        return mix_dir
     return None
 
 

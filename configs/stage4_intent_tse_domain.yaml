@@ -3,10 +3,10 @@ sample_rate: 16000
 segment_seconds: 2.0
 manifest_train: stage4_intent_tse_domain_train.jsonl
 manifest_eval: stage4_intent_tse_domain_eval.jsonl
-source_manifest_train: stage4_cavemove_intent.jsonl
-source_manifest_eval: stage4_cavemove_intent.jsonl
+source_manifest_train: stage4_fsc_cavemove_train.jsonl
+source_manifest_eval: stage4_fsc_cavemove_valid.jsonl
 label_map: intent_label_map.json
-waveform_cache_dir: data/cache/stage4_intent_tse_domain_16k_v4
+waveform_cache_dir: E:/car-tse-data/cache/stage4_intent_tse_domain_16k_v4
 waveform_cache_includes_cabin_noise: true
 
 # Fine-tune the existing cabin-trained classifier on the actual Stage 1

@@ -16,7 +16,7 @@ corpora:
   speech_commands_v2: "E:/car-tse-data/speech_commands_v2"
   mswc_en: "E:/car-tse-data/mswc/en"
   hey_snips: "E:/car-tse-data/hey_snips"
-  fluent_speech_commands: "E:/car-tse-data/fluent_speech_commands"
+  fluent_speech_commands: "E:/car-tse-data/fluent_speech_commands/fluent_speech_commands_dataset"
   slurp: "E:/car-tse-data/slurp"
   custom_incar: "E:/car-tse-data/custom_incar"
 

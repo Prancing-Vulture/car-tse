@@ -60,6 +60,9 @@ def main() -> int:
     if label_map_path.exists():
         raw_map = json.loads(label_map_path.read_text(encoding="utf-8"))
         label_map = {str(value): key for key, value in raw_map.items()}
+    stage23_fusion_checkpoint = cfg.get("checkpoints", {}).get("stage23_fusion")
+    if stage23_fusion_checkpoint:
+        stage23_fusion_checkpoint = Path(paths["checkpoint_root"]) / stage23_fusion_checkpoint
     pipeline = InCarPipeline.from_checkpoints(
         stage1,
         Path(paths["checkpoint_root"]) / cfg["checkpoints"]["presence"],
@@ -78,6 +81,8 @@ def main() -> int:
         intent_num_classes=int(cfg.get("intent_num_classes", 31)),
         presence_threshold=float(cfg["presence_threshold"]),
         kws_threshold=float(cfg["kws_threshold"]),
+        stage23_fusion_checkpoint=stage23_fusion_checkpoint,
+        stage23_fusion_threshold=float(cfg.get("stage23_fusion_threshold", 0.5)),
         wake_class_id=int(cfg.get("wake_class_id", 1)),
         kws_input_seconds=float(cfg.get("kws_input_seconds", 1.0)),
         kws_smoothing_window=int(cfg.get("kws_smoothing_window", 1)),

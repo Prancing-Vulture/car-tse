@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT_LOCAL = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT_LOCAL / "src"))
@@ -19,11 +20,12 @@ from transformers import AutoModel
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.data.datasets import IntentDataset
 from car_tse.train.utils import get_device, load_checkpoint, write_metrics
+from car_tse.train.wandb_logging import log_evaluation
 from train_stage4_intent_wav2vec import IntentHead, normalize_waveform
 
 
 @torch.no_grad()
-def evaluate(model: IntentHead, encoder: torch.nn.Module, loader: DataLoader, device: torch.device, num_classes: int) -> dict[str, float]:
+def evaluate(model: IntentHead, encoder: torch.nn.Module, loader: DataLoader, device: torch.device, num_classes: int) -> dict[str, Any]:
     model.eval()
     encoder.eval()
     confusion = torch.zeros((num_classes, num_classes), dtype=torch.long)
@@ -49,6 +51,10 @@ def evaluate(model: IntentHead, encoder: torch.nn.Module, loader: DataLoader, de
         "macro_recall": float(recall.mean().item()),
         "macro_f1": float(f1.mean().item()),
         "examples": float(total),
+        "confusion_matrix": confusion.tolist(),
+        "per_class_precision": precision.tolist(),
+        "per_class_recall": recall.tolist(),
+        "per_class_f1": f1.tolist(),
     }
 
 
@@ -56,7 +62,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--paths", type=Path, default=REPO_ROOT / "configs" / "paths.yaml")
-    parser.add_argument("--split", choices=("train", "val"), default="val")
+    parser.add_argument("--split", choices=("train", "val", "test"), default="val")
     parser.add_argument("--manifest", type=Path, default=None, help="Optional explicit manifest override")
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--encoder", default="facebook/wav2vec2-base-960h")
@@ -64,13 +70,20 @@ def main() -> int:
     parser.add_argument("--encoder-checkpoint", type=Path, default=REPO_ROOT / "checkpoints" / "stage4_intent_wav2vec_ft4_tse_domain" / "encoder_best.pt")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--wandb", action="store_true", help="Log metrics to W&B (offline when no API key is set)")
+    parser.add_argument("--wandb-project", default="car-tse")
+    parser.add_argument("--wandb-run-name", default=None)
+    parser.add_argument("--wandb-mode", choices=("online", "offline"), default=None)
+    parser.add_argument("--wandb-dir", type=Path, default=None)
     args = parser.parse_args()
 
     cfg = load_stage_config(args.config, args.paths)
     paths = cfg["paths"]
     device = get_device()
     label_map = Path(paths["manifest_root"]) / "meta" / cfg["label_map"]
-    num_classes = len(json.loads(label_map.read_text(encoding="utf-8")))
+    raw_label_map = json.loads(label_map.read_text(encoding="utf-8"))
+    id_to_label = {int(value): str(key) for key, value in raw_label_map.items()}
+    num_classes = len(raw_label_map)
     manifest_root = Path(paths["manifest_root"])
     manifest = args.manifest
     if manifest is None:
@@ -101,7 +114,14 @@ def main() -> int:
     head = IntentHead(int(encoder.config.hidden_size), 512, num_classes, 0.2).to(device)
     load_checkpoint(args.head_checkpoint, head)
     metrics = evaluate(head, encoder, loader, device, num_classes)
-    metrics.update({"split": args.split, "clean": args.clean, "head_checkpoint": str(args.head_checkpoint), "encoder_checkpoint": str(args.encoder_checkpoint)})
+    metrics.update({
+        "split": args.split,
+        "clean": args.clean,
+        "head_checkpoint": str(args.head_checkpoint),
+        "encoder_checkpoint": str(args.encoder_checkpoint),
+        "manifest": str(manifest),
+        "class_names": [id_to_label.get(index, str(index)) for index in range(num_classes)],
+    })
     output = args.output
     if output is None:
         output = Path(paths["log_root"]) / "stage4_intent_wav2vec_ft4_tse_domain" / f"metrics_{args.split}_{'clean' if args.clean else 'cabin'}.json"
@@ -109,6 +129,41 @@ def main() -> int:
         output = REPO_ROOT / output
     write_metrics(output, metrics)
     print(f"Intent wav2vec {args.split} ({'clean' if args.clean else 'cached'}): acc={metrics['accuracy']:.3f} top5={metrics['top5_accuracy']:.3f} macro_f1={metrics['macro_f1']:.3f}", flush=True)
+    if args.wandb:
+        report_scalars = {key: value for key, value in metrics.items() if key not in {"confusion_matrix", "per_class_precision", "per_class_recall", "per_class_f1"}}
+        report_scalars.update({
+            f"class_precision/{id_to_label.get(index, str(index))}": value
+            for index, value in enumerate(metrics["per_class_precision"])
+        })
+        report_scalars.update({
+            f"class_recall/{id_to_label.get(index, str(index))}": value
+            for index, value in enumerate(metrics["per_class_recall"])
+        })
+        log_evaluation(
+            project=args.wandb_project,
+            run_name=args.wandb_run_name or f"stage4-{args.split}-intent-wav2vec",
+            job_type="intent-evaluation",
+            config={
+                "split": args.split,
+                "clean": args.clean,
+                "manifest": str(manifest),
+                "encoder": args.encoder,
+                "head_checkpoint": str(args.head_checkpoint),
+                "encoder_checkpoint": str(args.encoder_checkpoint),
+                "batch_size": args.batch_size,
+                "device": str(device),
+                "sample_rate": int(cfg["sample_rate"]),
+                "segment_seconds": float(cfg["segment_seconds"]),
+                "num_classes": int(num_classes),
+                "label_map": str(label_map),
+            },
+            metrics=report_scalars,
+            output_path=output,
+            mode=args.wandb_mode,
+            directory=args.wandb_dir,
+            confusion_matrix=metrics["confusion_matrix"],
+            class_names=[id_to_label.get(index, str(index)) for index in range(num_classes)],
+        )
     return 0
 
 

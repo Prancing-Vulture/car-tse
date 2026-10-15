@@ -15,12 +15,19 @@ from car_tse.train.utils import load_checkpoint
 class Wav2VecIntentHead(nn.Module):
     def __init__(self, input_dim: int = 768, hidden: int = 512, num_classes: int = 31, dropout: float = 0.2):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(input_dim),
-            nn.Linear(input_dim, hidden),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden, num_classes),
+        # hidden <= 0 is the compact linear probe used by small-vocabulary
+        # experiments. Keeping the default MLP unchanged preserves old
+        # 31-class checkpoints and inference behavior.
+        self.net = (
+            nn.Linear(input_dim, num_classes)
+            if int(hidden) <= 0
+            else nn.Sequential(
+                nn.LayerNorm(input_dim),
+                nn.Linear(input_dim, hidden),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden, num_classes),
+            )
         )
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
@@ -36,6 +43,7 @@ class Wav2VecIntentClassifier(nn.Module):
         num_classes: int = 31,
         input_sample_rate: int = 16000,
         input_seconds: float = 2.0,
+        head_hidden: int = 512,
     ):
         super().__init__()
         self.encoder = AutoModel.from_pretrained(encoder_name)
@@ -44,7 +52,7 @@ class Wav2VecIntentClassifier(nn.Module):
         self.encoder.load_state_dict(encoder_payload["model_state_dict"], strict=True)
         self.head = Wav2VecIntentHead(
             input_dim=int(self.encoder.config.hidden_size),
-            hidden=512,
+            hidden=head_hidden,
             num_classes=num_classes,
             dropout=0.2,
         )
