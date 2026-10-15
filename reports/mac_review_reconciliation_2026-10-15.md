@@ -177,3 +177,39 @@ Reproduction artifact:
 
 Effective configuration SHA256:
 `3fc7a20b28769698d6a21b337f2a667b88b9bc8570abb869b736f6cd5b9dc8bb`
+
+## Corrected P0 overlap result (completed 2026-10-15)
+
+The matched overlap rerun used the same 1,000 scenes and configuration as the
+sequential result, but summed the target and passenger speech into a
+co-channel mixture.  It has no spatial seat cue and is therefore a stress
+proxy, not a real-array cabin measurement.
+
+| Metric | Result |
+|---|---:|
+| Scenes / synthetic duration | 1,000 / 3.889 h |
+| Target wake recall | **100.00%** |
+| Target intent accuracy | **61.50%** |
+| Fully correct scenes | **534 / 1,000 (53.40%)** |
+| Executed action events | 968 |
+| Executed non-target actions | 94 |
+| Wrong-intent action events | 324 |
+| Scenes with a wrong-intent action | 315 / 1,000 |
+| Wrong executed action events | 353 |
+| Scenes with a wrong executed action | 340 / 1,000 |
+| Strict false-wake events | 829 / 3.889 h (213.17/h) |
+| Strict false-command events | 35 / 3.889 h (9.00/h) |
+| Passenger-overlap command events | 865 |
+| Ambiguous overlap command events | 865 |
+| Passenger-only false actions | 0* |
+
+\* The zero is not a safety pass: in co-channel overlap, the passenger and
+target intervals are intentionally simultaneous, so most events are ambiguous
+under source attribution and fall inside the broad target association.  The
+wrong-action and strict false-wake metrics are the useful diagnostics here.
+
+Reproduction artifact:
+`logs/multispeaker_overlap_p0_dynamic_full_1000_2026-10-15.json`
+
+The identical effective configuration SHA256 was recorded in both runs:
+`3fc7a20b28769698d6a21b337f2a667b88b9bc8570abb869b736f6cd5b9dc8bb`.
