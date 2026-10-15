@@ -49,3 +49,20 @@ entire gap to TSE separation.
 
 This report is the local, versioned issue record. A GitHub issue should mirror
 it when authenticated issue creation is available.
+
+## Mac-review correction (2026-10-15)
+
+The headline legacy counts above understate the safety failure because the
+original evaluator associated a broad post-wake interval with the target and
+did not distinguish action identity.  Re-scoring the same log gives **617/1,000
+scenes with a wrong-intent action, 616 executed non-target actions, and 326
+fully correct scenes**.  Wake-source attribution finds 500 passenger-wake and
+602 passenger-nonwake events outside the legacy target tolerance; 1,546 more
+wake events were absorbed by that tolerance.  See
+`reports/mac_review_reconciliation_2026-10-15.md` and
+`scripts/eval/rescore_multispeaker_log.py` for the reproducible definitions.
+
+The original log also reused a fixed passenger source.  The evaluator has been
+updated to sample and record passenger identities per scene; the next run is
+the valid P0 reproduction.  These results remain synthetic and do not claim
+real-driver passenger rejection.

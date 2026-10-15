@@ -56,6 +56,18 @@ def test_pipeline_kws_requires_temporal_hits():
     assert update_kws_state(state, 0.8, 0.5, 3, 2, 2) is False
 
 
+def test_pipeline_kws_refractory_expires_before_second_wake():
+    state = PipelineState()
+    scores = [0.8, 0.8, 0.8]
+    assert [update_kws_state(state, score, 0.5, 3, 2, 2) for score in scores] == [False, False, True]
+    # Two calls are suppressed after the first wake, even though the score
+    # stream remains positive.  A later wake is possible once the refractory
+    # period has elapsed.
+    assert update_kws_state(state, 0.8, 0.5, 3, 2, 2) is False
+    assert update_kws_state(state, 0.8, 0.5, 3, 2, 2) is False
+    assert update_kws_state(state, 0.8, 0.5, 3, 2, 2) is True
+
+
 def test_downstream_extraction_conditioning_only_attenuates_large_gain():
     wav = torch.tensor([[2.0, -1.0, 0.25], [0.2, -0.1, 0.05]])
     normalized = normalize_extracted_waveform(wav)

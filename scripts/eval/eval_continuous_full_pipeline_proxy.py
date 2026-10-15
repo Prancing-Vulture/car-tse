@@ -24,10 +24,11 @@ recordings with that structure are available.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,12 @@ def row_speaker_id(row: dict[str, Any], path: Path) -> str:
     value = row.get("speaker_id")
     if value is not None and str(value).strip():
         return str(value)
+    # Google Speech Commands encodes the speaker identity in the stable hash
+    # prefix of ``<speaker>_nohash_<utterance>.wav``.  The parent directory is
+    # the word label (for example ``marvin`` or ``nine``), not the speaker;
+    # using it collapses every passenger recording into one pseudo-speaker.
+    if "_nohash_" in path.stem:
+        return speaker_key(path)
     parent = path.parent.name.strip()
     return parent or speaker_key(path)
 
@@ -125,6 +132,56 @@ def event_overlaps_label(
         float(label_start) - float(tolerance_before),
         float(label_end) + float(tolerance_after),
     )
+
+
+def event_source_labels(
+    row: dict[str, Any],
+    truth: dict[str, Any],
+    stage1_seconds: float,
+) -> list[str]:
+    """Return utterance intervals supported by a wake event.
+
+    A streaming window may overlap more than one labelled interval.  Keep all
+    supporting labels instead of forcing an ambiguous event into one source;
+    the caller can still report the legacy tolerance association separately.
+    """
+
+    labels: list[str] = []
+    intervals = (
+        (
+            "target_wake",
+            float(truth["target_wake_start_seconds"]),
+            float(truth["target_wake_end_seconds"]),
+        ),
+        (
+            "passenger_wake",
+            float(truth.get("passenger_wake_start_seconds", -1.0)),
+            float(truth.get("passenger_wake_end_seconds", -1.0)),
+        ),
+        (
+            "passenger_nonwake",
+            float(truth.get("passenger_nonwake_start_seconds", -1.0)),
+            float(truth.get("passenger_nonwake_end_seconds", -1.0)),
+        ),
+    )
+    window_start = float(row["window_start_seconds"])
+    window_end = float(row.get("window_end_seconds", window_start + stage1_seconds))
+    for label, interval_start, interval_end in intervals:
+        if interval_start >= 0.0 and interval_end > interval_start and intervals_overlap(
+            window_start,
+            window_end,
+            interval_start,
+            interval_end,
+        ):
+            labels.append(label)
+    return labels or ["other"]
+
+
+def effective_config_hash(config: dict[str, Any]) -> str:
+    """Hash the effective evaluator configuration, including CLI overrides."""
+
+    payload = json.dumps(config, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def select_noise_files(root: Path, minimum_seconds: float) -> list[Path]:
@@ -318,25 +375,38 @@ def build_scene(
     passenger_only: bool = False,
     overlap: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
-    """Build one 14-second scene with optional passenger/target overlap."""
+    """Build one scene with optional passenger/target overlap.
 
-    duration_seconds = 14.0
+    The historical proxy uses a 14-second canvas.  The canvas grows when a
+    full-length command is supplied so the command is never silently clipped
+    by the scene builder.
+    """
+
+    command_start_seconds = 2.1
+    passenger_wake_start_seconds = 2.4 if overlap else 6.0
+    passenger_nonwake_start_seconds = 3.2 if overlap else 9.0
+    duration_seconds = max(
+        14.0,
+        command_start_seconds + len(target_command) / sample_rate + 1.0,
+        passenger_wake_start_seconds + len(passenger_wake) / sample_rate + 1.0,
+        passenger_nonwake_start_seconds + len(passenger_nonwake) / sample_rate + 1.0,
+    )
     total_samples = int(round(duration_seconds * sample_rate))
     target = np.zeros(total_samples, dtype=np.float32)
     passenger = np.zeros(total_samples, dtype=np.float32)
 
     wake_start = int(round(1.0 * sample_rate))
-    command_start = int(round(2.1 * sample_rate))
+    command_start = int(round(command_start_seconds * sample_rate))
     if overlap:
         # Put both passenger utterances inside the target command interval.
         # This is deliberately a co-channel stress test: all microphone
         # channels receive the same summed speech, while the target identity
         # remains available through enrollment.
-        passenger_wake_start = int(round(2.4 * sample_rate))
-        passenger_nonwake_start = int(round(3.2 * sample_rate))
+        passenger_wake_start = int(round(passenger_wake_start_seconds * sample_rate))
+        passenger_nonwake_start = int(round(passenger_nonwake_start_seconds * sample_rate))
     else:
-        passenger_wake_start = int(round(6.0 * sample_rate))
-        passenger_nonwake_start = int(round(9.0 * sample_rate))
+        passenger_wake_start = int(round(passenger_wake_start_seconds * sample_rate))
+        passenger_nonwake_start = int(round(passenger_nonwake_start_seconds * sample_rate))
     add_at(target, target_wake, wake_start)
     add_at(target, target_command, command_start)
     if not clean or passenger_only or overlap:
@@ -370,7 +440,9 @@ def build_scene(
         "target_command_start_seconds": command_start / sample_rate,
         "target_command_end_seconds": (command_start + len(target_command)) / sample_rate,
         "passenger_wake_start_seconds": passenger_wake_start / sample_rate,
+        "passenger_wake_end_seconds": (passenger_wake_start + len(passenger_wake)) / sample_rate,
         "passenger_nonwake_start_seconds": passenger_nonwake_start / sample_rate,
+        "passenger_nonwake_end_seconds": (passenger_nonwake_start + len(passenger_nonwake)) / sample_rate,
         "cabin_snr_db": float(cabin_snr_db),
         "passenger_snr_db": float(passenger_snr_db),
         "clean": bool(clean),
@@ -488,6 +560,23 @@ def evaluate_scene(
     ]
     target_wake_events.sort(key=lambda row: float(row["window_start_seconds"]))
     false_events = [row for row in wake_events if row not in target_wake_events]
+    wake_source_counts: Counter[str] = Counter()
+    for row in wake_events:
+        labels = event_source_labels(row, truth, stage1_seconds)
+        row["wake_trigger_sources"] = labels
+        if row in target_wake_events:
+            # Preserve the historical tolerance association as an explicit
+            # category.  A passenger utterance can be the actual source of a
+            # window that the old +/-3 s target tolerance absorbed.
+            row["wake_trigger_source"] = "target_tolerance_support"
+            wake_source_counts["target_tolerance_support"] += 1
+        elif len(labels) == 1:
+            row["wake_trigger_source"] = labels[0]
+            wake_source_counts[labels[0]] += 1
+        else:
+            source = "+".join(labels)
+            row["wake_trigger_source"] = source
+            wake_source_counts[source] += 1
     strict_target_wake_events = [
         row
         for row in wake_events
@@ -524,6 +613,40 @@ def evaluate_scene(
     strict_false_command_events = [
         row for row in command_events if row not in strict_target_command_events
     ]
+
+    # The legacy false-action counter uses a broad command-window tolerance.
+    # Keep it unchanged, but expose action-level safety metrics that do not
+    # hide extra commits behind that tolerance.  ``target_command_event`` is
+    # intentionally used for the compatibility metric because that is the
+    # event identity recorded by historical logs.
+    executed_action_events = [row for row in command_events if row.get("action")]
+    target_event_start = (
+        None
+        if target_command_event is None
+        else float(target_command_event["window_start_seconds"])
+    )
+    executed_non_target_actions = [
+        row
+        for row in executed_action_events
+        if target_event_start is None
+        or float(row["window_start_seconds"]) != target_event_start
+    ]
+    wrong_intent_action_events = [
+        row for row in executed_action_events if row.get("intent") != command_intent
+    ]
+    wrong_executed_action_events = [
+        row
+        for row in executed_action_events
+        if row in executed_non_target_actions or row in wrong_intent_action_events
+    ]
+    intent_correct = bool(target_command_event and target_command_event.get("intent") == command_intent)
+    fully_correct_scene = bool(intent_correct and len(command_events) == 1)
+    strict_fully_correct_action_scene = bool(
+        len(executed_action_events) == 1
+        and not wrong_executed_action_events
+        and target_command_event is not None
+        and executed_action_events[0] in strict_target_command_events
+    )
     # In a simultaneous scene, an emitted window can support both the target
     # command and a passenger utterance.  The old outside-target counter
     # cannot call that a passenger false action, because the labels overlap.
@@ -533,10 +656,14 @@ def evaluate_scene(
     if truth.get("passenger_present", False):
         passenger_wake_start = float(truth.get("passenger_wake_start_seconds", -1.0))
         passenger_nonwake_start = float(truth.get("passenger_nonwake_start_seconds", -1.0))
+        passenger_wake_end = float(truth.get("passenger_wake_end_seconds", passenger_wake_start + 1.0))
+        passenger_nonwake_end = float(
+            truth.get("passenger_nonwake_end_seconds", passenger_nonwake_start + 1.5)
+        )
         if passenger_wake_start >= 0.0:
-            passenger_intervals.append((passenger_wake_start, passenger_wake_start + 1.0))
+            passenger_intervals.append((passenger_wake_start, passenger_wake_end))
         if passenger_nonwake_start >= 0.0:
-            passenger_intervals.append((passenger_nonwake_start, passenger_nonwake_start + 1.5))
+            passenger_intervals.append((passenger_nonwake_start, passenger_nonwake_end))
 
     def overlaps_passenger(row: dict[str, Any]) -> bool:
         window_start = float(row["window_start_seconds"])
@@ -570,7 +697,6 @@ def evaluate_scene(
     passenger_only_false_action_events = [
         row for row in passenger_overlap_command_events if row not in target_command_events
     ]
-    intent_correct = bool(target_command_event and target_command_event.get("intent") == command_intent)
     target_wake_detected = target_wake_event is not None
     latency = None
     if target_wake_event is not None:
@@ -594,6 +720,15 @@ def evaluate_scene(
         "strict_false_wake_rate_per_hour": len(strict_false_wake_events) * 3600.0 / max(duration, 1.0e-6),
         "false_action_events": len(false_command_events),
         "false_action_rate_per_hour": len(false_command_events) * 3600.0 / max(duration, 1.0e-6),
+        "executed_action_events": len(executed_action_events),
+        "executed_non_target_actions": len(executed_non_target_actions),
+        "wrong_intent_action_events": len(wrong_intent_action_events),
+        "wrong_executed_action_events": len(wrong_executed_action_events),
+        "scene_with_wrong_intent_action": bool(wrong_intent_action_events),
+        "scene_with_wrong_executed_action": bool(wrong_executed_action_events),
+        "fully_correct_scene": fully_correct_scene,
+        "strict_fully_correct_action_scene": strict_fully_correct_action_scene,
+        "wake_trigger_source_counts": dict(wake_source_counts),
         "strict_target_command_events": len(strict_target_command_events),
         "strict_false_command_events": len(strict_false_command_events),
         "strict_false_command_rate_per_hour": len(strict_false_command_events) * 3600.0 / max(duration, 1.0e-6),
@@ -686,6 +821,14 @@ def main() -> int:
         default=None,
         help="Length used when placing each FSC command in the synthetic scene; keep this at or above the source utterance duration.",
     )
+    parser.add_argument(
+        "--full-length-commands",
+        action="store_true",
+        help=(
+            "Place each command at its source duration instead of padding/truncating "
+            "it to --proxy-command-seconds. The scene canvas grows when needed."
+        ),
+    )
     parser.add_argument("--intent-confidence-threshold", type=float, default=None)
     parser.add_argument("--speaker-gate-threshold", type=float, default=None)
     parser.add_argument(
@@ -709,6 +852,18 @@ def main() -> int:
     )
     parser.add_argument("--command-buffer-calls", type=int, default=None)
     parser.add_argument("--command-confidence-commit-threshold", type=float, default=None)
+    parser.add_argument(
+        "--kws-refractory-calls",
+        type=int,
+        default=None,
+        help="Ignore new wake scores for this many streaming calls after a wake.",
+    )
+    parser.add_argument(
+        "--kws-refractory-seconds",
+        type=float,
+        default=None,
+        help="Convert a desired post-wake refractory period to calls using --hop-seconds.",
+    )
     parser.add_argument("--command-endpoint-kws-hop-seconds", type=float, default=None)
     parser.add_argument("--command-endpoint-margin-seconds", type=float, default=None)
     parser.add_argument("--speaker-fusion-mode", choices=("none", "min", "product", "mean"), default=None)
@@ -768,6 +923,10 @@ def main() -> int:
         cfg["command_window_strategy"] = str(args.command_window_strategy)
     if args.command_buffer_calls is not None:
         cfg["command_buffer_calls"] = int(args.command_buffer_calls)
+    if args.kws_refractory_calls is not None and args.kws_refractory_seconds is not None:
+        raise ValueError("pass only one of --kws-refractory-calls or --kws-refractory-seconds")
+    if args.kws_refractory_calls is not None:
+        cfg["kws_refractory_calls"] = max(0, int(args.kws_refractory_calls))
     if args.command_confidence_commit_threshold is not None:
         cfg["command_confidence_commit_threshold"] = float(
             args.command_confidence_commit_threshold
@@ -785,8 +944,15 @@ def main() -> int:
     if args.speaker_fusion_alpha is not None:
         cfg["speaker_fusion_alpha"] = float(args.speaker_fusion_alpha)
     device = get_device()
-    pipeline = load_pipeline(cfg, cfg["paths"], device)
     sample_rate = int(cfg["sample_rate"])
+    if args.kws_refractory_seconds is not None:
+        if args.kws_refractory_seconds < 0.0:
+            raise ValueError("--kws-refractory-seconds must be non-negative")
+        cfg["kws_refractory_calls"] = int(
+            np.ceil(float(args.kws_refractory_seconds) / max(float(args.hop_seconds), 1.0e-6))
+        )
+    effective_cfg_hash = effective_config_hash(cfg)
+    pipeline = load_pipeline(cfg, cfg["paths"], device)
     stage1_seconds = float(cfg.get("segment_seconds", 3.0))
     proxy_command_seconds = float(
         args.proxy_command_seconds
@@ -827,12 +993,6 @@ def main() -> int:
     ]
     if not passenger_wake_rows:
         raise RuntimeError(f"No passenger wake examples found in {passenger_manifest_path}")
-    passenger_wake_row = next(
-        row
-        for row in passenger_wake_rows
-        if (str(row.get("speaker_id", "")).strip() or speaker_key(resolve_path(row["wav"])))
-        != (str(target_wake_rows[0].get("speaker_id", "")).strip() or speaker_key(resolve_path(target_wake_rows[0]["wav"])))
-    )
 
     all_intent_rows = load_jsonl(resolve_path(args.intent_manifest))
     by_intent: dict[str, dict[str, Any]] = {}
@@ -895,7 +1055,69 @@ def main() -> int:
     ]
     if not negative_rows:
         raise RuntimeError("No non-wake passenger examples found")
-    passenger_nonwake_row = negative_rows[0]
+
+    def group_passenger_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        grouped_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            path = resolve_path(row["wav"])
+            grouped_rows[row_speaker_id(row, path)].append(row)
+        for values in grouped_rows.values():
+            values.sort(key=lambda row: str(row.get("wav", "")))
+        return dict(sorted(grouped_rows.items()))
+
+    passenger_wake_by_speaker = group_passenger_rows(passenger_wake_rows)
+    passenger_nonwake_by_speaker = group_passenger_rows(negative_rows)
+    paired_passenger_speakers = sorted(
+        set(passenger_wake_by_speaker).intersection(passenger_nonwake_by_speaker)
+    )
+    wake_only_passenger_speakers = sorted(passenger_wake_by_speaker)
+    nonwake_only_passenger_speakers = sorted(passenger_nonwake_by_speaker)
+    passenger_rng = random.Random(int(args.seed) ^ 0x5EED5EED)
+
+    def shuffled(values: list[str]) -> list[str]:
+        result = list(values)
+        passenger_rng.shuffle(result)
+        return result
+
+    paired_passenger_order = shuffled(paired_passenger_speakers)
+    wake_passenger_order = shuffled(wake_only_passenger_speakers)
+    nonwake_passenger_order = shuffled(nonwake_only_passenger_speakers)
+
+    def choose_passenger_rows(
+        scene_index: int,
+        target_speaker_id: str,
+    ) -> tuple[dict[str, Any], dict[str, Any], str, str]:
+        """Choose deterministic per-scene passenger rows, avoiding the target."""
+
+        def eligible(order: list[str]) -> list[str]:
+            values = [speaker for speaker in order if speaker != target_speaker_id]
+            return values or list(order)
+
+        paired = eligible(paired_passenger_order)
+        if paired:
+            passenger_speaker = paired[scene_index % len(paired)]
+            wake_values = passenger_wake_by_speaker[passenger_speaker]
+            nonwake_values = passenger_nonwake_by_speaker[passenger_speaker]
+            cycle = scene_index // len(paired)
+            wake_row = wake_values[cycle % len(wake_values)]
+            nonwake_row = nonwake_values[cycle % len(nonwake_values)]
+            return wake_row, nonwake_row, passenger_speaker, passenger_speaker
+
+        wake_order = eligible(wake_passenger_order)
+        nonwake_order = eligible(nonwake_passenger_order)
+        if not wake_order or not nonwake_order:
+            raise RuntimeError("Passenger manifest has no eligible wake/non-wake rows")
+        wake_speaker = wake_order[scene_index % len(wake_order)]
+        nonwake_speaker = nonwake_order[scene_index % len(nonwake_order)]
+        wake_values = passenger_wake_by_speaker[wake_speaker]
+        nonwake_values = passenger_nonwake_by_speaker[nonwake_speaker]
+        return (
+            wake_values[(scene_index // len(wake_order)) % len(wake_values)],
+            nonwake_values[(scene_index // len(nonwake_order)) % len(nonwake_values)],
+            wake_speaker,
+            nonwake_speaker,
+        )
+
     if sum(bool(value) for value in (args.clean, args.passenger_only, args.overlap)) > 1:
         raise ValueError("--clean, --passenger-only, and --overlap are mutually exclusive")
     noise_files = [] if (args.clean or args.passenger_only or args.overlap) else select_noise_files(resolve_path(args.noise_root), 20.0)
@@ -930,10 +1152,17 @@ def main() -> int:
         )
         target_wake, _ = read_mono(resolve_path(wake_row["wav"]), sample_rate)
         target_command, _ = read_mono(resolve_path(intent_row["wav"]), sample_rate)
+        passenger_wake_row, passenger_nonwake_row, passenger_wake_speaker_id, passenger_nonwake_speaker_id = choose_passenger_rows(
+            scene_index,
+            command_speaker_id,
+        )
         passenger_wake, _ = read_mono(resolve_path(passenger_wake_row["wav"]), sample_rate)
         passenger_nonwake, _ = read_mono(resolve_path(passenger_nonwake_row["wav"]), sample_rate)
         target_wake = fit_start(target_wake, sample_rate)
-        target_command = fit_start(target_command, int(round(proxy_command_seconds * sample_rate)))
+        if not args.full_length_commands:
+            target_command = fit_start(target_command, int(round(proxy_command_seconds * sample_rate)))
+        else:
+            target_command = np.asarray(target_command, dtype=np.float32).reshape(-1)
         passenger_wake = fit_start(passenger_wake, sample_rate)
         passenger_nonwake = fit_start(passenger_nonwake, int(1.5 * sample_rate))
         enrollment_source_path = str(resolve_path(wake_row["wav"]))
@@ -1020,6 +1249,8 @@ def main() -> int:
             truth["target_command_source"] = str(resolve_path(intent_row["wav"]))
             truth["passenger_wake_source"] = str(resolve_path(passenger_wake_row["wav"]))
             truth["passenger_nonwake_source"] = str(resolve_path(passenger_nonwake_row["wav"]))
+            truth["passenger_wake_speaker_id"] = passenger_wake_speaker_id
+            truth["passenger_nonwake_speaker_id"] = passenger_nonwake_speaker_id
             truth["noise_source"] = None if noise_path is None else str(noise_path)
             truth["enrollment_source"] = args.enrollment_source
             truth["enrollment_source_wav"] = enrollment_source_path
@@ -1083,6 +1314,33 @@ def main() -> int:
     intent_successes = sum(bool(row["target_intent_correct"]) for row in results)
     false_events = sum(int(row["false_wake_events"]) for row in results)
     false_actions = sum(int(row["false_action_events"]) for row in results)
+    executed_action_events = sum(int(row.get("executed_action_events", 0)) for row in results)
+    executed_non_target_actions = sum(int(row.get("executed_non_target_actions", 0)) for row in results)
+    wrong_intent_action_events = sum(int(row.get("wrong_intent_action_events", 0)) for row in results)
+    wrong_executed_action_events = sum(int(row.get("wrong_executed_action_events", 0)) for row in results)
+    scenes_with_wrong_intent_action = sum(
+        bool(row.get("scene_with_wrong_intent_action", False)) for row in results
+    )
+    scenes_with_wrong_executed_action = sum(
+        bool(row.get("scene_with_wrong_executed_action", False)) for row in results
+    )
+    fully_correct_scenes = sum(bool(row.get("fully_correct_scene", False)) for row in results)
+    strict_fully_correct_action_scenes = sum(
+        bool(row.get("strict_fully_correct_action_scene", False)) for row in results
+    )
+    wake_trigger_source_counts: Counter[str] = Counter()
+    for row in results:
+        wake_trigger_source_counts.update(row.get("wake_trigger_source_counts", {}))
+    passenger_wake_speaker_ids = {
+        str(row.get("truth", {}).get("passenger_wake_speaker_id"))
+        for row in results
+        if row.get("truth", {}).get("passenger_wake_speaker_id") is not None
+    }
+    passenger_nonwake_speaker_ids = {
+        str(row.get("truth", {}).get("passenger_nonwake_speaker_id"))
+        for row in results
+        if row.get("truth", {}).get("passenger_nonwake_speaker_id") is not None
+    }
     strict_target_wake_events = sum(int(row.get("strict_target_wake_events", 0)) for row in results)
     strict_false_wake_events = sum(int(row.get("strict_false_wake_events", 0)) for row in results)
     strict_target_command_events = sum(int(row.get("strict_target_command_events", 0)) for row in results)
@@ -1140,11 +1398,14 @@ def main() -> int:
         ),
         "device": str(device),
         "config": str(resolve_path(args.config)),
+        "config_file_sha256": hashlib.sha256(resolve_path(args.config).read_bytes()).hexdigest(),
+        "effective_config_sha256": effective_cfg_hash,
         "checkpoints": cfg["checkpoints"],
         "sample_rate": sample_rate,
         "stage1_context_seconds": stage1_seconds,
         "effective_intent_input_seconds": float(cfg.get("intent_input_seconds", 2.0)),
         "proxy_command_seconds": proxy_command_seconds,
+        "full_length_commands": bool(args.full_length_commands),
         "hop_seconds": float(args.hop_seconds),
         "effective_presence_threshold": float(cfg.get("presence_threshold", 0.5)),
         "effective_presence_activity_margin_threshold": cfg.get("presence_activity_margin_threshold"),
@@ -1163,6 +1424,10 @@ def main() -> int:
         "effective_intent_window_offset_seconds": float(cfg.get("intent_window_offset_seconds", 0.0)),
         "effective_command_window_strategy": str(cfg.get("command_window_strategy", "fixed")),
         "effective_command_buffer_calls": int(cfg.get("command_buffer_calls", 2)),
+        "effective_kws_refractory_calls": int(cfg.get("kws_refractory_calls", 0)),
+        "effective_kws_refractory_seconds": (
+            int(cfg.get("kws_refractory_calls", 0)) * float(args.hop_seconds)
+        ),
         "effective_command_confidence_commit_threshold": float(
             cfg.get("command_confidence_commit_threshold", 0.90)
         ),
@@ -1175,8 +1440,11 @@ def main() -> int:
         "scene_sampling": str(args.scene_sampling),
         "scene_pairing": "speaker_id" if scene_pairs else "independent_rows",
         "scene_pair_source_rows": len(scene_pairs) if scene_pairs else None,
+        "passenger_manifest": str(resolve_path(args.passenger_manifest)) if args.passenger_manifest else None,
         "scene_wake_source_rows": len(scene_wake_rows),
         "scene_intent_source_rows": len(scene_intent_rows),
+        "passenger_wake_unique_speakers": len(passenger_wake_speaker_ids),
+        "passenger_nonwake_unique_speakers": len(passenger_nonwake_speaker_ids),
         "scene_wake_unique_rows_used": len({
             str(row.get("truth", {}).get("target_wake_source")) for row in results
         }),
@@ -1203,6 +1471,21 @@ def main() -> int:
         "strict_false_wake_rate_per_hour": strict_false_wake_events * 3600.0 / max(total_duration, 1.0e-6),
         "false_action_events": false_actions,
         "false_action_rate_per_hour": false_actions * 3600.0 / max(total_duration, 1.0e-6),
+        "executed_action_events": executed_action_events,
+        "executed_non_target_actions": executed_non_target_actions,
+        "executed_non_target_actions_per_hour": executed_non_target_actions * 3600.0 / max(total_duration, 1.0e-6),
+        "wrong_intent_action_events": wrong_intent_action_events,
+        "wrong_executed_action_events": wrong_executed_action_events,
+        "wrong_executed_action_rate_per_hour": wrong_executed_action_events * 3600.0 / max(total_duration, 1.0e-6),
+        "scenes_with_wrong_intent_action": scenes_with_wrong_intent_action,
+        "scenes_with_wrong_intent_action_rate": scenes_with_wrong_intent_action / max(target_count, 1),
+        "scenes_with_wrong_executed_action": scenes_with_wrong_executed_action,
+        "scenes_with_wrong_executed_action_rate": scenes_with_wrong_executed_action / max(target_count, 1),
+        "fully_correct_scenes": fully_correct_scenes,
+        "fully_correct_scene_rate": fully_correct_scenes / max(target_count, 1),
+        "strict_fully_correct_action_scenes": strict_fully_correct_action_scenes,
+        "strict_fully_correct_action_rate": strict_fully_correct_action_scenes / max(target_count, 1),
+        "wake_trigger_source_counts": dict(wake_trigger_source_counts),
         "strict_target_command_events": strict_target_command_events,
         "strict_false_command_events": strict_false_command_events,
         "strict_false_command_rate_per_hour": strict_false_command_events * 3600.0 / max(total_duration, 1.0e-6),

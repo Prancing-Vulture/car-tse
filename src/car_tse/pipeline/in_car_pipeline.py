@@ -831,7 +831,11 @@ class InCarPipeline:
                 state.command_wait_calls += 1
                 if state.command_wait_calls >= self.command_timeout_calls:
                     self._reset_command_capture(state)
-                    state.kws_refractory_left = 0
+                    # Keep the post-wake refractory period after a timed-out
+                    # command as well.  Clearing it here lets the same wake
+                    # tail immediately arm another command cycle, defeating
+                    # the one-action-per-wake safety policy when a command is
+                    # absent or fails the presence check.
                     return PipelineOutput(
                         accepted=False,
                         wake_detected=False,

@@ -55,3 +55,18 @@ target-conditioned Stage-1/Stage-2 training target. Then train and evaluate a
 speaker-consistent command endpoint and intent head on held-out overlap data.
 Keep clean regression, long negative streams, and real-driver recording gates
 in the release checklist.
+
+## Mac-review correction (2026-10-15)
+
+The 45.31% Stage-1-bypass value was a 128-scene prefix and was compared with
+the wrong baseline in the earlier narrative.  On the matched prefix, the
+baseline is 52.34% and the bypass is 45.31%, a **7.03-point Stage-1 effect**.
+The current overlap JSON uses an effective three-call command buffer even
+though the historical filename contains `buffer4`; future reports must use
+the recorded effective configuration rather than the filename.
+
+The FT1/FT2 overlap pilots (57.03% / 57.81%) are still exploratory.  Their
+cache construction used the evaluation passenger manifest, so they must be
+re-built from a train-split passenger pool before being used as evidence for a
+model improvement.  No promotion or further intent fine-tuning is justified
+until the P0–P3 evaluation and command-window fixes are complete.
