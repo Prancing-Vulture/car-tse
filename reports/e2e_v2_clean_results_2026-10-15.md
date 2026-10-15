@@ -435,13 +435,15 @@ speaker scenes:
 | Scenes / synthetic duration | 1,000 / 3.889 h |
 | Target wake recall | 100.0% |
 | Overall target command accuracy | 45.3% |
-| False events outside the labelled target interval | 0 wake / 0 action |
+| Legacy outside-target counters (3 s / 3 s support tolerance) | 0 wake / 0 action |
+| Strict interval false-wake support | 802 events (206.23/h) |
 | Mean / p95 target-wake latency | 1.702 s / 2.525 s |
 
 The outside-target counters are not a passenger-safety result in this
 condition. The target command interval and passenger intervals overlap, so
 many emitted command windows are inherently ambiguous. Offline analysis of the
-raw log found 766 command windows that simultaneously supported the target
+raw log found 802 wake windows outside the exact target-wake interval and 766
+command windows that simultaneously supported the target
 command and passenger activity (196.97 ambiguous command-window supports per
 hour). The evaluator now records these contaminated/ambiguous windows
 explicitly rather than presenting the legacy outside-target counter as a

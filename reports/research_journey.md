@@ -3521,8 +3521,10 @@ co-channel intent/state handling and contaminated command windows, rather than
 an isolated wake-word failure. The old outside-target false-action counter was
 zero, but it is not valid as a safety rate when the passenger and target
 intervals overlap. An offline audit found 766 command windows with simultaneous
-target/passenger support over 3.889 synthetic hours; the evaluator now records
-this ambiguous support explicitly.
+target/passenger support over 3.889 synthetic hours, and strict interval
+association counted 802 wake windows outside the target wake interval
+(206.23/hour). The evaluator now records these ambiguous and strict support
+metrics explicitly.
 
 An append-only overlap-aware Wav2Vec candidate was then trained from the
 retained intent checkpoint. It used 2,048 clean plus 2,048 overlap training

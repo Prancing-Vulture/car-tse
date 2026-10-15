@@ -488,6 +488,14 @@ def evaluate_scene(
     ]
     target_wake_events.sort(key=lambda row: float(row["window_start_seconds"]))
     false_events = [row for row in wake_events if row not in target_wake_events]
+    strict_target_wake_events = [
+        row
+        for row in wake_events
+        if event_overlaps_label(
+            row, target_start, target_end, stage1_seconds, tolerance_before=0.0, tolerance_after=0.0
+        )
+    ]
+    strict_false_wake_events = [row for row in wake_events if row not in strict_target_wake_events]
     target_wake_event = target_wake_events[0] if target_wake_events else None
     command_start = float(truth["target_command_start_seconds"])
     command_end = float(truth["target_command_end_seconds"])
@@ -506,6 +514,16 @@ def evaluate_scene(
     target_command_events.sort(key=lambda row: float(row["window_start_seconds"]))
     target_command_event = target_command_events[0] if target_command_events else None
     false_command_events = [row for row in command_events if row not in target_command_events]
+    strict_target_command_events = [
+        row
+        for row in command_events
+        if event_overlaps_label(
+            row, command_start, command_end, stage1_seconds, tolerance_before=0.0, tolerance_after=0.0
+        )
+    ]
+    strict_false_command_events = [
+        row for row in command_events if row not in strict_target_command_events
+    ]
     # In a simultaneous scene, an emitted window can support both the target
     # command and a passenger utterance.  The old outside-target counter
     # cannot call that a passenger false action, because the labels overlap.
@@ -571,8 +589,14 @@ def evaluate_scene(
         "target_command_supporting_windows": len(target_command_events),
         "false_wake_events": len(false_events),
         "false_wake_rate_per_hour": len(false_events) * 3600.0 / max(duration, 1.0e-6),
+        "strict_target_wake_events": len(strict_target_wake_events),
+        "strict_false_wake_events": len(strict_false_wake_events),
+        "strict_false_wake_rate_per_hour": len(strict_false_wake_events) * 3600.0 / max(duration, 1.0e-6),
         "false_action_events": len(false_command_events),
         "false_action_rate_per_hour": len(false_command_events) * 3600.0 / max(duration, 1.0e-6),
+        "strict_target_command_events": len(strict_target_command_events),
+        "strict_false_command_events": len(strict_false_command_events),
+        "strict_false_command_rate_per_hour": len(strict_false_command_events) * 3600.0 / max(duration, 1.0e-6),
         "passenger_wake_overlap_events": len(passenger_wake_overlap_events),
         "passenger_unambiguous_wake_events": len(passenger_unambiguous_wake_events),
         "passenger_overlap_command_events": len(passenger_overlap_command_events),
@@ -1059,6 +1083,10 @@ def main() -> int:
     intent_successes = sum(bool(row["target_intent_correct"]) for row in results)
     false_events = sum(int(row["false_wake_events"]) for row in results)
     false_actions = sum(int(row["false_action_events"]) for row in results)
+    strict_target_wake_events = sum(int(row.get("strict_target_wake_events", 0)) for row in results)
+    strict_false_wake_events = sum(int(row.get("strict_false_wake_events", 0)) for row in results)
+    strict_target_command_events = sum(int(row.get("strict_target_command_events", 0)) for row in results)
+    strict_false_command_events = sum(int(row.get("strict_false_command_events", 0)) for row in results)
     passenger_wake_overlap_events = sum(int(row.get("passenger_wake_overlap_events", 0)) for row in results)
     passenger_unambiguous_wake_events = sum(
         int(row.get("passenger_unambiguous_wake_events", 0)) for row in results
@@ -1170,8 +1198,14 @@ def main() -> int:
         ),
         "false_wake_events": false_events,
         "false_wake_rate_per_hour": false_events * 3600.0 / max(total_duration, 1.0e-6),
+        "strict_target_wake_events": strict_target_wake_events,
+        "strict_false_wake_events": strict_false_wake_events,
+        "strict_false_wake_rate_per_hour": strict_false_wake_events * 3600.0 / max(total_duration, 1.0e-6),
         "false_action_events": false_actions,
         "false_action_rate_per_hour": false_actions * 3600.0 / max(total_duration, 1.0e-6),
+        "strict_target_command_events": strict_target_command_events,
+        "strict_false_command_events": strict_false_command_events,
+        "strict_false_command_rate_per_hour": strict_false_command_events * 3600.0 / max(total_duration, 1.0e-6),
         "passenger_wake_overlap_events": passenger_wake_overlap_events,
         "passenger_unambiguous_wake_events": passenger_unambiguous_wake_events,
         "passenger_overlap_command_events": passenger_overlap_command_events,
@@ -1212,6 +1246,8 @@ def main() -> int:
         "false_wake_events", "false_action_events", "false_wake_rate_per_hour",
         "false_action_rate_per_hour", "target_wake_latency_mean_seconds",
         "target_wake_latency_p95_seconds", "passenger_wake_overlap_events",
+        "strict_false_wake_events", "strict_false_wake_rate_per_hour",
+        "strict_false_command_events", "strict_false_command_rate_per_hour",
         "passenger_unambiguous_wake_events", "passenger_overlap_command_events",
         "ambiguous_overlap_command_events", "passenger_only_false_action_events",
         "ambiguous_overlap_command_rate_per_hour", "speaker_consistent", "production_valid", "output",

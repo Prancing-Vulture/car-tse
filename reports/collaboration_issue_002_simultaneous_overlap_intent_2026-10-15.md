@@ -28,14 +28,17 @@ summed speech, so no spatial cue is available.
 - Target wake recall: 100.0%.
 - Overall command accuracy: 45.3%.
 - Legacy outside-target counts: 0 false wakes and 0 false actions.
+- Strict exact-interval association: 802 wake windows outside the target wake
+  interval (206.23/hour), plus 766 target/passenger-overlap command windows.
 - Ambiguous target/passenger command-window supports: 766, or 196.97/hour.
 - Stage-1 bypass control: 45.31% command accuracy on 128 scenes.
 
 The zero legacy false-action count must not be interpreted as passenger
 rejection: the passenger speech is deliberately inside the target command
 interval, so an emitted action cannot be assigned to one speaker from the
-window timestamp alone. The evaluator now reports contaminated and ambiguous
-support windows separately.
+window timestamp alone. The broad three-second association tolerance also
+absorbs many wake windows after the target wake. The evaluator now reports
+strict interval, contaminated, and ambiguous support windows separately.
 
 ## First mitigation
 
