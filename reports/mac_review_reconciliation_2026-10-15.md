@@ -95,6 +95,21 @@ before it can support a training claim.
 The standalone `scripts/eval/rescore_multispeaker_log.py` reproduces the key
 correction from old logs without loading checkpoints or running inference.
 
+The in-progress P0 reproduction uses the following command; its output is
+written under a new filename so the historical log remains immutable:
+
+```powershell
+python scripts/eval/eval_continuous_full_pipeline_proxy.py `
+  --config configs/eval_end_to_end_clean_english_identity_targetkws_confidence_buffered_hybrid_run3.yaml `
+  --wake-manifest manifests/clean_e2e_v2/wake_knnvc_same_speaker_20x10_test_2026-10-14.jsonl `
+  --passenger-manifest manifests/test/stage3_kws_cabin_test.jsonl `
+  --scene-sampling matched_speaker --scenes 1000 `
+  --passenger-only --full-length-commands --cabin-snr-db 0 --passenger-snr-db 0 `
+  --enrollment-source same_speaker_other --hop-seconds 0.5 `
+  --output logs/multispeaker_speech_only_p0_dynamic_full_1000_2026-10-15.json `
+  --artifact-dir reports/artifacts/multispeaker_speech_only_p0_dynamic_full_1000_2026-10-15
+```
+
 ## Remaining P0–P5 order
 
 The review's order remains the project plan:
