@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-"""Render training curves from the JSONL histories emitted by train scripts.
+"""Render paper-ready training curves from the JSONL histories written by trainers.
 
-The plotting script is intentionally model-agnostic: it reads the existing
-epoch JSONL artifacts and never re-runs training or evaluation.
+The trainers intentionally keep the raw JSONL as the source of truth.  This
+small renderer handles the nested ``val`` dictionaries used by Stage 2/3/4,
+and writes both a high-resolution PNG and a vector PDF when requested.
 """
 
 from __future__ import annotations
@@ -11,69 +12,98 @@ import argparse
 import json
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+
 
 def read_history(path: Path) -> list[dict]:
     rows: list[dict] = []
     for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line:
+        if line.strip():
             rows.append(json.loads(line))
     if not rows:
-        raise ValueError(f"history is empty: {path}")
+        raise ValueError(f"empty training history: {path}")
     return rows
 
 
-def short_label(path: Path) -> str:
-    name = path.parent.name
-    return name.removeprefix("stage4_intent_wav2vec_")
+def value(row: dict, key: str):
+    current = row
+    for part in key.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
 
 
-def render(histories: list[tuple[str, list[dict]]], output: Path, title: str) -> None:
-    import matplotlib.pyplot as plt
+def series(rows: list[dict], key: str) -> tuple[list[int], list[float]]:
+    xs: list[int] = []
+    ys: list[float] = []
+    for row in rows:
+        item = value(row, key)
+        if item is None:
+            continue
+        xs.append(int(row.get("epoch", len(xs) + 1)))
+        ys.append(float(item))
+    return xs, ys
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
-    panels = [
-        (axes[0, 0], "train_loss", "Training loss", "loss"),
-        (axes[0, 1], "train_accuracy", "Training accuracy", "accuracy"),
-        (axes[1, 0], "val_accuracy", "Validation accuracy", "accuracy"),
-        (axes[1, 1], "val_macro_f1", "Validation macro-F1", "F1"),
-    ]
+
+def plot_one(ax, histories: list[tuple[str, list[dict]]], key: str, title: str, ylabel: str) -> None:
+    plotted = False
     for label, rows in histories:
-        epochs = [int(row["epoch"]) for row in rows]
-        values = {
-            "train_loss": [float(row["train_loss"]) for row in rows],
-            "train_accuracy": [float(row["train_accuracy"]) for row in rows],
-            "val_accuracy": [float(row["val"]["accuracy"]) for row in rows],
-            "val_macro_f1": [float(row["val"]["macro_f1"]) for row in rows],
-        }
-        for axis, key, panel_title, ylabel in panels:
-            axis.plot(epochs, values[key], marker="o", linewidth=2, label=label)
-            axis.set_title(panel_title)
-            axis.set_xlabel("Epoch")
-            axis.set_ylabel(ylabel)
-            axis.grid(True, alpha=0.25)
-            axis.set_xticks(epochs)
-    for axis, *_ in panels:
-        axis.legend(loc="best")
-    fig.suptitle(title, fontsize=14)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=180)
-    plt.close(fig)
+        x, y = series(rows, key)
+        if x:
+            ax.plot(x, y, marker="o", linewidth=2, markersize=4, label=label)
+            plotted = True
+    ax.set_title(title)
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.25)
+    if plotted:
+        ax.legend(frameon=True)
+    else:
+        ax.text(0.5, 0.5, f"No field: {key}", ha="center", va="center", transform=ax.transAxes)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--history", nargs="+", type=Path, required=True)
-    parser.add_argument("--label", nargs="*", default=None)
-    parser.add_argument("--output", type=Path, required=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--history",
+        action="append",
+        required=True,
+        metavar="LABEL=PATH",
+        help="JSONL history with the label used in the legend; repeat for comparisons.",
+    )
+    parser.add_argument("--output", type=Path, required=True, help="PNG output path")
+    parser.add_argument("--pdf-output", type=Path, default=None, help="optional vector PDF output")
     parser.add_argument("--title", default="Training curves")
     args = parser.parse_args()
-    if args.label is not None and len(args.label) not in {0, len(args.history)}:
-        parser.error("--label must be omitted or supplied once per --history")
-    labels = args.label if args.label else [short_label(path) for path in args.history]
-    histories = [(label, read_history(path)) for label, path in zip(labels, args.history)]
-    render(histories, args.output, args.title)
+
+    histories: list[tuple[str, list[dict]]] = []
+    for spec in args.history:
+        if "=" not in spec:
+            raise ValueError(f"history must be LABEL=PATH: {spec}")
+        label, raw_path = spec.split("=", 1)
+        histories.append((label, read_history(Path(raw_path))))
+
+    fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
+    plot_one(axes[0, 0], histories, "train_loss", "Training loss", "Cross-entropy")
+    plot_one(axes[0, 1], histories, "train_accuracy", "Training accuracy", "Accuracy")
+    plot_one(axes[1, 0], histories, "val.accuracy", "Validation accuracy", "Accuracy")
+    plot_one(axes[1, 1], histories, "val.macro_f1", "Validation macro-F1", "Macro-F1")
+    # Some binary KWS histories call the same field simply ``val.f1``.  If no
+    # macro-F1 exists, overlay the binary F1 in the lower-right panel.
+    if not any(series(rows, "val.macro_f1")[0] for _, rows in histories):
+        axes[1, 1].clear()
+        plot_one(axes[1, 1], histories, "val.f1", "Validation F1", "F1")
+    fig.suptitle(args.title)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(args.output, dpi=300, bbox_inches="tight")
+    if args.pdf_output is not None:
+        args.pdf_output.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(args.pdf_output, bbox_inches="tight")
+    plt.close(fig)
     print(f"wrote {args.output}")
+    if args.pdf_output is not None:
+        print(f"wrote {args.pdf_output}")
     return 0
 
 

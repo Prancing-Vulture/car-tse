@@ -245,3 +245,59 @@ Artifact:
 
 Candidate configuration:
 `configs/eval_end_to_end_clean_english_identity_targetkws_confidence_buffered_hybrid_compact030_2026-10-15.yaml`
+
+## P1 compact speaker-gate comparison: simultaneous-overlap result (completed 2026-10-16)
+
+The same compact-gate candidate was then evaluated on the corrected 1,000-scene
+co-channel overlap proxy.  The target and passenger tracks are simultaneous,
+all four synthetic channels contain the same sum, and no spatial cue is
+available.  This is intentionally a stress test, not a spatial-array result.
+
+| Metric | No gate overlap | Compact gate 0.30 overlap |
+|---|---:|---:|
+| Target wake recall | 100.00% | 96.60% |
+| Target intent accuracy overall | 61.50% | **37.10%** |
+| Fully correct scenes | 53.40% | 37.00% |
+| Executed non-target actions | 94 | **1** |
+| Wrong executed actions | 353 | 153 |
+| Strict false wakes | 829 (213.17/h) | **451 (115.97/h)** |
+| Strict false commands | 35 (9.00/h) | **2 (0.51/h)** |
+| Passenger-only false actions | 0* | 0* |
+
+The gate therefore improves action suppression but fails the usefulness side of
+the trade-off under co-channel overlap: it rejects target evidence together
+with passenger evidence.  It is rejected as a production operating point and
+will not be promoted.  The next candidate must improve the target-conditioned
+representation or use an actual spatial/seat cue rather than lowering the
+threshold blindly.
+
+Artifact:
+`logs/multispeaker_overlap_p0_compact030_full_1000_2026-10-15.json`
+
+Comparison figure (PNG/PDF):
+`reports/figures/multispeaker_gate_comparison_2026-10-16.png`
+and `reports/figures/multispeaker_gate_comparison_2026-10-16.pdf`.
+
+## Train-split-safe overlap intent adaptation (started 2026-10-16)
+
+The earlier FT1/FT2 overlap candidates are exploratory because their passenger
+augmentation pool came from the held-out KWS test manifest.  A new append-only
+cache was therefore built from the frozen Stage-1 intent cache using only the
+KWS train passenger pool (`stage3_kws_cabin_train.jsonl`).  The train and held-
+out passenger audio paths have zero intersection (8,628 train files versus
+1,147 held-out files).
+
+| Artifact | Value |
+|---|---|
+| Train/validation rows | 16,384 / 4,096 (balanced clean + overlap) |
+| Passenger SNR | 0 dB |
+| Cache | `data/cache/stage4_intent_overlap_trainsplit_0db_2026-10-16_16k/` |
+| Train manifest | `manifests/train/stage4_intent_overlap_trainsplit_0db_2026-10-16.jsonl` |
+| Validation manifest | `manifests/val/stage4_intent_overlap_trainsplit_0db_2026-10-16.jsonl` |
+| Config | `configs/stage4_intent_overlap_trainsplit_0db_2026-10-16.yaml` |
+
+The candidate is initialized from the retained clean cabin-domain intent head;
+the Stage-1 extractor and wake model remain frozen.  Its history, plots, clean
+regression, overlap regression, and checkpoint hash will be appended here only
+after the run completes.  No candidate is promoted based on training
+validation alone.
