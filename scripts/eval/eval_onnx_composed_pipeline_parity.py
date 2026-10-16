@@ -71,6 +71,7 @@ def _build_onnx_pipeline(runtime: OnnxComponentRuntime, cfg: dict[str, Any]) -> 
         kws_smoothing_window=int(cfg.get("kws_smoothing_window", 1)),
         kws_required_hits=int(cfg.get("kws_required_hits", 1)),
         kws_refractory_calls=int(cfg.get("kws_refractory_calls", 0)),
+        post_action_refractory_calls=int(cfg.get("post_action_refractory_calls", 0)),
         wake_class_id=int(cfg.get("wake_class_id", 1)),
         command_timeout_calls=int(cfg.get("command_timeout_calls", 4)),
         command_delay_calls=int(cfg.get("command_delay_calls", 0)),

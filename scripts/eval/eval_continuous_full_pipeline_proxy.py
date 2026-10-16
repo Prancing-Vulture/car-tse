@@ -306,6 +306,7 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         kws_smoothing_window=int(cfg.get("kws_smoothing_window", 1)),
         kws_required_hits=int(cfg.get("kws_required_hits", 1)),
         kws_refractory_calls=int(cfg.get("kws_refractory_calls", 0)),
+        post_action_refractory_calls=int(cfg.get("post_action_refractory_calls", 0)),
         intent_input_seconds=float(cfg.get("intent_input_seconds", 2.0)),
         intent_window_offset_seconds=float(cfg.get("intent_window_offset_seconds", 0.0)),
         command_timeout_calls=int(cfg.get("command_timeout_calls", 4)),
@@ -873,6 +874,18 @@ def main() -> int:
         default=None,
         help="Convert a desired post-wake refractory period to calls using --hop-seconds.",
     )
+    parser.add_argument(
+        "--post-action-refractory-calls",
+        type=int,
+        default=None,
+        help="Ignore new wake scores only after an action is committed, for this many calls.",
+    )
+    parser.add_argument(
+        "--post-action-refractory-seconds",
+        type=float,
+        default=None,
+        help="Convert a post-action safety refractory period to calls using --hop-seconds.",
+    )
     parser.add_argument("--command-endpoint-kws-hop-seconds", type=float, default=None)
     parser.add_argument("--command-endpoint-margin-seconds", type=float, default=None)
     parser.add_argument("--speaker-fusion-mode", choices=("none", "min", "product", "mean"), default=None)
@@ -938,6 +951,12 @@ def main() -> int:
         raise ValueError("pass only one of --kws-refractory-calls or --kws-refractory-seconds")
     if args.kws_refractory_calls is not None:
         cfg["kws_refractory_calls"] = max(0, int(args.kws_refractory_calls))
+    if args.post_action_refractory_calls is not None and args.post_action_refractory_seconds is not None:
+        raise ValueError(
+            "pass only one of --post-action-refractory-calls or --post-action-refractory-seconds"
+        )
+    if args.post_action_refractory_calls is not None:
+        cfg["post_action_refractory_calls"] = max(0, int(args.post_action_refractory_calls))
     if args.command_confidence_commit_threshold is not None:
         cfg["command_confidence_commit_threshold"] = float(
             args.command_confidence_commit_threshold
@@ -961,6 +980,15 @@ def main() -> int:
             raise ValueError("--kws-refractory-seconds must be non-negative")
         cfg["kws_refractory_calls"] = int(
             np.ceil(float(args.kws_refractory_seconds) / max(float(args.hop_seconds), 1.0e-6))
+        )
+    if args.post_action_refractory_seconds is not None:
+        if args.post_action_refractory_seconds < 0.0:
+            raise ValueError("--post-action-refractory-seconds must be non-negative")
+        cfg["post_action_refractory_calls"] = int(
+            np.ceil(
+                float(args.post_action_refractory_seconds)
+                / max(float(args.hop_seconds), 1.0e-6)
+            )
         )
     effective_cfg_hash = effective_config_hash(cfg)
     pipeline = load_pipeline(cfg, cfg["paths"], device)
@@ -1438,6 +1466,12 @@ def main() -> int:
         "effective_kws_refractory_calls": int(cfg.get("kws_refractory_calls", 0)),
         "effective_kws_refractory_seconds": (
             int(cfg.get("kws_refractory_calls", 0)) * float(args.hop_seconds)
+        ),
+        "effective_post_action_refractory_calls": int(
+            cfg.get("post_action_refractory_calls", 0)
+        ),
+        "effective_post_action_refractory_seconds": (
+            int(cfg.get("post_action_refractory_calls", 0)) * float(args.hop_seconds)
         ),
         "effective_command_confidence_commit_threshold": float(
             cfg.get("command_confidence_commit_threshold", 0.90)

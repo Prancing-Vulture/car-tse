@@ -3684,3 +3684,38 @@ intent/action bottleneck. The raw result is
 and the extended comparison is in
 `reports/figures/multispeaker_final_1000_comparison_with_small_2026-10-16.png`
 and PDF.
+
+## 2026-10-16 post-action one-action-per-wake safety iteration
+
+The next iteration changed runtime state handling rather than model weights.
+After an action is committed, the pipeline ignores new wake scores for 16
+calls (8 seconds at the 0.5-second evaluation hop) and clears the accumulated
+wake-score history. The state is not armed after a mere wake detection, so an
+early false trigger cannot suppress a later valid wake. The behavior is covered
+by a unit test and wired through the proxy evaluator and ONNX runtime wrapper.
+
+On the corrected 1,000-scene sequential proxy, clean identity Stage 1 plus the
+train-split intent model and compact command speaker gate moved from 84.9% to
+92.9% fully correct scenes. Target intent changed from 93.2% to 92.9%, while
+legacy false actions fell from 27 to 1, strict false wakes/hour from 529.97 to
+38.57, strict false commands/hour from 17.23 to 1.03, and wrong executed
+actions from 103 to 19.
+
+On the 1,000-scene simultaneous-overlap proxy, the small passenger-cochannel
+Stage-1 stack moved from 65.4% to 66.2% fully correct. Strict false
+commands/hour fell from 0.51 to 0.26 and wrong executed actions from 33 to 25;
+legacy false actions remained zero. Target intent stayed at 66.2%.
+
+The 1,000-scene clean regression scored 90.1% fully correct with the new state,
+versus the earlier 90.6% accuracy-only run. This small accuracy cost is the
+current safety/accuracy trade-off. Clean wake recall was 99.9%, mean wake
+latency 1.664 seconds, and p95 latency 2.0 seconds. Because the clean run is
+positive-only, its strict rates are diagnostic rather than a final false-accept
+claim.
+
+No checkpoint was retrained in this iteration. The new raw clean/sequential/
+overlap logs are under `logs/*postaction16_1000_2026-10-16.json`; the comparison
+figure is
+`reports/figures/strongest_multispeaker_models_postaction_comparison_2026-10-16.png`
+and PDF. All evaluator outputs remain marked `production_valid=false` because
+the scenes are synthetic proxies without real cabin spatial recordings.

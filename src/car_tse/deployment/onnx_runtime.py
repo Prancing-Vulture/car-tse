@@ -346,6 +346,7 @@ class OnnxInCarPipeline:
         kws_smoothing_window: int = 2,
         kws_required_hits: int = 2,
         kws_refractory_calls: int = 0,
+        post_action_refractory_calls: int = 0,
         wake_class_id: int = 1,
         command_timeout_calls: int = 4,
         command_delay_calls: int = 0,
@@ -378,6 +379,7 @@ class OnnxInCarPipeline:
         self.kws_smoothing_window = max(1, int(kws_smoothing_window))
         self.kws_required_hits = max(1, min(int(kws_required_hits), self.kws_smoothing_window))
         self.kws_refractory_calls = max(0, int(kws_refractory_calls))
+        self.post_action_refractory_calls = max(0, int(post_action_refractory_calls))
         self.wake_class_id = int(wake_class_id)
         self.command_timeout_calls = max(1, int(command_timeout_calls))
         self.command_delay_calls = max(0, int(command_delay_calls))
@@ -544,6 +546,7 @@ class OnnxInCarPipeline:
             action = intent_to_action(intent_id, self.label_map)
             self._reset_command_capture(state)
             state.kws_scores.clear()
+            state.post_action_refractory_left = self.post_action_refractory_calls
             return self._output(
                 accepted=True,
                 wake_detected=False,

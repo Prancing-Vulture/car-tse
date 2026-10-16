@@ -223,3 +223,54 @@ engineering step is a real microphone-array/seat-zone or learned
 overlap-aware routing signal, followed by a driver-disjoint calibration set;
 further blind Stage-1 or intent fine-tuning is not justified by these proxy
 results.
+
+## Post-action one-action-per-wake safety candidate (2026-10-16)
+
+The next runtime iteration added an optional post-action refractory state. It
+is activated only after an intent is committed, then clears wake-score history
+for 16 evaluator calls (8 seconds at the 0.5-second hop). This is deliberately
+different from a pre-wake refractory: an early false wake does not block a
+later valid command. No neural-network weights were retrained.
+
+The 1,000-scene comparison is:
+
+| Condition and stack | Target wake recall | Target intent | Fully correct | False actions | Strict false wakes/hour | Strict false commands/hour | Wrong executed actions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Clean identity + FT8 intent, no post-action state | 99.9% | 90.6% | not recorded by the older evaluator | 0* | not recorded* | not recorded* | not recorded* |
+| Clean identity + FT8 intent + post-action-16 | 99.9% | 90.1% | 90.1% | 0 | 15.17 | 1.80 | 37 |
+| Sequential: clean identity Stage 1 + train-split intent + compact gate, no post-action state | 100.0% | 93.2% | 84.9% | 27 | 529.97 | 17.23 | 103 |
+| Sequential: same stack + post-action-16 | 99.9% | 92.9% | **92.9%** | **1** | **38.57** | **1.03** | **19** |
+| Overlap: small FSC-passenger Stage 1 + train-split intent + compact gate, no post-action state | 100.0% | 66.2% | 65.4% | 0 | 172.03 | 0.51 | 33 |
+| Overlap: same stack + post-action-16 | 100.0% | 66.2% | **66.2%** | **0** | **73.03** | **0.26** | **25** |
+
+The clean baseline row is the earlier 1,000-scene run and used an older
+evaluator schema, so its action-level fields are intentionally not presented
+as zeros. The clean post-action row is the current schema and is the correct
+regression check for the new runtime policy. The clean positive-only proxy is
+not a valid long-negative FAR study.
+
+For practical selection, the strongest accuracy-only clean stack remains
+`stage1_spex_english_clean_identity_ft1/best.pt` plus
+`stage4_intent_wav2vec_ft8_resume_tse_domain/best.pt` (90.6% in the matched
+clean proxy). The strongest deployability-oriented sequential stack is the
+same clean identity Stage 1 with
+`stage4_intent_wav2vec_overlap_trainsplit_0db_2026-10-16/best.pt`, the compact
+speaker verifier, and post-action-16 (92.9% fully correct with one legacy false
+action). The strongest current overlap stack is the small passenger-cochannel
+Stage 1 checkpoint
+`stage1_spex_fsc_passenger_cochannel_ft1_2026-10-16/best.pt` with the same
+intent/gate stack and post-action-16 (66.2% fully correct and 0.26 strict
+false commands/hour). These are synthetic, same-speaker proxy scenes with
+identical input channels; they are not real-cabin or production results.
+
+The comparison figure is
+`reports/figures/strongest_multispeaker_models_postaction_comparison_2026-10-16.png`
+(and its PDF counterpart). The exact raw logs are:
+
+- `logs/clean_e2e_v2_knnvc_matched_postaction16_1000_2026-10-16.json`
+- `logs/multispeaker_passenger_cleanidentity_commandgate015_conf080_postaction16_1000_2026-10-16.json`
+- `logs/multispeaker_overlap_small_commandgate015_conf090_postaction16_1000_2026-10-16.json`
+
+Reproduction uses the existing evaluator with
+`--kws-refractory-calls 0 --post-action-refractory-calls 16`; the named
+candidate configurations are under `configs/*postaction16*2026-10-16.yaml`.

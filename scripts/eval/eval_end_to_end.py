@@ -84,6 +84,7 @@ def main() -> int:
         kws_smoothing_window=int(cfg.get("kws_smoothing_window", 1)),
         kws_required_hits=int(cfg.get("kws_required_hits", 1)),
         kws_refractory_calls=int(cfg.get("kws_refractory_calls", 0)),
+        post_action_refractory_calls=int(cfg.get("post_action_refractory_calls", 0)),
         intent_input_seconds=float(cfg.get("intent_input_seconds", 2.0)),
         command_timeout_calls=int(cfg.get("command_timeout_calls", 4)),
         command_presence_threshold=(

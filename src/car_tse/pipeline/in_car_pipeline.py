@@ -29,6 +29,10 @@ class PipelineState:
     last_reply_path: Path | None = None
     kws_scores: list[float] = field(default_factory=list)
     kws_refractory_left: int = 0
+    # Safety refractory applied only after a command action is committed.  It
+    # prevents the trailing wake/command audio from producing a second action
+    # while still allowing a later valid wake after an early false trigger.
+    post_action_refractory_left: int = 0
     # A wake word arms a separate command-capture phase.  Keeping this in the
     # streaming state prevents intent from being inferred from the wake-word
     # window itself.
@@ -103,6 +107,12 @@ def update_kws_state(
     window_size = max(1, int(window_size))
     required_hits = max(1, min(int(required_hits), window_size))
     refractory_calls = max(0, int(refractory_calls))
+    if state.post_action_refractory_left > 0:
+        state.post_action_refractory_left -= 1
+        # Do not allow positive wake scores accumulated during the safety
+        # window to form an immediate wake when it expires.
+        state.kws_scores.clear()
+        return False
     state.kws_scores.append(float(score))
     state.kws_scores = state.kws_scores[-window_size:]
     if state.kws_refractory_left > 0:
@@ -137,6 +147,7 @@ class InCarPipeline:
         kws_smoothing_window: int = 1,
         kws_required_hits: int = 1,
         kws_refractory_calls: int = 0,
+        post_action_refractory_calls: int = 0,
         intent_sample_rate: int = 16000,
         intent_input_seconds: float = 2.0,
         intent_window_offset_seconds: float = 0.0,
@@ -183,6 +194,7 @@ class InCarPipeline:
         self.kws_smoothing_window = max(1, int(kws_smoothing_window))
         self.kws_required_hits = max(1, min(int(kws_required_hits), self.kws_smoothing_window))
         self.kws_refractory_calls = max(0, int(kws_refractory_calls))
+        self.post_action_refractory_calls = max(0, int(post_action_refractory_calls))
         self.intent_sample_rate = int(intent_sample_rate)
         self.intent_input_seconds = max(0.01, float(intent_input_seconds))
         self.intent_window_offset_seconds = max(0.0, float(intent_window_offset_seconds))
@@ -1051,6 +1063,7 @@ class InCarPipeline:
                     state.last_reply_path = action.reply_wav
                 self._reset_command_capture(state)
                 state.kws_scores.clear()
+                state.post_action_refractory_left = self.post_action_refractory_calls
                 return PipelineOutput(
                     accepted=True,
                     wake_detected=False,
