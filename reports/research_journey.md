@@ -3669,3 +3669,18 @@ stricter action accounting still found three wrong executed actions. The
 follow-up plots are under `reports/figures/` with the
 `stage1_spex_passenger_adaptation_all_candidates_2026-10-16` and
 `stage4_intent_large_passenger_joint_tse_training_2026-10-16` prefixes.
+
+The smaller passenger-mixture Stage-1 candidate was then run on the complete
+1,000-scene simultaneous-overlap benchmark, rather than only the 64-scene
+tuning slice. It reached 100.0% target wake recall, 66.2% target intent
+accuracy, and 65.4% fully correct scenes. The legacy false-action and
+passenger-only counters were both zero; strict rates were 172.03 false
+wakes/hour and 0.51 false commands/hour. The stricter action audit still found
+33 wrong executed action events, so the candidate is not production-safe. It
+is only 1.2 points better in fully correct scenes than the large
+passenger-mixture candidate and does not address the underlying co-channel
+intent/action bottleneck. The raw result is
+`logs/multispeaker_overlap_fscpassenger_small_commandgate015_conf090_1000_2026-10-16.json`,
+and the extended comparison is in
+`reports/figures/multispeaker_final_1000_comparison_with_small_2026-10-16.png`
+and PDF.

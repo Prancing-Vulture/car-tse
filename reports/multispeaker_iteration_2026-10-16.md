@@ -94,11 +94,24 @@ wrong or passenger action was executed in the scene.
 | Sequential large passenger-mixture Stage-1 + gate, conf 0.90 | 99.3% | 69.1% | 67.2% | 12 | 10 | 494.23 | 5.91 |
 | Overlap reference clean Stage-1 + gate, conf 0.80 | 100.0% | 63.2% | 61.2% | 0 | 0 | 199.03 | 1.29 |
 | Overlap large passenger-mixture Stage-1 + gate, conf 0.90 | 100.0% | 65.0% | 64.2% | 0 | 0 | 174.60 | 0.77 |
+| Overlap small passenger-mixture Stage-1 + gate, conf 0.90 | 100.0% | 66.2% | 65.4% | 0 | 0 | 172.03 | 0.51 |
 
 The final comparison figure is:
 
 - `reports/figures/multispeaker_final_1000_comparison_2026-10-16.png`
 - `reports/figures/multispeaker_final_1000_comparison_2026-10-16.pdf`
+
+The completed small-candidate overlap run is shown in the extended figure:
+
+- `reports/figures/multispeaker_final_1000_comparison_with_small_2026-10-16.png`
+- `reports/figures/multispeaker_final_1000_comparison_with_small_2026-10-16.pdf`
+
+The small candidate improves fully-correct overlap scenes by 1.2 percentage
+points over the large passenger-mixture candidate and reduces strict false
+commands from 0.77/hour to 0.51/hour. It still has only 65.4% fully-correct
+scenes, and the stricter action audit records 33 wrong executed action events
+despite the legacy `false_action_events` counter remaining zero. It is
+therefore a useful diagnostic point, not a production promotion.
 
 Raw JSON logs:
 
@@ -106,6 +119,7 @@ Raw JSON logs:
 - `logs/multispeaker_passenger_fscpassenger_large_commandgate015_conf090_1000_2026-10-16.json`
 - `logs/multispeaker_overlap_commandgate015_conf080_1000_2026-10-16.json`
 - `logs/multispeaker_overlap_fscpassenger_large_commandgate015_conf090_1000_2026-10-16.json`
+- `logs/multispeaker_overlap_fscpassenger_small_commandgate015_conf090_1000_2026-10-16.json`
 
 ## Tuning-slice results
 
