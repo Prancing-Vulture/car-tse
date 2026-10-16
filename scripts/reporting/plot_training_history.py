@@ -16,10 +16,23 @@ import matplotlib.pyplot as plt
 
 
 def read_history(path: Path) -> list[dict]:
+    text = path.read_text(encoding="utf-8")
     rows: list[dict] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            rows.append(json.loads(line))
+    if text.lstrip().startswith("{"):
+        # A single JSON object may embed a history list, but JSONL also starts
+        # with ``{``.  Try the object form first and fall back to line parsing
+        # when the file contains multiple records.
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = None
+        embedded = payload.get("history") if isinstance(payload, dict) else None
+        if isinstance(embedded, list):
+            rows = [row for row in embedded if isinstance(row, dict)]
+    if not rows:
+        for line in text.splitlines():
+            if line.strip():
+                rows.append(json.loads(line))
     if not rows:
         raise ValueError(f"empty training history: {path}")
     return rows
@@ -63,6 +76,21 @@ def plot_one(ax, histories: list[tuple[str, list[dict]]], key: str, title: str, 
         ax.text(0.5, 0.5, f"No field: {key}", ha="center", va="center", transform=ax.transAxes)
 
 
+def plot_first_available(
+    ax,
+    histories: list[tuple[str, list[dict]]],
+    keys: list[tuple[str, str, str]],
+) -> None:
+    """Plot the first metric family present in the supplied histories."""
+
+    for key, title, ylabel in keys:
+        if any(series(rows, key)[0] for _, rows in histories):
+            plot_one(ax, histories, key, title, ylabel)
+            return
+    key, title, ylabel = keys[0]
+    plot_one(ax, histories, key, title, ylabel)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -87,13 +115,23 @@ def main() -> int:
     fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
     plot_one(axes[0, 0], histories, "train_loss", "Training loss", "Cross-entropy")
     plot_one(axes[0, 1], histories, "train_accuracy", "Training accuracy", "Accuracy")
-    plot_one(axes[1, 0], histories, "val.accuracy", "Validation accuracy", "Accuracy")
-    plot_one(axes[1, 1], histories, "val.macro_f1", "Validation macro-F1", "Macro-F1")
-    # Some binary KWS histories call the same field simply ``val.f1``.  If no
-    # macro-F1 exists, overlay the binary F1 in the lower-right panel.
-    if not any(series(rows, "val.macro_f1")[0] for _, rows in histories):
-        axes[1, 1].clear()
-        plot_one(axes[1, 1], histories, "val.f1", "Validation F1", "F1")
+    plot_first_available(
+        axes[1, 0],
+        histories,
+        [
+            ("val.accuracy", "Validation accuracy", "Accuracy"),
+            ("val_auc", "Validation ROC-AUC", "ROC-AUC"),
+        ],
+    )
+    plot_first_available(
+        axes[1, 1],
+        histories,
+        [
+            ("val.macro_f1", "Validation macro-F1", "Macro-F1"),
+            ("val.f1", "Validation F1", "F1"),
+            ("val_auc", "Validation ROC-AUC", "ROC-AUC"),
+        ],
+    )
     fig.suptitle(args.title)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.output, dpi=300, bbox_inches="tight")

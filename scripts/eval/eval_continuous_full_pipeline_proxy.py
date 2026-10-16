@@ -832,6 +832,15 @@ def main() -> int:
     parser.add_argument("--intent-confidence-threshold", type=float, default=None)
     parser.add_argument("--speaker-gate-threshold", type=float, default=None)
     parser.add_argument(
+        "--command-speaker-gate-threshold",
+        type=float,
+        default=None,
+        help=(
+            "Override only the post-wake command speaker-gate threshold. "
+            "Unlike --speaker-gate-threshold, this leaves the pre-wake gate unchanged."
+        ),
+    )
+    parser.add_argument(
         "--speaker-gate-backend",
         choices=("spex", "wav2vec", "compact", "auto"),
         default=None,
@@ -911,6 +920,8 @@ def main() -> int:
     if args.speaker_gate_threshold is not None:
         cfg["speaker_gate_threshold"] = float(args.speaker_gate_threshold)
         cfg["command_speaker_gate_threshold"] = float(args.speaker_gate_threshold)
+    if args.command_speaker_gate_threshold is not None:
+        cfg["command_speaker_gate_threshold"] = float(args.command_speaker_gate_threshold)
     if args.speaker_gate_backend is not None:
         cfg["speaker_gate_backend"] = str(args.speaker_gate_backend)
     if args.intent_window_offset_seconds is not None:

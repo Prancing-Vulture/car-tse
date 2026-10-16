@@ -3619,3 +3619,30 @@ The full corrected results and reproduction artifacts are recorded in
 `reports/mac_review_reconciliation_2026-10-15.md`, with the six-condition
 comparison figure at
 `reports/figures/multispeaker_candidate_comparison_2026-10-16.png` and PDF.
+
+## 2026-10-16 passenger-mixture Stage-1 adaptation and final 1,000-scene safety comparison
+
+To target the remaining passenger-attribution failure, a new Stage-1
+co-channel adaptation was trained using target command utterances plus
+train-only cabin/KWS passenger speech. The four input channels were identical
+by design, so this was a co-channel robustness experiment rather than a claim
+about spatial seat separation. Two runs were retained: 768/256 train/validation
+scenes for a small candidate and 2,048/512 for a larger candidate. SpEx+ and
+the speaker encoder were frozen; only the cabin frontend was updated. Curves
+are in `reports/figures/stage1_spex_fsc_passenger_adaptation_comparison_2026-10-16.png`
+and PDF.
+
+The larger candidate was evaluated with the post-wake compact speaker gate at
+intent confidence 0.90 on the corrected 1,000-scene benchmark. In sequential
+scenes it achieved 69.1% target intent, 67.2% fully correct, and 12 false
+actions (10 passenger-only), versus the clean Stage-1 reference's 93.2%,
+84.9%, and 27. In simultaneous overlap it achieved 65.0% target intent,
+64.2% fully correct, and zero false actions, versus 63.2%, 61.2%, and zero
+for the reference. Strict false commands/hour fell from 17.23 to 5.91 in
+sequential scenes and from 1.29 to 0.77 in overlap.
+
+This is a useful safety/overlap result but not a universal replacement: the
+passenger-only adaptation loses too much sequential target accuracy. The
+current next model step is a mixed clean-plus-passenger adaptation that
+preserves clean sequential behavior while retaining the overlap gain. The
+full analysis is in `reports/multispeaker_iteration_2026-10-16.md`.

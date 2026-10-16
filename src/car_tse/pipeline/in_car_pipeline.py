@@ -364,6 +364,16 @@ class InCarPipeline:
             )
         target_kws_checkpoint = pipeline_kwargs.pop("target_kws_checkpoint", None)
         target_kws_secondary_checkpoint = pipeline_kwargs.pop("target_kws_secondary_checkpoint", None)
+        # Consume target-KWS architecture options even when the target-KWS
+        # branch is intentionally disabled.  Otherwise a regular-KWS
+        # ablation forwards these branch-specific keys into ``__init__`` and
+        # fails before inference starts.
+        target_kws_n_mels = int(pipeline_kwargs.pop("target_kws_n_mels", 40))
+        target_kws_channels = pipeline_kwargs.pop("target_kws_channels", [32, 64, 128])
+        target_kws_speaker_embedding_dim = int(
+            pipeline_kwargs.pop("target_kws_speaker_embedding_dim", 256)
+        )
+        target_kws_hidden = int(pipeline_kwargs.pop("target_kws_hidden", 256))
         compact_speaker_verifier_checkpoint = pipeline_kwargs.pop(
             "compact_speaker_verifier_checkpoint", None
         )
@@ -383,10 +393,6 @@ class InCarPipeline:
         target_kws_secondary = None
         compact_speaker_verifier = None
         if target_kws_checkpoint:
-            target_kws_n_mels = int(pipeline_kwargs.pop("target_kws_n_mels", 40))
-            target_kws_channels = pipeline_kwargs.pop("target_kws_channels", [32, 64, 128])
-            target_kws_speaker_embedding_dim = int(pipeline_kwargs.pop("target_kws_speaker_embedding_dim", 256))
-            target_kws_hidden = int(pipeline_kwargs.pop("target_kws_hidden", 256))
             target_kws = TargetSpeakerKWSModel(
                 sample_rate=kws_sample_rate,
                 n_mels=target_kws_n_mels,

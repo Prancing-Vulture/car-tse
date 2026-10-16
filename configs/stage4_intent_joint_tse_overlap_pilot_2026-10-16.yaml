@@ -1,0 +1,10 @@
+name: stage4_intent_joint_tse_overlap_pilot_2026-10-16
+sample_rate: 16000
+segment_seconds: 2.0
+manifest_train: stage4_intent_joint_tse_overlap_pilot_2026-10-16.jsonl
+manifest_eval: stage4_intent_joint_tse_overlap_pilot_2026-10-16.jsonl
+label_map: intent_label_map.json
+waveform_cache_dir: data/cache/stage4_intent_joint_tse_overlap_pilot_2026-10-16_16k
+waveform_cache_includes_cabin_noise: true
+waveform_cache_train: train_joint_tse_overlap_wav_16000hz.npy
+waveform_cache_eval: val_joint_tse_overlap_wav_16000hz.npy

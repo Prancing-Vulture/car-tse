@@ -16,8 +16,15 @@ def read(path: Path) -> dict:
 
 def metric(row: dict, key: str) -> float:
     if key == "strict_false_wake_events_per_hour":
+        if row.get("strict_false_wake_rate_per_hour") is not None:
+            return float(row.get("strict_false_wake_rate_per_hour") or 0.0)
         duration_hours = float(row.get("duration_hours", 0.0) or 0.0)
         return float(row.get("strict_false_wake_events", 0.0) or 0.0) / max(duration_hours, 1.0e-9)
+    if key == "strict_false_command_events_per_hour":
+        if row.get("strict_false_command_rate_per_hour") is not None:
+            return float(row.get("strict_false_command_rate_per_hour") or 0.0)
+        duration_hours = float(row.get("duration_hours", 0.0) or 0.0)
+        return float(row.get("strict_false_command_events", 0.0) or 0.0) / max(duration_hours, 1.0e-9)
     value = row.get(key)
     if isinstance(value, dict):
         value = value.get("value", value.get("count", 0))
@@ -49,10 +56,12 @@ def main() -> int:
     panels = [
         ("target_intent_accuracy_overall", "Target intent accuracy", True),
         ("fully_correct_scenes", "Fully correct scenes", True),
-        ("strict_false_wake_events_per_hour", "Strict false wakes / hour", False),
+        ("false_action_events", "False actions", False),
         ("passenger_only_false_action_events", "Passenger-only false actions", False),
+        ("strict_false_wake_events_per_hour", "Strict false wakes / hour", False),
+        ("strict_false_command_events_per_hour", "Strict false commands / hour", False),
     ]
-    fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9), constrained_layout=True)
     for ax, (key, title, higher_is_better) in zip(axes.flat, panels):
         values = []
         for row in rows:
