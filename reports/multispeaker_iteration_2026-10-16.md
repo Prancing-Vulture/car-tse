@@ -133,10 +133,10 @@ commands.
 Overlap remains primarily an intent/separation problem. The new passenger
 mixture adaptation helps it modestly, but all channels are identical in this
 proxy, so the experiment cannot measure the benefit of a real driver-seat
-spatial cue. The next model step should use a mixed clean-plus-passenger
-adaptation that preserves the clean sequential domain, then evaluate against
-the same 1,000-scene frozen protocol. A real cabin pilot remains necessary
-before any production claim.
+spatial cue. A mixed clean-plus-passenger adaptation was subsequently tested
+and rejected because it did not preserve the sequential domain; the follow-up
+results are recorded below. A real cabin pilot remains necessary before any
+production claim.
 
 ## Reproduction commands
 
@@ -176,3 +176,36 @@ Outer archive SHA-256:
 
 The wav2vec path still requires the local Hugging Face
 `facebook/wav2vec2-base-960h` assets or an equivalent local cache on Jetson.
+
+## Follow-up candidate studies (2026-10-16)
+
+The next experiments tested whether the apparent overlap gain could be made
+compatible with the sequential condition. They are retained as append-only
+negative/diagnostic results; none replaces the final 1,000-scene rows above.
+
+| Candidate | Training / validation | 64-scene sequential fully correct | 64-scene overlap fully correct | Decision |
+|---|---:|---:|---:|---|
+| Passenger-heavy + clean mixed Stage 1 | 2,560 / 800; best SI-SDRi 8.34 dB | 70.3% | 71.9% | reject as universal extractor |
+| Balanced clean/passenger Stage 1 | 1,024 / 544; best SI-SDRi 8.43 dB | 64.1% | 68.8% | reject |
+| Large passenger Stage 1 + encoder-fine-tuned intent | 2,048 / 512 Stage 1; intent val 56.7% / macro-F1 56.7% | not promoted | 62.5% | reject |
+| Large passenger Stage 1 + intent head re-trained on its own extracted cache | 8,192 / 2,048 extracted waveforms; best val 57.7% / macro-F1 57.7% | not promoted | 32.8% | reject |
+
+The clean Stage-1 plus compact-gate operating point remains a useful
+sequential diagnostic: on its 64-scene tuning slice it reached 90.6% fully
+correct scenes with zero legacy false-action events, but still produced three
+wrong executed actions under the stricter action-level accounting. It is not a
+release claim.
+
+Training figures for these studies are:
+
+- `reports/figures/stage1_spex_passenger_adaptation_all_candidates_2026-10-16.png/.pdf`
+- `reports/figures/stage4_intent_large_passenger_joint_tse_training_2026-10-16.png/.pdf`
+
+The follow-up evidence points to a conditional architecture problem, not a
+single Stage-1 checkpoint problem: the clean path is strong for sequential
+commands, while passenger-mixture adaptation helps only the synthetic
+co-channel overlap slice and damages command-window transfer. The next useful
+engineering step is a real microphone-array/seat-zone or learned
+overlap-aware routing signal, followed by a driver-disjoint calibration set;
+further blind Stage-1 or intent fine-tuning is not justified by these proxy
+results.

@@ -1,0 +1,18 @@
+{
+  "epoch": 14,
+  "run_id": "482db40589c54683a44d18b949b46399",
+  "device": "cuda",
+  "encoder": "facebook/wav2vec2-base-960h",
+  "train_loss": 0.9584471173584461,
+  "train_accuracy": 0.775390625,
+  "val": {
+    "accuracy": 0.56689453125,
+    "top5_accuracy": 0.837890625,
+    "macro_precision": 0.5787379741668701,
+    "macro_recall": 0.566772997379303,
+    "macro_f1": 0.566088855266571,
+    "examples": 2048.0
+  },
+  "lr": 1.903011687217832e-05,
+  "feature_cache": "D:\\Prawin_New\\tse\\car-tse-main\\data\\cache\\stage4_intent_large_passenger_joint_tse_2026-10-16_features"
+}

@@ -186,7 +186,8 @@ def main() -> int:
         cfg["sample_rate"],
         cfg["segment_seconds"],
         training=False,
-        waveform_cache_path=cache_dir / f"train_cabin_wav_{cfg['sample_rate']}hz.npy",
+        waveform_cache_path=cache_dir
+        / cfg.get("waveform_cache_train", f"train_cabin_wav_{cfg['sample_rate']}hz.npy"),
         **data_kwargs,
     )
     val_audio = IntentDataset(
@@ -194,7 +195,8 @@ def main() -> int:
         cfg["sample_rate"],
         cfg["segment_seconds"],
         training=False,
-        waveform_cache_path=cache_dir / f"val_cabin_wav_{cfg['sample_rate']}hz.npy",
+        waveform_cache_path=cache_dir
+        / cfg.get("waveform_cache_eval", f"val_cabin_wav_{cfg['sample_rate']}hz.npy"),
         **data_kwargs,
     )
     if len(train_audio) == 0 or len(val_audio) == 0:

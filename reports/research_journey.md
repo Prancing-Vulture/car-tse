@@ -3646,3 +3646,26 @@ passenger-only adaptation loses too much sequential target accuracy. The
 current next model step is a mixed clean-plus-passenger adaptation that
 preserves clean sequential behavior while retaining the overlap gain. The
 full analysis is in `reports/multispeaker_iteration_2026-10-16.md`.
+
+## 2026-10-16 follow-up mixed-ratio and intent-alignment studies
+
+The mixed clean-plus-passenger Stage-1 run used a 20/80 clean/passenger ratio
+and did not solve the trade-off: its 64-scene sequential and overlap fully
+correct rates were 70.3% and 71.9%. A balanced 50/50 Stage-1 run reached a
+best validation SI-SDRi of 8.43 dB, but scored 64.1% sequential and 68.8%
+overlap on the same slice. Both checkpoints are retained as negative
+ablations, not promoted models.
+
+Two intent-domain adaptations were also tested. Fine-tuning the Wav2Vec
+encoder with the existing mixed cache scored 62.5% overlap. Re-caching 8,192
+clean/co-channel waveforms through the large passenger extractor and
+retraining the intent head reached 57.7% validation accuracy but only 32.8%
+overlap end-to-end accuracy. This shows that a lower isolated validation loss
+does not guarantee compatibility with the streaming command window.
+
+The clean Stage-1 plus compact-gate diagnostic reached 90.6% fully correct on
+the 64-scene sequential slice, with zero legacy false-action events, but the
+stricter action accounting still found three wrong executed actions. The
+follow-up plots are under `reports/figures/` with the
+`stage1_spex_passenger_adaptation_all_candidates_2026-10-16` and
+`stage4_intent_large_passenger_joint_tse_training_2026-10-16` prefixes.
