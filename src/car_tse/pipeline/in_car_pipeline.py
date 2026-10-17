@@ -50,6 +50,11 @@ class PipelineState:
     # retained only for the opt-in endpoint-aware command window strategy;
     # the historical fixed-window path leaves this unset.
     wake_context: torch.Tensor | None = None
+    # The immediately preceding normalized Stage-1 frame.  The opt-in
+    # pre-wake buffered strategy uses it when the wake detector fires late in
+    # a co-channel scene, so the first command candidate can retain audio that
+    # preceded the wake event.
+    last_extracted_s1: torch.Tensor | None = None
     # Number of post-wake command candidates evaluated by the opt-in
     # confidence-buffered endpoint.  Keeping this in streaming state avoids
     # committing a low-confidence partial command and then re-arming on the
@@ -80,6 +85,10 @@ class PipelineOutput:
     presence_activity_margin: float | None = None
     speaker_similarity: float | None = None
     wake_probability: float | None = None
+    # Raw enrollment-conditioned wake score before optional speaker-score
+    # fusion. This enables target-KWS attribution diagnostics without
+    # changing the wake state-machine behavior.
+    target_kws_probability: float | None = None
 
 
 def normalize_extracted_waveform(s1: torch.Tensor, peak_limit: float = 0.95) -> torch.Tensor:
@@ -156,6 +165,8 @@ class InCarPipeline:
         command_window_strategy: str = "fixed",
         command_buffer_calls: int = 2,
         command_confidence_commit_threshold: float = 0.90,
+        command_buffer_selection: str = "longest_run",
+        command_buffer_confidence_margin: float = 0.30,
         command_endpoint_kws_hop_seconds: float = 0.25,
         command_endpoint_margin_seconds: float = 0.50,
         command_presence_threshold: float | None = None,
@@ -164,6 +175,8 @@ class InCarPipeline:
         intent_confidence_threshold: float | None = None,
         speaker_gate_threshold: float | None = None,
         command_speaker_gate_threshold: float | None = None,
+        command_speaker_gate_rescue_confidence: float | None = None,
+        command_speaker_gate_rescue_floor: float = 0.0,
         speaker_gate_backend: str = "spex",
         speaker_fusion_mode: str = "none",
         speaker_fusion_center: float = 0.0,
@@ -207,14 +220,29 @@ class InCarPipeline:
             "kws_trim_latest",
             "confidence_buffered",
             "confidence_buffered_hybrid",
+            "prewake_buffered_hybrid",
         }:
             raise ValueError(
                 "command_window_strategy must be 'fixed', 'kws_trim', 'kws_trim_latest', "
-                "or 'confidence_buffered_hybrid'"
+                "'confidence_buffered_hybrid', or 'prewake_buffered_hybrid'"
             )
         self.command_buffer_calls = max(1, int(command_buffer_calls))
         self.command_confidence_commit_threshold = min(
             max(float(command_confidence_commit_threshold), 0.0), 1.0
+        )
+        self.command_buffer_selection = str(command_buffer_selection).lower()
+        if self.command_buffer_selection not in {
+            "longest_run",
+            "best_confidence",
+            "confidence_margin",
+            "mean_logits",
+        }:
+            raise ValueError(
+                "command_buffer_selection must be 'longest_run', 'best_confidence', "
+                "'confidence_margin', or 'mean_logits'"
+            )
+        self.command_buffer_confidence_margin = max(
+            float(command_buffer_confidence_margin), 0.0
         )
         self.command_endpoint_kws_hop_seconds = max(
             0.01, float(command_endpoint_kws_hop_seconds)
@@ -253,6 +281,14 @@ class InCarPipeline:
             self.speaker_gate_threshold
             if command_speaker_gate_threshold is None
             else float(command_speaker_gate_threshold)
+        )
+        self.command_speaker_gate_rescue_confidence = (
+            None
+            if command_speaker_gate_rescue_confidence is None
+            else min(max(float(command_speaker_gate_rescue_confidence), 0.0), 1.0)
+        )
+        self.command_speaker_gate_rescue_floor = min(
+            max(float(command_speaker_gate_rescue_floor), 0.0), 1.0
         )
         self.speaker_gate_backend = str(speaker_gate_backend).lower()
         self.speaker_fusion_mode = str(speaker_fusion_mode).lower()
@@ -820,6 +856,21 @@ class InCarPipeline:
                 and active_speaker_gate_threshold is not None
                 and speaker_similarity < active_speaker_gate_threshold
             )
+            # A hard command-time speaker threshold is useful for rejecting
+            # passenger speech, but it can also reject genuine target
+            # commands after extraction when the compact verifier score is
+            # low.  The opt-in rescue path lets those borderline frames reach
+            # the intent head and only accepts them when the buffered command
+            # is sufficiently confident.  Scores below the rescue floor are
+            # still rejected before intent inference.
+            speaker_rescue_allowed = (
+                state.awaiting_command
+                and speaker_rejected
+                and self.command_speaker_gate_rescue_confidence is not None
+                and speaker_similarity is not None
+                and speaker_similarity >= self.command_speaker_gate_rescue_floor
+            )
+            speaker_rejected_for_frontend = speaker_rejected and not speaker_rescue_allowed
             activity_margin_rejected = (
                 self.presence_activity_margin_threshold is not None
                 and presence_activity_margin is not None
@@ -827,7 +878,7 @@ class InCarPipeline:
             )
             if (
                 presence_probability < active_presence_threshold
-                or speaker_rejected
+                or speaker_rejected_for_frontend
                 or activity_margin_rejected
             ):
                 state.kws_scores.clear()
@@ -873,6 +924,12 @@ class InCarPipeline:
                     speaker_similarity=speaker_similarity,
                 ), state
             downstream_s1 = normalize_extracted_waveform(s1)
+            previous_extracted_s1 = state.last_extracted_s1
+            # Keep one normalized frame for the next hop.  This is deliberately
+            # a one-frame context only; it does not alter the frozen TSE or
+            # historical state-machine paths unless the new strategy is
+            # explicitly selected.
+            state.last_extracted_s1 = downstream_s1.detach().clone()
 
             if state.awaiting_command:
                 # The first accepted target-speech frame after a wake is the
@@ -900,6 +957,7 @@ class InCarPipeline:
                     "kws_trim_latest",
                     "confidence_buffered",
                     "confidence_buffered_hybrid",
+                    "prewake_buffered_hybrid",
                 }:
                     trimmed = self._prepare_kws_trimmed_intent_input(downstream_s1)
                     if trimmed is None and state.wake_context is not None:
@@ -912,7 +970,8 @@ class InCarPipeline:
                     intent_input = trimmed
                 candidate_inputs = [intent_input]
                 if (
-                    self.command_window_strategy == "confidence_buffered_hybrid"
+                    self.command_window_strategy
+                    in {"confidence_buffered_hybrid", "prewake_buffered_hybrid"}
                     and trimmed is not None
                 ):
                     # The fixed crop and endpoint-trimmed crop make different
@@ -921,6 +980,18 @@ class InCarPipeline:
                     # additional intent forward and is a diagnostic candidate
                     # until its latency and false-action trade-off are tested.
                     candidate_inputs.insert(0, self._prepare_intent_input(downstream_s1))
+                if (
+                    self.command_window_strategy == "prewake_buffered_hybrid"
+                    and state.wake_context is not None
+                ):
+                    # In simultaneous scenes the wake can be detected after
+                    # the target command has already started.  Score the
+                    # preceding overlapping frame as an additional candidate
+                    # instead of forcing the intent head to start at the
+                    # later post-wake window.
+                    candidate_inputs.insert(
+                        0, self._prepare_intent_input(state.wake_context)
+                    )
                 candidate_outputs = []
                 for candidate_input in candidate_inputs:
                     candidate_logits = self.intent(candidate_input)
@@ -937,6 +1008,7 @@ class InCarPipeline:
                 if self.command_window_strategy in {
                     "confidence_buffered",
                     "confidence_buffered_hybrid",
+                    "prewake_buffered_hybrid",
                 }:
                     # A short confidence buffer prevents an overlapping,
                     # partially spoken command from being committed before a
@@ -978,7 +1050,25 @@ class InCarPipeline:
                         # (which can be a trailing or partial frame).
                         intent_confidence = state.command_best_confidence
                         intent_logits = state.command_best_logits
-                    if reached_limit and state.command_candidate_history:
+                    if self.command_buffer_selection == "mean_logits" and state.command_candidate_history:
+                        # Average the logits over the buffered post-wake
+                        # candidates.  This is less sensitive to a single
+                        # high-confidence partial/overlap frame than selecting
+                        # the maximum-confidence hop, while retaining the
+                        # existing confidence threshold after aggregation.
+                        intent_logits = torch.stack(
+                            [logits for _, _, logits in state.command_candidate_history],
+                            dim=0,
+                        ).mean(dim=0)
+                        intent_confidence = float(
+                            torch.softmax(intent_logits, dim=-1).max(dim=-1).values.mean().item()
+                        )
+                    if (
+                        self.command_buffer_selection
+                        in {"longest_run", "confidence_margin"}
+                        and reached_limit
+                        and state.command_candidate_history
+                    ):
                         # Endpointed command windows can straddle two nearby
                         # intents.  Prefer the class with the longest
                         # consecutive run across the buffered hops; break ties
@@ -1016,10 +1106,42 @@ class InCarPipeline:
                                 -best_run[candidate_id][1],
                             ),
                         )
-                        intent_confidence, intent_logits = best_by_class[selected_id]
+                        run_confidence, run_logits = best_by_class[selected_id]
+                        if (
+                            self.command_buffer_selection == "confidence_margin"
+                            and state.command_best_logits is not None
+                            and state.command_best_confidence - run_confidence
+                            >= self.command_buffer_confidence_margin
+                        ):
+                            intent_confidence = state.command_best_confidence
+                            intent_logits = state.command_best_logits
+                        else:
+                            intent_confidence = run_confidence
+                            intent_logits = run_logits
                     if (
                         self.intent_confidence_threshold is not None
                         and intent_confidence < self.intent_confidence_threshold
+                    ):
+                        self._reset_command_capture(state)
+                        state.kws_scores.clear()
+                        return PipelineOutput(
+                            accepted=True,
+                            wake_detected=False,
+                            intent_logits=intent_logits,
+                            action=None,
+                            s1=s1,
+                            command_pending=False,
+                            intent_ready=False,
+                            command_suppressed=True,
+                            presence_probability=presence_probability,
+                            presence_non_target_probability=presence_non_target_probability,
+                            presence_activity_margin=presence_activity_margin,
+                            speaker_similarity=speaker_similarity,
+                        ), state
+                    if (
+                        speaker_rescue_allowed
+                        and self.command_speaker_gate_rescue_confidence is not None
+                        and intent_confidence < self.command_speaker_gate_rescue_confidence
                     ):
                         self._reset_command_capture(state)
                         state.kws_scores.clear()
@@ -1080,6 +1202,7 @@ class InCarPipeline:
 
             kws_input = self._prepare_kws_input(downstream_s1)
             target_kws_score = None
+            target_kws_probability = None
             if self.target_kws is not None:
                 embedder = getattr(self.stage1, "speaker_embedding", None)
                 if callable(embedder):
@@ -1111,6 +1234,7 @@ class InCarPipeline:
                             target_kws_score = float(max(target_kws_score, 0.0) * max(secondary_score, 0.0)) ** 0.5
                         else:
                             target_kws_score = min(target_kws_score, secondary_score)
+                    target_kws_probability = target_kws_score
                     if (
                         self.speaker_fusion_mode != "none"
                         and similarity is not None
@@ -1154,6 +1278,7 @@ class InCarPipeline:
                     presence_activity_margin=presence_activity_margin,
                     speaker_similarity=speaker_similarity,
                     wake_probability=score,
+                    target_kws_probability=target_kws_probability,
                 ), state
 
             # Do not infer intent from the wake-word frame.  The next accepted
@@ -1163,6 +1288,12 @@ class InCarPipeline:
             state.command_candidate_calls = 0
             if self.command_window_strategy == "kws_trim":
                 state.wake_context = downstream_s1.detach().clone()
+            elif self.command_window_strategy == "prewake_buffered_hybrid":
+                state.wake_context = (
+                    downstream_s1.detach().clone()
+                    if previous_extracted_s1 is None
+                    else previous_extracted_s1.detach().clone()
+                )
             state.kws_scores.clear()
             return PipelineOutput(
                 accepted=True,
@@ -1174,4 +1305,5 @@ class InCarPipeline:
                 presence_activity_margin=presence_activity_margin,
                 speaker_similarity=speaker_similarity,
                 wake_probability=score,
+                target_kws_probability=target_kws_probability,
             ), state

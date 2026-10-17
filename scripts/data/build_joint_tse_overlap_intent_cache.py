@@ -84,8 +84,14 @@ def make_pair(
     stage1_samples: int,
     passenger_snr_db: float,
     overlap: bool,
+    command_offset_seconds: float = 0.0,
 ) -> np.ndarray:
-    target_clip = fit_clip(target, stage1_samples)
+    target_clip = np.zeros(stage1_samples, dtype=np.float32)
+    add_at(
+        target_clip,
+        np.asarray(target, dtype=np.float32),
+        int(round(max(0.0, float(command_offset_seconds)) * sample_rate)),
+    )
     if not overlap:
         return target_clip
     passenger = np.zeros(stage1_samples, dtype=np.float32)
@@ -115,6 +121,7 @@ def build_split(
     passenger_wake: list[np.ndarray],
     passenger_nonwake: list[np.ndarray],
     passenger_snr_db: float,
+    command_offset_seconds: float,
     base_limit: int,
     batch_size: int,
     seed: int,
@@ -164,6 +171,7 @@ def build_split(
                 "source_stage1_tse": True,
                 "stage1_input_contains_passenger": bool(overlap),
                 "passenger_snr_db": float(passenger_snr_db) if overlap else None,
+                "command_offset_seconds": float(command_offset_seconds),
             }
             manifest_rows.append(item)
         mix_batch.clear()
@@ -183,6 +191,7 @@ def build_split(
             stage1_samples,
             passenger_snr_db,
             overlap,
+            command_offset_seconds,
         )
         enrollment = fit_clip(target, stage1_samples)
         multichannel = np.repeat(mixture[:, None], 4, axis=1)
@@ -215,6 +224,18 @@ def main() -> int:
     parser.add_argument("--train-limit", type=int, default=8192)
     parser.add_argument("--val-limit", type=int, default=2048)
     parser.add_argument("--passenger-snr-db", type=float, default=0.0)
+    parser.add_argument(
+        "--command-offset-seconds",
+        type=float,
+        default=0.0,
+        help="Place the target command this far into the frozen-TSE input window.",
+    )
+    parser.add_argument(
+        "--output-seconds",
+        type=float,
+        default=2.0,
+        help="Number of seconds of frozen-TSE output to cache for the intent model.",
+    )
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--seed", type=int, default=20261016)
     args = parser.parse_args()
@@ -223,7 +244,7 @@ def main() -> int:
     device = get_device()
     sample_rate = int(stage1_cfg["sample_rate"])
     stage1_samples = int(sample_rate * stage1_cfg["segment_seconds"])
-    intent_samples = int(sample_rate * 2.0)
+    intent_samples = int(round(sample_rate * float(args.output_seconds)))
     pretrained = Path(stage1_cfg["pretrained_checkpoint"])
     if not pretrained.is_absolute():
         pretrained = REPO_ROOT / pretrained
@@ -250,12 +271,14 @@ def main() -> int:
     build_split(
         "train", train_rows, args.output_dir, args.train_manifest_out, model, device,
         sample_rate, stage1_samples, intent_samples, passenger_wake, passenger_nonwake,
-        args.passenger_snr_db, args.train_limit, args.batch_size, args.seed,
+        args.passenger_snr_db, args.command_offset_seconds, args.train_limit,
+        args.batch_size, args.seed,
     )
     build_split(
         "val", val_rows, args.output_dir, args.val_manifest_out, model, device,
         sample_rate, stage1_samples, intent_samples, passenger_wake, passenger_nonwake,
-        args.passenger_snr_db, args.val_limit, args.batch_size, args.seed + 101,
+        args.passenger_snr_db, args.command_offset_seconds, args.val_limit,
+        args.batch_size, args.seed + 101,
     )
     return 0
 

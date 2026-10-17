@@ -443,6 +443,7 @@ def main() -> int:
             "window_center_seconds": window_start + stage1_seconds / 2.0,
             "speaker_similarity": output.speaker_similarity,
             "wake_probability": output.wake_probability,
+            "target_kws_probability": output.target_kws_probability,
             "wake_detected": bool(output.wake_detected),
             "intent_ready": bool(output.intent_ready),
             "command_suppressed": bool(output.command_suppressed),

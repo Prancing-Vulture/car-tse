@@ -537,9 +537,13 @@ def test_pipeline_opt_in_late_speaker_fusion_vetoes_mismatched_embedding():
     assert matching_output.wake_detected is True
     assert matching_output.wake_probability is not None
     assert matching_output.wake_probability > 0.5
+    assert matching_output.target_kws_probability is not None
+    assert matching_output.target_kws_probability > 0.5
 
     mismatched_state = PipelineState(reference_speaker_embedding=torch.tensor([[-1.0, 0.0]]))
     mismatched_output, _ = pipe.forward(mixture, enrollment, mismatched_state)
     assert mismatched_output.wake_detected is False
     assert mismatched_output.wake_probability is not None
     assert mismatched_output.wake_probability < 0.5
+    assert mismatched_output.target_kws_probability is not None
+    assert mismatched_output.target_kws_probability > 0.5

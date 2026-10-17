@@ -316,6 +316,10 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         command_confidence_commit_threshold=float(
             cfg.get("command_confidence_commit_threshold", 0.90)
         ),
+        command_buffer_selection=str(cfg.get("command_buffer_selection", "longest_run")),
+        command_buffer_confidence_margin=float(
+            cfg.get("command_buffer_confidence_margin", 0.30)
+        ),
         command_endpoint_kws_hop_seconds=float(cfg.get("command_endpoint_kws_hop_seconds", 0.25)),
         command_endpoint_margin_seconds=float(cfg.get("command_endpoint_margin_seconds", 0.50)),
         command_presence_threshold=(
@@ -343,6 +347,14 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
             float(cfg["command_speaker_gate_threshold"])
             if cfg.get("command_speaker_gate_threshold") is not None
             else None
+        ),
+        command_speaker_gate_rescue_confidence=(
+            float(cfg["command_speaker_gate_rescue_confidence"])
+            if cfg.get("command_speaker_gate_rescue_confidence") is not None
+            else None
+        ),
+        command_speaker_gate_rescue_floor=float(
+            cfg.get("command_speaker_gate_rescue_floor", 0.0)
         ),
         speaker_gate_backend=str(cfg.get("speaker_gate_backend", "spex")),
         speaker_fusion_mode=str(cfg.get("speaker_fusion_mode", "none")),
@@ -522,6 +534,7 @@ def evaluate_scene(
             "presence_activity_margin": output.presence_activity_margin,
             "speaker_similarity": output.speaker_similarity,
             "wake_probability": wake_probability,
+            "target_kws_probability": output.target_kws_probability,
             "accepted": bool(output.accepted),
             "wake_detected": bool(output.wake_detected),
             "command_pending": bool(output.command_pending),
@@ -1455,6 +1468,12 @@ def main() -> int:
         "effective_command_timeout_calls": int(cfg.get("command_timeout_calls", 4)),
         "effective_speaker_gate_threshold": cfg.get("speaker_gate_threshold"),
         "effective_command_speaker_gate_threshold": cfg.get("command_speaker_gate_threshold"),
+        "effective_command_speaker_gate_rescue_confidence": cfg.get(
+            "command_speaker_gate_rescue_confidence"
+        ),
+        "effective_command_speaker_gate_rescue_floor": float(
+            cfg.get("command_speaker_gate_rescue_floor", 0.0)
+        ),
         "effective_speaker_fusion_mode": cfg.get("speaker_fusion_mode", "none"),
         "effective_speaker_fusion_center": cfg.get("speaker_fusion_center", 0.0),
         "effective_speaker_fusion_scale": cfg.get("speaker_fusion_scale", 0.10),
@@ -1475,6 +1494,12 @@ def main() -> int:
         ),
         "effective_command_confidence_commit_threshold": float(
             cfg.get("command_confidence_commit_threshold", 0.90)
+        ),
+        "effective_command_buffer_selection": str(
+            cfg.get("command_buffer_selection", "longest_run")
+        ),
+        "effective_command_buffer_confidence_margin": float(
+            cfg.get("command_buffer_confidence_margin", 0.30)
         ),
         "effective_command_endpoint_kws_hop_seconds": float(cfg.get("command_endpoint_kws_hop_seconds", 0.25)),
         "effective_command_endpoint_margin_seconds": float(cfg.get("command_endpoint_margin_seconds", 0.50)),

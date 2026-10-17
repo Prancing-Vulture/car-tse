@@ -407,6 +407,7 @@ class OnnxInCarPipeline:
         presence_probability: float,
         speaker_similarity: float | None,
         wake_probability: float | None = None,
+        target_kws_probability: float | None = None,
         command_pending: bool = False,
         intent_logits: torch.Tensor | None = None,
         action: Any | None = None,
@@ -425,6 +426,7 @@ class OnnxInCarPipeline:
             presence_probability=presence_probability,
             speaker_similarity=speaker_similarity,
             wake_probability=wake_probability,
+            target_kws_probability=target_kws_probability,
         )
 
     def forward(
@@ -576,6 +578,7 @@ class OnnxInCarPipeline:
                 presence_probability=presence_probability,
                 speaker_similarity=speaker_similarity,
                 wake_probability=score,
+                target_kws_probability=score,
             ), state
         state.awaiting_command = True
         state.command_wait_calls = 0
@@ -588,5 +591,6 @@ class OnnxInCarPipeline:
             presence_probability=presence_probability,
             speaker_similarity=speaker_similarity,
             wake_probability=score,
+            target_kws_probability=score,
             command_pending=True,
         ), state

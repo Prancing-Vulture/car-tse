@@ -55,6 +55,20 @@ def main() -> int:
     parser.add_argument("--encoder-lr", type=float, default=1.0e-5)
     parser.add_argument("--head-lr", type=float, default=3.0e-4)
     parser.add_argument("--unfreeze-layers", type=int, default=4)
+    parser.add_argument(
+        "--train-with-augmentation",
+        action="store_true",
+        help=(
+            "Enable IntentDataset training augmentation. Keep this off for "
+            "cached TSE waveforms so fine-tuning sees the same deterministic "
+            "2-second examples used by the frozen-feature head."
+        ),
+    )
+    parser.add_argument(
+        "--enable-spec-augment",
+        action="store_true",
+        help="Keep wav2vec's pretraining-time SpecAugment masks during fine-tuning.",
+    )
     parser.add_argument("--amp", action="store_true")
     args = parser.parse_args()
 
@@ -81,7 +95,7 @@ def main() -> int:
         manifest_root / "train" / cfg["manifest_train"],
         cfg["sample_rate"],
         cfg["segment_seconds"],
-        training=True,
+        training=bool(args.train_with_augmentation),
         waveform_cache_path=cache_dir / cfg.get(
             "waveform_cache_train",
             f"train_cabin_wav_{cfg['sample_rate']}hz.npy",
@@ -108,6 +122,14 @@ def main() -> int:
         encoder.load_state_dict(state["model_state_dict"], strict=True)
         print(f"initialized_encoder={encoder_checkpoint} epoch={state.get('epoch', 'unknown')}", flush=True)
     set_trainable_layers(encoder, args.unfreeze_layers)
+    if not args.enable_spec_augment:
+        # Wav2Vec2 applies time/feature masking whenever the module is in
+        # train() mode. That is useful during self-supervised pretraining but
+        # makes downstream cached-TSE adaptation unstable unless explicitly
+        # requested.
+        encoder.config.apply_spec_augment = False
+        encoder.config.mask_time_prob = 0.0
+        encoder.config.mask_feature_prob = 0.0
     encoder.config.use_cache = False
     hidden = int(encoder.config.hidden_size)
     head = IntentHead(hidden, 512, num_classes, 0.2).to(device)
@@ -145,6 +167,8 @@ def main() -> int:
             "init_head_checkpoint": str(args.head_checkpoint),
             "encoder_checkpoint": str(args.encoder_checkpoint) if args.encoder_checkpoint else None,
             "unfreeze_layers": args.unfreeze_layers,
+            "train_with_augmentation": bool(args.train_with_augmentation),
+            "enable_spec_augment": bool(args.enable_spec_augment),
         },
     )
     best_f1 = float("-inf")

@@ -104,11 +104,14 @@ def main() -> int:
 
     labels = torch.tensor([int(row["label"]) for row in train_ds.rows], dtype=torch.long)
     counts = torch.bincount(labels, minlength=int(cfg["model"]["num_classes"])).float()
-    sampler = WeightedRandomSampler(
-        weights=(1.0 / counts[labels].clamp_min(1.0)),
-        num_samples=len(labels),
-        replacement=True,
-    )
+    use_balanced_sampler = bool(cfg["train"].get("balanced_sampler", True))
+    sampler = None
+    if use_balanced_sampler:
+        sampler = WeightedRandomSampler(
+            weights=(1.0 / counts[labels].clamp_min(1.0)),
+            num_samples=len(labels),
+            replacement=True,
+        )
     workers = int(cfg["train"].get("num_workers", 0))
     loader_kwargs = {
         "num_workers": workers,
@@ -120,6 +123,7 @@ def main() -> int:
         train_ds,
         batch_size=int(cfg["train"]["batch_size"]),
         sampler=sampler,
+        shuffle=sampler is None,
         **loader_kwargs,
     )
     val_loader = DataLoader(
@@ -182,6 +186,16 @@ def main() -> int:
     if not trainable_parameters:
         raise RuntimeError("No trainable target-KWS parameters remain")
     optimizer = torch.optim.AdamW(trainable_parameters, lr=float(cfg["train"]["lr"]))
+    configured_class_weights = cfg["train"].get("class_weights")
+    class_weights = None
+    if configured_class_weights is not None:
+        class_weights = torch.tensor(
+            [float(value) for value in configured_class_weights],
+            dtype=torch.float32,
+            device=device,
+        )
+        if class_weights.numel() != int(cfg["model"].get("num_classes", 2)):
+            raise ValueError("train.class_weights must contain one value per class")
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=int(cfg["train"]["max_epochs"])
     )
@@ -202,6 +216,8 @@ def main() -> int:
             "val_manifest": str(val_manifest),
             "cache_dir": str(cache_dir),
             "init_checkpoint": str(init_checkpoint) if init_checkpoint else None,
+            "balanced_sampler": use_balanced_sampler,
+            "class_weights": None if class_weights is None else class_weights.detach().cpu().tolist(),
         },
     )
     best_f1 = float("-inf")
@@ -217,7 +233,7 @@ def main() -> int:
             labels = batch["label"].to(device, non_blocking=True)
             with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
                 logits = model(wav, enrollment, extracted)
-            classification_loss = F.cross_entropy(logits.float(), labels)
+            classification_loss = F.cross_entropy(logits.float(), labels, weight=class_weights)
             loss = classification_loss
             distill_loss = torch.zeros((), device=device)
             if teacher is not None:
