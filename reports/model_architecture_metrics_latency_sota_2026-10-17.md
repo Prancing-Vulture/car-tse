@@ -18,13 +18,17 @@ The system is a cascaded, target-speaker voice assistant:
 5. A wav2vec 2.0 intent classifier maps the command to one of 31 Fluent Speech Commands intents.
 6. A guarded state machine buffers audio, applies wake/command thresholds and refractory periods, and emits at most one action per accepted command window.
 
-The strongest currently documented end-to-end numbers are from 128-scene synthetic evaluations. They are useful for debugging, but they are **not real-driver evidence**: the repository still lacks a continuous recording in which the same consenting driver provides enrollment, wake word, and command while passenger speech and vehicle conditions vary.
+The strongest currently documented end-to-end numbers are from corrected
+1,000-scene synthetic evaluations. They are useful for debugging, but they are
+**not real-driver evidence**: the repository still lacks a continuous recording
+in which the same consenting driver provides enrollment, wake word, and command
+while passenger speech and vehicle conditions vary.
 
 | Evaluation | Fully correct | Target wake recall | Wrong/false actions | Main interpretation |
 |---|---:|---:|---:|---|
 | Clean target-only, 128 scenes | **94.53%** (121/128) | 100% | 0 | Upper-bound-like clean pipeline result |
-| Synthetic passenger, non-overlap, FT6 | **96.09%** (123/128) | 100% | 0 | Good proxy result; 4 wrong intents remain |
-| Synthetic passenger, overlap, FT6 | **89.84%** (115/128) | 100% | 0 | Overlap and command separation are the current end-to-end weakness |
+| Corrected synthetic passenger, non-overlap, FT6 | **96.20%** (962/1,000) | 99.70% | 3 non-target actions | Strong proxy result; safety counters remain too high |
+| Corrected synthetic passenger, overlap, FT6 | **91.70%** (917/1,000) | 100% | 0 non-target actions* | Overlap still costs intent correctness; attribution is ambiguous |
 
 The component picture is different from the end-to-end picture. Clean FSC intent classification is **99.31% top-1**, while the held-out TSE-domain intent result is **90.49% top-1**. General wake-word F1 is **94.21%** on its component test, but the target-conditioned KWS F1 is only **43.14%** at its stored test operating point. The compact speaker verifier has **0.9706 test AUC**, with **0.7969 TPR** and **0.00534 FPR** at its selected threshold. These values are not directly interchangeable because they use different splits, labels, operating points, and task definitions.
 
@@ -78,7 +82,8 @@ The clean and passenger evaluations are synthetic proxy scenes built from public
 - The current passenger proxy is non-overlap or constructed overlap, not a measured vehicle recording.
 - Current proxy configs use four microphones and cabin_noise=false; no car-speaker playback reference is supplied to the echo canceller.
 - The fixed/three-step command buffer and endpoint heuristics can include wake-word tail or cut off command speech.
-- The reported 128-scene percentages have wide uncertainty; a single scene changes the score by 0.781 percentage points.
+- The earlier 128-scene percentages were rapid-iteration diagnostics; a
+  1,000-scene result changes by 0.1 percentage point per scene.
 
 Consequently, "fully correct" below means correct on the defined proxy scene and action metric, not "production reliability."
 
@@ -458,45 +463,53 @@ Artifact: logs/clean_e2e_v2_knnvc_matched_postaction16_128_2026-10-16.json
 | Mean wake latency | 1.699 s |
 | P95 wake latency | 2.000 s |
 
-### 6.2 Synthetic passenger, non-overlap
+### 6.2 Corrected synthetic passenger, non-overlap
 
-Artifact: logs/multispeaker_passenger_ft6_gate015_rescue085_postcommand08_128_2026-10-17.json
+Artifact: logs/multispeaker_passenger_ft6_p0_dynamic_full_1000_2026-10-17.json
 
 | Metric | Result |
 |---|---:|
-| Scenes | 128 |
-| Fully correct scenes | 123/128 = **96.09%** |
-| Target wake recall | 100% |
-| False action events | 0 |
-| Passenger-only false actions | 0 |
-| Executed non-target actions | 0 |
-| Wrong intent events | 4 |
-| Strict fully correct action scenes | 118/128 |
-| Strict false command rate | 10.045 per hour |
-| Strict false wake rate | 46.205 per hour |
-| Mean wake latency | 2.133 s |
+| Scenes | 1,000 |
+| Fully correct scenes | 962/1,000 = **96.20%** |
+| Target wake recall | 99.70% |
+| False action events | 3 (0.771/h) |
+| Passenger-only false actions | 1 (0.257/h) |
+| Executed non-target actions | 3 (0.771/h) |
+| Wrong intent events | 28 |
+| Strict fully correct action scenes | 914/1,000 |
+| Strict false command rate | 14.143 per hour |
+| Strict false wake rate | 49.371 per hour |
+| Mean wake latency | 2.125 s |
 | P95 wake latency | 3.500 s |
 
-### 6.3 Synthetic passenger, overlap
+### 6.3 Corrected synthetic passenger, overlap
 
-Artifact: logs/multispeaker_overlap_ft6_gate015_rescue085_postcommand08_128_2026-10-17.json
+Artifact: logs/multispeaker_overlap_ft6_p0_dynamic_full_1000_2026-10-17.json
 
 | Metric | Result |
 |---|---:|
-| Scenes | 128 |
-| Fully correct scenes | 115/128 = **89.84%** |
+| Scenes | 1,000 |
+| Fully correct scenes | 917/1,000 = **91.70%** |
 | Target wake recall | 100% |
 | False action events | 0 |
-| Passenger-only false actions | 0 |
+| Passenger-only false actions | 0* |
 | Executed non-target actions | 0 |
-| Wrong intent events | 10 |
-| Strict fully correct action scenes | 115/128 |
-| Strict false command rate | 0 per hour |
-| Strict false wake rate | 54.241 per hour |
-| Mean wake latency | 2.117 s |
-| P95 wake latency | 3.000 s |
+| Wrong intent events | 60 |
+| Strict fully correct action scenes | 890/1,000 |
+| Strict false command rate | 7.714 per hour |
+| Strict false wake rate | 61.714 per hour |
+| Mean wake latency | 2.147 s |
+| P95 wake latency | 3.500 s |
 
-The contrast is important: the current proxy's visible action safety is good because the state machine suppresses many candidate events, but the strict false-wake rates and wrong-intent counts show that the system is not yet production-ready. The overlap case loses roughly 6.25 percentage points relative to non-overlap, mostly through command separation/intent errors rather than target-wake recall.
+*The overlap passenger-only value is not a safety pass: 999 of 1,000 scenes
+contain passenger-wake overlap, so source attribution is ambiguous.
+
+The contrast is important: the current proxy's visible action safety is good
+because the state machine suppresses many candidate events, but the strict
+false-wake rates and wrong-intent counts show that the system is not yet
+production-ready. The corrected overlap case is 4.50 percentage points below
+sequential, primarily through command/intent errors rather than target-wake
+recall.
 
 ## 7. SOTA and prior-work context
 
@@ -568,7 +581,7 @@ Reference: [Hussein et al., Speech Command Recognition Using Deep Learning, Elec
 |---|---|---|
 | Current clean FSC intent | 31-class isolated command classification | No wake, passenger, or action-state requirement |
 | Current TSE-domain intent | Intent after extracted/degraded audio | Still not a continuous cabin interaction |
-| Current synthetic full pipeline | Driver wake + command + passenger proxy | 128 scenes; no real-driver continuous recordings |
+| Current synthetic full pipeline | Driver wake + command + passenger proxy | 1,000 scenes/condition; no real-driver continuous recordings |
 | Paranjape et al. | Task-level noisy RASA assistant success | Different task, intents, interaction and latency definitions |
 | Hussein et al. | Small Speech Commands classifier | No TSE, wake-word, passenger rejection, or vehicle action |
 
@@ -618,6 +631,8 @@ The current evidence supports a research prototype, not a production release. Th
 - Clean E2E: logs/clean_e2e_v2_knnvc_matched_postaction16_128_2026-10-16.json
 - Non-overlap E2E: logs/multispeaker_passenger_ft6_gate015_rescue085_postcommand08_128_2026-10-17.json
 - Overlap E2E: logs/multispeaker_overlap_ft6_gate015_rescue085_postcommand08_128_2026-10-17.json
+- Corrected non-overlap E2E: logs/multispeaker_passenger_ft6_p0_dynamic_full_1000_2026-10-17.json
+- Corrected overlap E2E: logs/multispeaker_overlap_ft6_p0_dynamic_full_1000_2026-10-17.json
 - Current GPU latency: logs/component_latency_ft6_current_cuda_fp16_2026-10-17.json
 
 ## 10. Recommended next experiments
@@ -635,6 +650,12 @@ The highest-value sequence is:
 
 ## Bottom line
 
-The current system is a strong research prototype with a credible SpEx+-style TSE front end, a compact presence/KWS/verifier cascade, and a high-performing clean FSC intent classifier. The best proxy full-pipeline result is **96.09% non-overlap** and **89.84% overlap**, while the clean target-only proxy is **94.53%**. The major engineering weaknesses are not the clean intent head alone: they are target-speaker gating, command endpointing, continuous false wakes, and the lack of real-driver/device evidence.
+The current system is a strong research prototype with a credible SpEx+-style
+TSE front end, a compact presence/KWS/verifier cascade, and a high-performing
+clean FSC intent classifier. The corrected 1,000-scene proxy results are
+**96.20% non-overlap** and **91.70% overlap**, while the clean target-only
+128-scene proxy is **94.53%**. The major engineering weaknesses are not the
+clean intent head alone: they are target-speaker gating, command endpointing,
+continuous false wakes, and the lack of real-driver/device evidence.
 
 Do not label the system "production-ready" or "SOTA" from these results. The proper next claim is: **a reproducible research prototype with promising synthetic-cabin performance and a clearly defined real-cabin validation plan.**
