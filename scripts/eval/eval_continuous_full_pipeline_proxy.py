@@ -253,6 +253,22 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         compact_speaker_verifier_checkpoint = resolve_path(
             Path(paths["checkpoint_root"]) / compact_speaker_verifier_checkpoint
         )
+    intent_ensemble = cfg.get("intent_ensemble")
+    if intent_ensemble:
+        resolved_intent_ensemble = []
+        for index, raw_spec in enumerate(intent_ensemble):
+            if not isinstance(raw_spec, dict):
+                raise ValueError(f"intent_ensemble member {index} must be a mapping")
+            spec = dict(raw_spec)
+            for key in ("encoder_checkpoint", "head_checkpoint"):
+                value = spec.get(key)
+                if value:
+                    value_path = Path(value)
+                    if not value_path.is_absolute():
+                        value_path = Path(paths["checkpoint_root"]) / value_path
+                    spec[key] = str(resolve_path(value_path))
+            resolved_intent_ensemble.append(spec)
+        intent_ensemble = resolved_intent_ensemble
 
     pipeline = InCarPipeline.from_checkpoints(
         stage1,
@@ -273,6 +289,9 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         intent_encoder=str(cfg.get("intent_encoder", "facebook/wav2vec2-base-960h")),
         intent_encoder_checkpoint=encoder_checkpoint,
         intent_num_classes=int(cfg.get("intent_num_classes", 31)),
+        intent_ensemble=intent_ensemble,
+        intent_ensemble_selection=str(cfg.get("intent_ensemble_selection", "weighted_mean")),
+        intent_ensemble_gate_threshold=float(cfg.get("intent_ensemble_gate_threshold", 0.90)),
         presence_threshold=float(cfg.get("presence_threshold", 0.5)),
         kws_threshold=float(cfg.get("kws_threshold", 0.5)),
         kws_secondary_checkpoint=secondary_kws_checkpoint,
@@ -871,10 +890,17 @@ def main() -> int:
             "kws_trim_latest",
             "confidence_buffered",
             "confidence_buffered_hybrid",
+            "prewake_buffered_hybrid",
         ),
         default=None,
     )
     parser.add_argument("--command-buffer-calls", type=int, default=None)
+    parser.add_argument(
+        "--command-buffer-selection",
+        choices=("longest_run", "best_confidence", "confidence_margin", "mean_logits"),
+        default=None,
+        help="How to aggregate buffered intent candidates before committing a command.",
+    )
     parser.add_argument("--command-confidence-commit-threshold", type=float, default=None)
     parser.add_argument(
         "--kws-refractory-calls",
@@ -976,6 +1002,8 @@ def main() -> int:
         cfg["command_window_strategy"] = str(args.command_window_strategy)
     if args.command_buffer_calls is not None:
         cfg["command_buffer_calls"] = int(args.command_buffer_calls)
+    if args.command_buffer_selection is not None:
+        cfg["command_buffer_selection"] = str(args.command_buffer_selection)
     if args.kws_refractory_calls is not None and args.kws_refractory_seconds is not None:
         raise ValueError("pass only one of --kws-refractory-calls or --kws-refractory-seconds")
     if args.kws_refractory_calls is not None:

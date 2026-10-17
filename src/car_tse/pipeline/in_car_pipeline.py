@@ -18,7 +18,7 @@ from car_tse.models.presence_head import (
 )
 from car_tse.models.speaker_verifier import CompactSpeakerVerifier
 from car_tse.models.stage1_system import Stage1System
-from car_tse.models.wav2vec_intent import Wav2VecIntentClassifier
+from car_tse.models.wav2vec_intent import Wav2VecIntentClassifier, Wav2VecIntentEnsemble
 from car_tse.pipeline.actions import ActionResult, intent_to_action
 from car_tse.train.utils import load_checkpoint
 
@@ -468,7 +468,44 @@ class InCarPipeline:
                 sample_rate=compact_speaker_verifier_sample_rate,
             )
         intent_input_seconds = float(pipeline_kwargs.get("intent_input_seconds", 2.0))
-        if intent_type == "wav2vec":
+        intent_ensemble = pipeline_kwargs.pop("intent_ensemble", None)
+        intent_ensemble_selection = str(
+            pipeline_kwargs.pop("intent_ensemble_selection", "weighted_mean")
+        )
+        intent_ensemble_gate_threshold = float(
+            pipeline_kwargs.pop("intent_ensemble_gate_threshold", 0.90)
+        )
+        if intent_type == "wav2vec" and intent_ensemble:
+            members: list[Wav2VecIntentClassifier] = []
+            weights: list[float] = []
+            for index, spec in enumerate(intent_ensemble):
+                if not isinstance(spec, dict):
+                    raise ValueError(f"intent_ensemble member {index} must be a mapping")
+                member_encoder = str(spec.get("encoder", intent_encoder))
+                member_encoder_checkpoint = spec.get("encoder_checkpoint")
+                member_head_checkpoint = spec.get("head_checkpoint")
+                if not member_encoder_checkpoint or not member_head_checkpoint:
+                    raise ValueError(
+                        "each intent_ensemble member requires encoder_checkpoint and head_checkpoint"
+                    )
+                members.append(
+                    Wav2VecIntentClassifier(
+                        encoder_name=member_encoder,
+                        encoder_checkpoint=member_encoder_checkpoint,
+                        head_checkpoint=member_head_checkpoint,
+                        num_classes=int(spec.get("num_classes", intent_num_classes)),
+                        input_sample_rate=int(spec.get("sample_rate", intent_sample_rate)),
+                        input_seconds=float(spec.get("input_seconds", intent_input_seconds)),
+                    )
+                )
+                weights.append(float(spec.get("weight", 1.0)))
+            intent = Wav2VecIntentEnsemble(
+                members,
+                weights,
+                selection=intent_ensemble_selection,
+                gate_threshold=intent_ensemble_gate_threshold,
+            )
+        elif intent_type == "wav2vec":
             if not intent_encoder_checkpoint:
                 raise ValueError("intent_encoder_checkpoint is required for wav2vec intent")
             intent = Wav2VecIntentClassifier(

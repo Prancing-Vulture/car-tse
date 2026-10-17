@@ -111,6 +111,7 @@ def make_pair(
 def build_split(
     split: str,
     rows: list[dict],
+    command_offsets: list[float],
     output_dir: Path,
     manifest_out: Path,
     model: Stage1System,
@@ -128,10 +129,13 @@ def build_split(
 ) -> None:
     if base_limit > 0:
         rows = rows[: min(base_limit, len(rows))]
-    selected: list[tuple[dict, bool, int]] = []
+    if not command_offsets:
+        raise ValueError("command_offsets must contain at least one value")
+    selected: list[tuple[dict, bool, int, float]] = []
     for index, row in enumerate(rows):
-        selected.append((row, False, index))
-        selected.append((row, True, index))
+        for command_offset_seconds in command_offsets:
+            selected.append((row, False, index, float(command_offset_seconds)))
+            selected.append((row, True, index, float(command_offset_seconds)))
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{split}_joint_tse_overlap_wav_{sample_rate}hz.npy"
     output = np.lib.format.open_memmap(
@@ -144,7 +148,7 @@ def build_split(
     mix_batch: list[np.ndarray] = []
     enroll_batch: list[np.ndarray] = []
     multichannel_batch: list[np.ndarray] = []
-    pending: list[tuple[dict, bool, int]] = []
+    pending: list[tuple[dict, bool, int, float]] = []
 
     def flush() -> None:
         if not mix_batch:
@@ -161,7 +165,7 @@ def build_split(
             if peak > 0.95:
                 waveform = waveform * (0.95 / peak)
             output[base + local] = waveform
-            source_row, overlap, source_index = pending[local]
+            source_row, overlap, source_index, row_command_offset = pending[local]
             item = {
                 "wav": source_row["wav"],
                 "label": int(source_row["label"]),
@@ -171,7 +175,7 @@ def build_split(
                 "source_stage1_tse": True,
                 "stage1_input_contains_passenger": bool(overlap),
                 "passenger_snr_db": float(passenger_snr_db) if overlap else None,
-                "command_offset_seconds": float(command_offset_seconds),
+                "command_offset_seconds": float(row_command_offset),
             }
             manifest_rows.append(item)
         mix_batch.clear()
@@ -179,7 +183,7 @@ def build_split(
         multichannel_batch.clear()
         pending.clear()
 
-    for output_index, (row, overlap, source_index) in enumerate(selected):
+    for output_index, (row, overlap, source_index, row_command_offset) in enumerate(selected):
         target, _ = read_mono(row["wav"], sample_rate)
         # A same-speaker enrollment is sufficient for the intent-domain cache;
         # the full proxy still evaluates enrollment with a separate utterance.
@@ -191,14 +195,14 @@ def build_split(
             stage1_samples,
             passenger_snr_db,
             overlap,
-            command_offset_seconds,
+            row_command_offset,
         )
         enrollment = fit_clip(target, stage1_samples)
         multichannel = np.repeat(mixture[:, None], 4, axis=1)
         mix_batch.append(mixture)
         enroll_batch.append(enrollment)
         multichannel_batch.append(multichannel)
-        pending.append((row, overlap, source_index))
+        pending.append((row, overlap, source_index, row_command_offset))
         if len(mix_batch) >= batch_size:
             flush()
         if (output_index + 1) % 512 == 0 or output_index + 1 == len(selected):
@@ -229,6 +233,20 @@ def main() -> int:
         type=float,
         default=0.0,
         help="Place the target command this far into the frozen-TSE input window.",
+    )
+    parser.add_argument(
+        "--train-command-offsets",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Optional list of command offsets to cycle through for training rows.",
+    )
+    parser.add_argument(
+        "--val-command-offsets",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Optional list of command offsets to cycle through for validation rows.",
     )
     parser.add_argument(
         "--output-seconds",
@@ -269,13 +287,15 @@ def main() -> int:
         flush=True,
     )
     build_split(
-        "train", train_rows, args.output_dir, args.train_manifest_out, model, device,
+        "train", train_rows, args.train_command_offsets or [args.command_offset_seconds],
+        args.output_dir, args.train_manifest_out, model, device,
         sample_rate, stage1_samples, intent_samples, passenger_wake, passenger_nonwake,
         args.passenger_snr_db, args.command_offset_seconds, args.train_limit,
         args.batch_size, args.seed,
     )
     build_split(
-        "val", val_rows, args.output_dir, args.val_manifest_out, model, device,
+        "val", val_rows, args.val_command_offsets or args.train_command_offsets or [args.command_offset_seconds],
+        args.output_dir, args.val_manifest_out, model, device,
         sample_rate, stage1_samples, intent_samples, passenger_wake, passenger_nonwake,
         args.passenger_snr_db, args.command_offset_seconds, args.val_limit,
         args.batch_size, args.seed + 101,
