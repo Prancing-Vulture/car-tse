@@ -29,9 +29,10 @@ class PipelineState:
     last_reply_path: Path | None = None
     kws_scores: list[float] = field(default_factory=list)
     kws_refractory_left: int = 0
-    # Safety refractory applied only after a command action is committed.  It
-    # prevents the trailing wake/command audio from producing a second action
-    # while still allowing a later valid wake after an early false trigger.
+    # Shared safety refractory for the wake detector.  It is armed after a
+    # committed action, and can also be armed after an opt-in failed command
+    # cycle.  The latter prevents a passenger wake from re-arming immediately
+    # after a target wake timed out or was suppressed.
     post_action_refractory_left: int = 0
     # A wake word arms a separate command-capture phase.  Keeping this in the
     # streaming state prevents intent from being inferred from the wake-word
@@ -157,6 +158,7 @@ class InCarPipeline:
         kws_required_hits: int = 1,
         kws_refractory_calls: int = 0,
         post_action_refractory_calls: int = 0,
+        post_command_refractory_calls: int = 0,
         intent_sample_rate: int = 16000,
         intent_input_seconds: float = 2.0,
         intent_window_offset_seconds: float = 0.0,
@@ -208,6 +210,7 @@ class InCarPipeline:
         self.kws_required_hits = max(1, min(int(kws_required_hits), self.kws_smoothing_window))
         self.kws_refractory_calls = max(0, int(kws_refractory_calls))
         self.post_action_refractory_calls = max(0, int(post_action_refractory_calls))
+        self.post_command_refractory_calls = max(0, int(post_command_refractory_calls))
         self.intent_sample_rate = int(intent_sample_rate)
         self.intent_input_seconds = max(0.01, float(intent_input_seconds))
         self.intent_window_offset_seconds = max(0.0, float(intent_window_offset_seconds))
@@ -515,7 +518,12 @@ class InCarPipeline:
             **pipeline_kwargs,
         )
 
-    def _reset_command_capture(self, state: PipelineState) -> None:
+    def _reset_command_capture(
+        self,
+        state: PipelineState,
+        *,
+        arm_command_refractory: bool = False,
+    ) -> None:
         state.awaiting_command = False
         state.command_wait_calls = 0
         state.command_candidate_calls = 0
@@ -523,6 +531,11 @@ class InCarPipeline:
         state.command_best_logits = None
         state.command_candidate_history.clear()
         state.wake_context = None
+        if arm_command_refractory:
+            state.post_action_refractory_left = max(
+                state.post_action_refractory_left,
+                self.post_command_refractory_calls,
+            )
 
     def _fit_intent_input(self, wav: torch.Tensor, offset_samples: int = 0) -> torch.Tensor:
         """Crop/pad a waveform to the fixed Stage-4 input length."""
@@ -898,12 +911,7 @@ class InCarPipeline:
                 # independent of the duration of each audio tensor.
                 state.command_wait_calls += 1
                 if state.command_wait_calls >= self.command_timeout_calls:
-                    self._reset_command_capture(state)
-                    # Keep the post-wake refractory period after a timed-out
-                    # command as well.  Clearing it here lets the same wake
-                    # tail immediately arm another command cycle, defeating
-                    # the one-action-per-wake safety policy when a command is
-                    # absent or fails the presence check.
+                    self._reset_command_capture(state, arm_command_refractory=True)
                     return PipelineOutput(
                         accepted=False,
                         wake_detected=False,
@@ -1122,7 +1130,7 @@ class InCarPipeline:
                         self.intent_confidence_threshold is not None
                         and intent_confidence < self.intent_confidence_threshold
                     ):
-                        self._reset_command_capture(state)
+                        self._reset_command_capture(state, arm_command_refractory=True)
                         state.kws_scores.clear()
                         return PipelineOutput(
                             accepted=True,
@@ -1143,7 +1151,7 @@ class InCarPipeline:
                         and self.command_speaker_gate_rescue_confidence is not None
                         and intent_confidence < self.command_speaker_gate_rescue_confidence
                     ):
-                        self._reset_command_capture(state)
+                        self._reset_command_capture(state, arm_command_refractory=True)
                         state.kws_scores.clear()
                         return PipelineOutput(
                             accepted=True,
@@ -1163,7 +1171,7 @@ class InCarPipeline:
                     self.intent_confidence_threshold is not None
                     and intent_confidence < self.intent_confidence_threshold
                 ):
-                    self._reset_command_capture(state)
+                    self._reset_command_capture(state, arm_command_refractory=True)
                     state.kws_scores.clear()
                     return PipelineOutput(
                         accepted=True,

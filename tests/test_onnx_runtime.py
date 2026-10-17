@@ -63,6 +63,13 @@ class _FakeRuntime:
         }
 
 
+class _LowConfidenceRuntime(_FakeRuntime):
+    def run_components(self, *args, **kwargs):
+        components = super().run_components(*args, **kwargs)
+        components["intent_logits"] = np.zeros((1, 3), dtype=np.float32)
+        return components
+
+
 def test_composed_pipeline_preserves_playback_contract_and_wake_to_command() -> None:
     runtime = _FakeRuntime()
     pipeline = OnnxInCarPipeline(
@@ -108,6 +115,35 @@ def test_composed_pipeline_preserves_playback_contract_and_wake_to_command() -> 
 def test_composed_pipeline_rejects_unvalidated_endpoint_strategy() -> None:
     with pytest.raises(ValueError, match="only the validated fixed command window"):
         OnnxInCarPipeline(_FakeRuntime(), command_window_strategy="endpoint")
+
+
+def test_composed_pipeline_arms_failed_command_refractory() -> None:
+    pipeline = OnnxInCarPipeline(
+        _LowConfidenceRuntime(),
+        presence_threshold=0.1,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        intent_confidence_threshold=0.9,
+        post_command_refractory_calls=2,
+    )
+    capture = np.zeros((4, 48_000), dtype=np.float32)
+    enrollment = np.zeros(24_000, dtype=np.float32)
+
+    wake, state = pipeline.forward(capture, enrollment, multichannel=capture)
+    suppressed, state = pipeline.forward(capture, enrollment, state, multichannel=capture)
+    assert wake.wake_detected is True
+    assert suppressed.command_suppressed is True
+    assert state.post_action_refractory_left == 2
+
+    blocked, state = pipeline.forward(capture, enrollment, state, multichannel=capture)
+    assert blocked.wake_detected is False
+    blocked, state = pipeline.forward(capture, enrollment, state, multichannel=capture)
+    assert blocked.wake_detected is False
+    assert state.post_action_refractory_left == 0
+
+    next_wake, _ = pipeline.forward(capture, enrollment, state, multichannel=capture)
+    assert next_wake.wake_detected is True
 
 
 def test_composed_pipeline_rejects_pre_extracted_shortcut() -> None:

@@ -51,6 +51,52 @@ The 1,000-scene overlap result has zero false actions but 56 wrong target action
 
 The fine-tuned intent head is a valid candidate and is the current best intent checkpoint for the controlled multi-speaker proxy. It does not solve the main bottleneck by itself. The next high-value improvement is a target-speaker authorization gate or seat-zone cue calibrated on held-out speakers, followed by true endpointing. More intent-only training without fixing that authorization path is likely to improve recognition while leaving wrong actions unchanged.
 
+## Post-command-cycle safety ablation
+
+The FT3 logs showed that most sequential false actions were late passenger-triggered
+cycles after the target wake had already produced a low-confidence or suppressed
+command. The existing `post_action_refractory_calls` setting only starts after a
+command is committed, so it could not cover that path. I added an opt-in
+`post_command_refractory_calls` setting that arms the same wake lockout after a
+command cycle is suppressed or times out. The historical default remains zero.
+
+The candidate uses 16 calls at a 0.5-second hop (8 seconds). It was evaluated on
+the same held-out 1,000-scene proxy as FT3:
+
+| Condition | Metric | FT3 baseline | FT3 + failed-cycle lockout | Change |
+|---|---|---:|---:|---:|
+| Passenger, sequential | Target wake recall | 99.7% | 99.7% | 0.0 pp |
+| Passenger, sequential | Fully correct scenes | 80.3% | 80.3% | 0.0 pp |
+| Passenger, sequential | False actions | 15 | **0** | **-15** |
+| Passenger, sequential | Passenger-only false actions | 13 | **0** | **-13** |
+| Passenger, sequential | Wrong executed actions | 35 | **17** | **-18** |
+| Passenger, sequential | Strict false wakes/hour | 119.6 | **48.1** | **-59.3%** |
+| Passenger, sequential | Strict false commands/hour | 11.1 | **6.4** | **-41.9%** |
+| Passenger, overlap | Target wake recall | 100.0% | 100.0% | 0.0 pp |
+| Passenger, overlap | Fully correct scenes | 79.4% | 79.4% | 0.0 pp |
+| Passenger, overlap | False actions | 0 | 0 | 0 |
+| Passenger, overlap | Wrong executed actions | 56 | **55** | -1 |
+| Passenger, overlap | Strict false wakes/hour | 63.0 | **61.7** | -2.0% |
+| Passenger, overlap | Strict false commands/hour | 4.37 | **4.11** | -5.9% |
+
+Mean and p95 target-wake latency were unchanged (2.13/3.5 s sequential and
+2.15/3.5 s overlap). The safety policy is therefore retained as the strongest
+current state-machine candidate, but it is not yet a production setting: a real
+multi-turn session test is still needed to quantify whether an 8-second lockout
+blocks a legitimate second command.
+
+Figures:
+
+- `reports/figures/postcommand_refractory_passenger_2026-10-17.png` / `.pdf`
+- `reports/figures/postcommand_refractory_overlap_2026-10-17.png` / `.pdf`
+
+Reproduction artifacts:
+
+- Config: `configs/eval_end_to_end_fscpassenger_identity_runtimealignedintent_ft3_prewakebuffer_postcommand16_2026-10-17.yaml`
+- Sequential JSON: `logs/multispeaker_passenger_ft3_postcommand16_1000_2026-10-17.json`
+- Overlap JSON: `logs/multispeaker_overlap_ft3_postcommand16_1000_2026-10-17.json`
+- Unit test: `test_post_command_refractory_blocks_after_suppressed_command_cycle` in `tests/test_pipeline_drop.py`
+
 ## Reproducibility artifacts
 
 - Config: `configs/eval_end_to_end_fscpassenger_identity_runtimealignedintent_ft3_prewakebuffer_2026-10-17.yaml`

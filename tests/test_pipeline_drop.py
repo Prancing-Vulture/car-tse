@@ -102,6 +102,38 @@ def test_post_action_refractory_blocks_only_after_action_commit():
     assert next_wake.wake_detected is True
 
 
+def test_post_command_refractory_blocks_after_suppressed_command_cycle():
+    pipe = InCarPipeline(
+        _IdentityStage1(),
+        _AlwaysPresent(),
+        _AlwaysWake(),
+        _LowConfidenceIntent(),
+        presence_threshold=0.5,
+        kws_threshold=0.5,
+        kws_smoothing_window=1,
+        kws_required_hits=1,
+        intent_confidence_threshold=0.6,
+        post_command_refractory_calls=2,
+    )
+    mixture = torch.randn(3 * 16000)
+    enrollment = torch.randn(16000)
+
+    wake, state = pipe.forward(mixture, enrollment)
+    assert wake.wake_detected is True
+    suppressed, state = pipe.forward(mixture, enrollment, state)
+    assert suppressed.command_suppressed is True
+    assert state.post_action_refractory_left == 2
+
+    blocked, state = pipe.forward(mixture, enrollment, state)
+    assert blocked.wake_detected is False
+    blocked, state = pipe.forward(mixture, enrollment, state)
+    assert blocked.wake_detected is False
+    assert state.post_action_refractory_left == 0
+
+    next_wake, _ = pipe.forward(mixture, enrollment, state)
+    assert next_wake.wake_detected is True
+
+
 def test_downstream_extraction_conditioning_only_attenuates_large_gain():
     wav = torch.tensor([[2.0, -1.0, 0.25], [0.2, -0.1, 0.05]])
     normalized = normalize_extracted_waveform(wav)

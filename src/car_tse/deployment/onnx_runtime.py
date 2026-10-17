@@ -347,6 +347,7 @@ class OnnxInCarPipeline:
         kws_required_hits: int = 2,
         kws_refractory_calls: int = 0,
         post_action_refractory_calls: int = 0,
+        post_command_refractory_calls: int = 0,
         wake_class_id: int = 1,
         command_timeout_calls: int = 4,
         command_delay_calls: int = 0,
@@ -380,6 +381,7 @@ class OnnxInCarPipeline:
         self.kws_required_hits = max(1, min(int(kws_required_hits), self.kws_smoothing_window))
         self.kws_refractory_calls = max(0, int(kws_refractory_calls))
         self.post_action_refractory_calls = max(0, int(post_action_refractory_calls))
+        self.post_command_refractory_calls = max(0, int(post_command_refractory_calls))
         self.wake_class_id = int(wake_class_id)
         self.command_timeout_calls = max(1, int(command_timeout_calls))
         self.command_delay_calls = max(0, int(command_delay_calls))
@@ -388,8 +390,12 @@ class OnnxInCarPipeline:
         )
         self.label_map = dict(label_map or {})
 
-    @staticmethod
-    def _reset_command_capture(state: PipelineState) -> None:
+    def _reset_command_capture(
+        self,
+        state: PipelineState,
+        *,
+        arm_command_refractory: bool = False,
+    ) -> None:
         state.awaiting_command = False
         state.command_wait_calls = 0
         state.command_candidate_calls = 0
@@ -397,6 +403,11 @@ class OnnxInCarPipeline:
         state.command_best_logits = None
         state.command_candidate_history.clear()
         state.wake_context = None
+        if arm_command_refractory:
+            state.post_action_refractory_left = max(
+                state.post_action_refractory_left,
+                self.post_command_refractory_calls,
+            )
 
     def _output(
         self,
@@ -497,7 +508,7 @@ class OnnxInCarPipeline:
                 ), state
             state.command_wait_calls += 1
             if state.command_wait_calls >= self.command_timeout_calls:
-                self._reset_command_capture(state)
+                self._reset_command_capture(state, arm_command_refractory=True)
                 state.kws_refractory_left = 0
                 return self._output(
                     accepted=False,
@@ -533,7 +544,7 @@ class OnnxInCarPipeline:
                 self.intent_confidence_threshold is not None
                 and confidence < self.intent_confidence_threshold
             ):
-                self._reset_command_capture(state)
+                self._reset_command_capture(state, arm_command_refractory=True)
                 state.kws_scores.clear()
                 return self._output(
                     accepted=True,
