@@ -875,6 +875,25 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--command-speaker-gate-rescue-confidence",
+        type=float,
+        default=None,
+        help=(
+            "For post-wake frames below the command speaker threshold, allow the "
+            "frame through only when the buffered intent confidence reaches this "
+            "value. This is a diagnostic soft-gate override."
+        ),
+    )
+    parser.add_argument(
+        "--command-speaker-gate-rescue-floor",
+        type=float,
+        default=None,
+        help=(
+            "Minimum post-wake speaker similarity for the soft-gate rescue path. "
+            "Only used together with --command-speaker-gate-rescue-confidence."
+        ),
+    )
+    parser.add_argument(
         "--speaker-gate-backend",
         choices=("spex", "wav2vec", "compact", "auto"),
         default=None,
@@ -990,6 +1009,14 @@ def main() -> int:
         cfg["command_speaker_gate_threshold"] = float(args.speaker_gate_threshold)
     if args.command_speaker_gate_threshold is not None:
         cfg["command_speaker_gate_threshold"] = float(args.command_speaker_gate_threshold)
+    if args.command_speaker_gate_rescue_confidence is not None:
+        cfg["command_speaker_gate_rescue_confidence"] = float(
+            args.command_speaker_gate_rescue_confidence
+        )
+    if args.command_speaker_gate_rescue_floor is not None:
+        cfg["command_speaker_gate_rescue_floor"] = float(
+            args.command_speaker_gate_rescue_floor
+        )
     if args.speaker_gate_backend is not None:
         cfg["speaker_gate_backend"] = str(args.speaker_gate_backend)
     if args.intent_window_offset_seconds is not None:

@@ -1,0 +1,97 @@
+{
+  "benchmark": "per_component_latency",
+  "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_fscpassenger_identity_runtimealignedintent_ft6_jitter_prewakebuffer_postcommand08_2026-10-17.yaml",
+  "device": "cuda",
+  "precision": "fp16",
+  "sample_rate": 16000,
+  "context_seconds": 3.0,
+  "intent_input_seconds": 3.0,
+  "num_mics": 4,
+  "warmup": 5,
+  "repeats": 20,
+  "components": {
+    "stage1_extraction_3s_4ch": {
+      "mean_ms": 63.47096499999907,
+      "p50_ms": 56.673749999959,
+      "p95_ms": 100.38693000002468,
+      "min_ms": 42.99539999999524,
+      "max_ms": 101.52749999997468
+    },
+    "enrollment_speaker_embedding": {
+      "mean_ms": 5.164440000004333,
+      "p50_ms": 3.6370500000089123,
+      "p95_ms": 7.4686899999449,
+      "min_ms": 3.457299999922725,
+      "max_ms": 7.540699999935896
+    },
+    "extracted_speaker_embedding": {
+      "mean_ms": 3.728364999989253,
+      "p50_ms": 3.508849999946051,
+      "p95_ms": 4.001535000008974,
+      "min_ms": 3.4815000000207874,
+      "max_ms": 7.557099999985439
+    },
+    "presence_head_3s": {
+      "mean_ms": 1.2756500000023152,
+      "p50_ms": 1.270549999958348,
+      "p95_ms": 1.3205850000531427,
+      "min_ms": 1.2545999999247215,
+      "max_ms": 1.324100000033468
+    },
+    "target_kws_1s": {
+      "mean_ms": 4.651484999993727,
+      "p50_ms": 4.67929999996386,
+      "p95_ms": 4.704284999996844,
+      "min_ms": 4.252000000064982,
+      "max_ms": 4.743899999994028
+    },
+    "general_kws_1s": {
+      "mean_ms": 3.439154999995253,
+      "p50_ms": 3.5270999999852393,
+      "p95_ms": 3.5915299999487615,
+      "min_ms": 2.8528999999934967,
+      "max_ms": 3.647200000045814
+    },
+    "compact_speaker_verifier_2x1s": {
+      "mean_ms": 4.047774999992271,
+      "p50_ms": 3.689000000008491,
+      "p95_ms": 6.635739999933322,
+      "min_ms": 3.639399999997295,
+      "max_ms": 7.968399999981557
+    },
+    "intent_wav2vec_3s": {
+      "mean_ms": 25.704724999991413,
+      "p50_ms": 30.165249999981825,
+      "p95_ms": 32.001359999941315,
+      "min_ms": 14.996200000041426,
+      "max_ms": 32.12220000000343
+    },
+    "composite_wake_stage": {
+      "mean_ms": 74.85306000000378,
+      "p50_ms": 53.68860000004361,
+      "p95_ms": 108.12112999994952,
+      "min_ms": 47.72430000002714,
+      "max_ms": 108.8760000000093
+    },
+    "composite_command_stage": {
+      "mean_ms": 103.3141849999879,
+      "p50_ms": 100.32989999996289,
+      "p95_ms": 123.15576000007128,
+      "min_ms": 93.48430000000008,
+      "max_ms": 149.87469999994119
+    }
+  },
+  "parameters": {
+    "stage1": 10727881,
+    "presence": 33729,
+    "kws": 652450,
+    "target_kws": 389316,
+    "compact_speaker_verifier": 176579,
+    "intent": 94782879
+  },
+  "notes": [
+    "Model-forward times only; microphone I/O, resampling, ring scheduling, and action execution excluded.",
+    "Random synthetic inputs: not an accuracy measurement.",
+    "Composite command stage forces the intent branch and disables decision gates only for compute measurement."
+  ]
+}
