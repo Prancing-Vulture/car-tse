@@ -1,0 +1,6 @@
+{
+  "best_macro_f1": 0.5767663717269897,
+  "epochs_completed": 14,
+  "run_id": "482db40589c54683a44d18b949b46399",
+  "history": "D:\\Prawin_New\\tse\\car-tse-main\\logs\\stage4_intent_wav2vec_large_passenger_joint_tse_2026-10-16\\epoch_metrics_482db40589c54683a44d18b949b46399.jsonl"
+}

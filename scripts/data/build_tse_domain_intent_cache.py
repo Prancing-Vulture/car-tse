@@ -188,6 +188,18 @@ def main() -> int:
     parser.add_argument("--paths", type=Path, default=REPO_ROOT / "configs" / "paths.yaml")
     parser.add_argument("--noise-cache-dir", type=Path, default=REPO_ROOT / "data" / "cache" / "cavemove_16k_mc")
     parser.add_argument("--output-dir", type=Path, default=REPO_ROOT / "data" / "cache" / "stage4_intent_tse_domain_16k")
+    parser.add_argument(
+        "--train-manifest-out",
+        type=Path,
+        default=None,
+        help="Optional output manifest for the generated train cache; defaults to the legacy filename.",
+    )
+    parser.add_argument(
+        "--val-manifest-out",
+        type=Path,
+        default=None,
+        help="Optional output manifest for the generated validation cache; defaults to the legacy filename.",
+    )
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--train-limit", type=int, default=None)
     parser.add_argument("--val-limit", type=int, default=None)
@@ -222,17 +234,23 @@ def main() -> int:
     train_rows = read_jsonl(manifest_root / "train" / source_train)
     val_rows = read_jsonl(manifest_root / "val" / source_val)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    train_manifest_out = args.train_manifest_out or (manifest_root / "train" / "stage4_intent_tse_domain_train.jsonl")
+    val_manifest_out = args.val_manifest_out or (manifest_root / "val" / "stage4_intent_tse_domain_eval.jsonl")
+    if not train_manifest_out.is_absolute():
+        train_manifest_out = REPO_ROOT / train_manifest_out
+    if not val_manifest_out.is_absolute():
+        val_manifest_out = REPO_ROOT / val_manifest_out
     cache_split(
         "train", train_rows,
         args.output_dir / f"train_cabin_wav_{sample_rate}hz.npy",
-        manifest_root / "train" / "stage4_intent_tse_domain_train.jsonl",
+        train_manifest_out,
         model, device, sample_rate, float(stage1_cfg["segment_seconds"]), float(cfg["segment_seconds"]),
         channels, noise_cache_dir, args.batch_size, args.train_limit,
     )
     cache_split(
         "val", val_rows,
         args.output_dir / f"val_cabin_wav_{sample_rate}hz.npy",
-        manifest_root / "val" / "stage4_intent_tse_domain_eval.jsonl",
+        val_manifest_out,
         model, device, sample_rate, float(stage1_cfg["segment_seconds"]), float(cfg["segment_seconds"]),
         channels, noise_cache_dir, args.batch_size, args.val_limit,
     )

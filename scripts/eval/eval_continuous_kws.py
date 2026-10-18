@@ -35,6 +35,7 @@ from car_tse.models.kws_model import KWSModel
 from car_tse.models.presence_head import PresenceHead
 from car_tse.models.stage1_system import Stage1System
 from car_tse.pipeline.in_car_pipeline import PipelineState, normalize_extracted_waveform, update_kws_state
+from car_tse.pipeline.windowing import full_context_window_starts
 from car_tse.train.utils import get_device, load_checkpoint, write_metrics
 
 
@@ -129,7 +130,7 @@ def prepare_channels(data: np.ndarray, channels: list[int], num_mics: int) -> np
 
 def make_windows(data: np.ndarray, window_samples: int, hop_samples: int) -> tuple[np.ndarray, int]:
     """Return [windows, channels, time] and the number of valid starts."""
-    starts = list(range(0, max(1, len(data)), hop_samples))
+    starts = list(full_context_window_starts(len(data), window_samples, hop_samples))
     windows = np.zeros((len(starts), data.shape[1], window_samples), dtype=np.float32)
     for index, start in enumerate(starts):
         end = min(start + window_samples, len(data))

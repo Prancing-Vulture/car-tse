@@ -72,6 +72,7 @@ def main() -> int:
         intent_sample_rate=cfg["sample_rate"],
         kws_num_classes=int(cfg.get("kws_num_classes", 2)),
         intent_type=str(cfg.get("intent_type", "crnn")),
+        intent_bidirectional=bool(cfg.get("intent_bidirectional", True)),
         intent_encoder=str(cfg.get("intent_encoder", "facebook/wav2vec2-base-960h")),
         intent_encoder_checkpoint=(
             Path(paths["checkpoint_root"]) / cfg["intent_encoder_checkpoint"]
@@ -88,6 +89,8 @@ def main() -> int:
         kws_smoothing_window=int(cfg.get("kws_smoothing_window", 1)),
         kws_required_hits=int(cfg.get("kws_required_hits", 1)),
         kws_refractory_calls=int(cfg.get("kws_refractory_calls", 0)),
+        post_action_refractory_calls=int(cfg.get("post_action_refractory_calls", 0)),
+        post_command_refractory_calls=int(cfg.get("post_command_refractory_calls", 0)),
         intent_input_seconds=float(cfg.get("intent_input_seconds", 2.0)),
         command_timeout_calls=int(cfg.get("command_timeout_calls", 4)),
         command_presence_threshold=(

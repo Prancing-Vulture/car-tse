@@ -112,6 +112,10 @@ def negative_rows(
                 "speaker_id": f"aishell5_absent_{split}",
                 "target_present": 0,
                 "condition": "aishell5_farfield_target_absent",
+                # Keep cache generation on bounded windows.  Without this
+                # field PresenceDataset reads every full AISHELL channel for
+                # each row, which is needlessly slow for long recordings.
+                "segment_start_seconds": 0.0,
                 "meta": {"source": "AISHELL-5", "calibration_only": True},
             }
         )
@@ -127,6 +131,7 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=20261004)
     parser.add_argument("--copies-per-speaker", type=int, default=2)
     parser.add_argument("--channels", nargs="+", default=["DX01C01.wav", "DX02C01.wav", "DX03C01.wav", "DX04C01.wav"])
+    parser.add_argument("--output-name", default="stage2_presence_gsc_aishell.jsonl")
     args = parser.parse_args()
 
     marvin_root = resolve_path(args.marvin_root)
@@ -165,7 +170,7 @@ def main() -> int:
         negative = negative_rows(sessions, enrollments, len(positive), split)
         rows = positive + negative
         rng.shuffle(rows)
-        output = manifest_root / split / "stage2_presence_gsc_aishell.jsonl"
+        output = manifest_root / split / args.output_name
         write_jsonl(output, rows)
         print(
             f"{split}: {len(positive)} present + {len(negative)} absent = {len(rows)} rows; "

@@ -78,3 +78,61 @@ class Wav2VecIntentClassifier(nn.Module):
 
     def forward(self, wav: torch.Tensor) -> torch.Tensor:
         return self.head(self._features(wav))
+
+
+class Wav2VecIntentEnsemble(nn.Module):
+    """Weighted logit ensemble for compatible wav2vec-style intent models.
+
+    This is intentionally opt-in.  Each member keeps its own encoder and head,
+    while the returned logits are a weighted average before the pipeline's
+    confidence and action gates.  Averaging logits rather than class IDs lets
+    the command buffer and confidence threshold continue to operate exactly as
+    they do for a single intent model.
+    """
+
+    def __init__(
+        self,
+        members: list[Wav2VecIntentClassifier],
+        weights: list[float] | None = None,
+        selection: str = "weighted_mean",
+        gate_threshold: float = 0.90,
+    ):
+        super().__init__()
+        if not members:
+            raise ValueError("Wav2VecIntentEnsemble requires at least one member")
+        num_classes = None
+        for member in members:
+            output = int(member.head.net[-1].out_features)
+            if num_classes is None:
+                num_classes = output
+            elif output != num_classes:
+                raise ValueError("all intent ensemble members must have the same class count")
+        self.members = nn.ModuleList(members)
+        self.selection = str(selection).lower()
+        if self.selection not in {"weighted_mean", "confidence_fallback"}:
+            raise ValueError("intent ensemble selection must be weighted_mean or confidence_fallback")
+        self.gate_threshold = min(max(float(gate_threshold), 0.0), 1.0)
+        raw_weights = torch.ones(len(members), dtype=torch.float32) if weights is None else torch.tensor(weights, dtype=torch.float32)
+        if raw_weights.numel() != len(members) or not torch.isfinite(raw_weights).all() or (raw_weights < 0).any():
+            raise ValueError("intent ensemble weights must be finite and non-negative")
+        if float(raw_weights.sum()) <= 0.0:
+            raise ValueError("intent ensemble weights must have a positive sum")
+        self.register_buffer("weights", raw_weights / raw_weights.sum(), persistent=False)
+
+    def embedding(self, wav: torch.Tensor) -> torch.Tensor:
+        """Use the first member's representation for optional speaker gating."""
+
+        return self.members[0].embedding(wav)
+
+    def forward(self, wav: torch.Tensor) -> torch.Tensor:
+        if self.selection == "confidence_fallback":
+            if len(self.members) != 2:
+                raise ValueError("confidence_fallback requires exactly two intent members")
+            primary_logits = self.members[0](wav)
+            primary_confidence = torch.softmax(primary_logits, dim=-1).max(dim=-1, keepdim=True).values
+            fallback_logits = self.members[1](wav)
+            use_fallback = primary_confidence < self.gate_threshold
+            return torch.where(use_fallback, fallback_logits, primary_logits)
+        logits = torch.stack([member(wav) for member in self.members], dim=0)
+        weights = self.weights.to(device=logits.device, dtype=logits.dtype)
+        return (logits * weights.view(-1, 1, 1)).sum(dim=0)

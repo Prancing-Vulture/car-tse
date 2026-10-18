@@ -1,0 +1,25 @@
+name: stage3_kws_clean_control_large
+sample_rate: 16000
+segment_seconds: 1.0
+wake_word: marvin
+manifest_train: ../clean_control/stage3_kws_clean_train.jsonl
+manifest_val: ../clean_control/stage3_kws_clean_val.jsonl
+manifest_eval: ../clean_control/stage3_kws_clean_test.jsonl
+cabin_noise: false
+audio_cache_size: 0
+waveform_cache_includes_cabin_noise: false
+
+model:
+  n_mels: 40
+  channels: [48, 96, 192, 256]
+  num_classes: 2
+
+train:
+  batch_size: 256
+  val_batch_size: 512
+  max_epochs: 20
+  patience: 5
+  lr: 5.0e-4
+  grad_clip: 5.0
+  amp: true
+  num_workers: 0

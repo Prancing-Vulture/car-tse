@@ -230,6 +230,13 @@ class TripletExtractionDataset(Dataset):
             "enrollment": torch.from_numpy(enroll),
             "target": torch.from_numpy(aligned_map["target"]),
             "target_present": float(row.get("target_present", 1)),
+            # Binary presence manifests predate the personal-activity head.
+            # Keep their behavior (present -> target class 1, absent -> class
+            # 0) while allowing new manifests to distinguish target speech
+            # (1), non-target speech (2), and non-speech (0).
+            "target_activity_class": int(
+                row.get("target_activity_class", 1 if row.get("target_present", 1) else 0)
+            ),
             "speaker_id": row.get("speaker_id", ""),
         }
         if "speaker_label" in row:
@@ -282,7 +289,16 @@ class KWSDataset(Dataset):
                 try:
                     cached = np.load(cache_path, mmap_mode="r", allow_pickle=False)
                     expected_shape = (len(self.rows), self.num_samples)
-                    if tuple(cached.shape) == expected_shape:
+                    # A longer cached waveform is still valid: the common
+                    # segment_waveform call below performs the deterministic
+                    # validation crop (or a training-time random crop).  This
+                    # lets short-window experiments reuse a longer aligned
+                    # TSE cache instead of silently falling back to raw audio.
+                    if (
+                        cached.ndim == 2
+                        and cached.shape[0] == expected_shape[0]
+                        and cached.shape[1] >= expected_shape[1]
+                    ):
                         self.waveform_cache = cached
                 except (OSError, ValueError):
                     self.waveform_cache = None
@@ -399,7 +415,13 @@ class IntentDataset(Dataset):
                 try:
                     cached = np.load(cache_path, mmap_mode="r", allow_pickle=False)
                     expected_shape = (len(self.rows), self.num_samples)
-                    if tuple(cached.shape) == expected_shape:
+                    # Reuse a longer aligned cache for a shorter command
+                    # window; segment_waveform below performs the crop.
+                    if (
+                        cached.ndim == 2
+                        and cached.shape[0] == expected_shape[0]
+                        and cached.shape[1] >= expected_shape[1]
+                    ):
                         self.waveform_cache = cached
                 except (OSError, ValueError):
                     self.waveform_cache = None

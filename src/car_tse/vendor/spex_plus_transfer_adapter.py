@@ -14,9 +14,12 @@ from car_tse.vendor.spex_plus_16k import SpExPlus16k, load_spex_plus_16k
 class SpExPlus16kTransferAdapter(nn.Module):
     """Expose the transfer model through the project's Stage 1 interface."""
 
-    def __init__(self, checkpoint: str | Path):
+    def __init__(self, checkpoint: str | Path, *, causal: bool = False):
         super().__init__()
-        self.model: SpExPlus16k = load_spex_plus_16k(checkpoint)
+        self.model: SpExPlus16k = load_spex_plus_16k(
+            checkpoint,
+            model_config={"causal": bool(causal)},
+        )
 
     def forward(
         self,

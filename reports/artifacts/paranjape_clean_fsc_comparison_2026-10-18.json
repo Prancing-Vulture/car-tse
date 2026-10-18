@@ -1,0 +1,13 @@
+{
+  "accuracy": 0.9931452675982072,
+  "top5_accuracy": 0.9989454257843395,
+  "macro_precision": 0.9927002191543579,
+  "macro_recall": 0.9921356439590454,
+  "macro_f1": 0.9923617243766785,
+  "examples": 3793.0,
+  "split": "test",
+  "clean": true,
+  "manifest": "D:\\Prawin_New\\tse\\car-tse-main\\manifests\\official\\stage4_intent_fsc_test.jsonl",
+  "head_checkpoint": "checkpoints\\stage4_intent_wav2vec_ft8_resume_tse_domain\\best.pt",
+  "encoder_checkpoint": "checkpoints\\stage4_intent_wav2vec_ft8_resume_tse_domain\\encoder_best.pt"
+}

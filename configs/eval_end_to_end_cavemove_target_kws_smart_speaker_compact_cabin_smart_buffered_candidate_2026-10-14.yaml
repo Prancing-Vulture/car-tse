@@ -1,0 +1,56 @@
+name: eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_buffered_candidate_2026-10-14
+sample_rate: 16000
+segment_seconds: 3.0
+manifest: stage1_cavemove_cabin.jsonl
+split: test
+stage1_config: configs/stage1_spex_dual_domain_rms010_ft1.yaml
+presence_type: frame
+presence_sample_rate: 16000
+presence_n_mels: 40
+presence_hidden: 64
+presence_n_fft: 512
+presence_hop: 160
+presence_top_fraction: 0.20
+presence_threshold: 0.15
+command_presence_threshold: 0.10
+intent_confidence_threshold: 0.53
+speaker_gate_threshold: 0.30
+command_speaker_gate_threshold: 0.30
+speaker_gate_backend: compact
+compact_speaker_verifier_input_seconds: 1.0
+compact_speaker_verifier_sample_rate: 16000
+compact_speaker_verifier_embedding_dim: 128
+compact_speaker_verifier_hidden: 128
+intent_type: wav2vec
+intent_encoder: facebook/wav2vec2-base-960h
+intent_encoder_checkpoint: stage4_intent_wav2vec_ft8_resume_tse_domain/encoder_best.pt
+kws_threshold: 0.50
+kws_input_seconds: 1.0
+kws_smoothing_window: 2
+kws_required_hits: 2
+kws_num_classes: 2
+intent_input_seconds: 2.0
+command_timeout_calls: 4
+command_delay_calls: 0
+command_window_strategy: confidence_buffered
+command_buffer_calls: 2
+command_confidence_commit_threshold: 0.90
+command_endpoint_kws_hop_seconds: 0.25
+command_endpoint_margin_seconds: 0.80
+label_map: meta/intent_label_map.json
+target_kws_fusion_mode: mean
+
+cabin_noise: true
+num_mics: 4
+cabin_noise_channels: [0, 2, 4, 6]
+cabin_noise_snr_db: [-5.0, 0.0, 5.0, 10.0, 15.0, 20.0]
+cabin_noise_cache_size: 32
+cabin_noise_cache_dir: data/cache/cavemove_16k_mc
+
+checkpoints:
+  spex: stage1_spex_dual_domain_rms010_ft1/best.pt
+  presence: stage2_frame_presence_dual_domain_nonwake_ft1/best.pt
+  kws: stage3_kws_gsc_marvin_tse_ft2/best.pt
+  target_kws: stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker_ft1/best.pt
+  compact_speaker_verifier: compact_speaker_verifier_cabin_smart_ft1/best.pt
+  intent: stage4_intent_wav2vec_ft8_resume_tse_domain/best.pt

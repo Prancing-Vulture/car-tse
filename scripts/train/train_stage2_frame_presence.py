@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import random
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -17,11 +18,20 @@ from torch.utils.data import DataLoader, Dataset, Subset
 
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.data.datasets import PresenceDataset
-from car_tse.losses.presence import frame_presence_loss, target_activity_labels
-from car_tse.models.presence_head import FramePresenceHead
+from car_tse.losses.presence import (
+    frame_activity_loss,
+    frame_presence_loss,
+    target_activity_class_labels,
+    target_activity_labels,
+)
+from car_tse.models.presence_head import (
+    FramePresenceHead,
+    PersonalActivityHead,
+    PersonalFramePresenceHead,
+)
 from car_tse.models.stage1_system import Stage1System
 from car_tse.io.manifest import read_jsonl
-from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, write_metrics
+from car_tse.train.utils import append_jsonl, get_device, load_checkpoint, save_checkpoint, write_metrics
 
 
 def sha256_file(path: Path) -> str:
@@ -49,32 +59,92 @@ def collate(batch: list[dict]) -> dict:
 class CachedPresenceDataset(Dataset):
     """CPU feature cache for repeated frozen-Stage-1 head experiments."""
 
-    def __init__(self, stage1_output: torch.Tensor, frame_labels: torch.Tensor, target_present: torch.Tensor):
+    def __init__(
+        self,
+        stage1_output: torch.Tensor,
+        frame_labels: torch.Tensor,
+        target_present: torch.Tensor,
+        enrollment_embedding: torch.Tensor | None = None,
+        target_activity_class: torch.Tensor | None = None,
+    ):
         self.stage1_output = stage1_output.float().contiguous()
         self.frame_labels = frame_labels.float().contiguous()
         self.target_present = target_present.float().contiguous()
+        self.enrollment_embedding = (
+            enrollment_embedding.float().contiguous() if enrollment_embedding is not None else None
+        )
+        self.target_activity_class = (
+            target_activity_class.long().contiguous() if target_activity_class is not None else None
+        )
 
     def __len__(self) -> int:
         return int(self.target_present.shape[0])
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor | float]:
-        return {
+        item = {
             "s1": self.stage1_output[index],
             "frame_labels": self.frame_labels[index],
             "target_present": self.target_present[index],
         }
+        if self.enrollment_embedding is not None:
+            item["enrollment_embedding"] = self.enrollment_embedding[index]
+        if self.target_activity_class is not None:
+            item["target_activity_class"] = self.target_activity_class[index]
+        return item
 
 
-def split_indices(rows: list[dict], val_fraction: float, seed: int, max_rows: int = 0) -> tuple[list[int], list[int]]:
+def split_indices(
+    rows: list[dict],
+    val_fraction: float,
+    seed: int,
+    max_rows: int = 0,
+    group_by_speaker: bool = False,
+) -> tuple[list[int], list[int]]:
     rng = random.Random(seed)
-    grouped: dict[int, list[int]] = {0: [], 1: []}
-    for index, row in enumerate(rows):
-        grouped[int(row.get("target_present", 0) >= 0.5)].append(index)
+    selected_indices = list(range(len(rows)))
     if max_rows > 0:
+        grouped: dict[int, list[int]] = {0: [], 1: []}
+        for index, row in enumerate(rows):
+            grouped[int(row.get("target_present", 0) >= 0.5)].append(index)
         per_class = max(1, max_rows // 2)
         for label in grouped:
             rng.shuffle(grouped[label])
             grouped[label] = grouped[label][:per_class]
+        selected_indices = grouped[0] + grouped[1]
+
+    if group_by_speaker:
+        grouped_by_speaker: dict[str, list[int]] = {}
+        for index in selected_indices:
+            row = rows[index]
+            group = str(
+                row.get("group_id")
+                or row.get("speaker_id")
+                or row.get("source_speaker_id")
+                or f"row-{index}"
+            )
+            grouped_by_speaker.setdefault(group, []).append(index)
+        groups = list(grouped_by_speaker.values())
+        rng.shuffle(groups)
+        target_validation_rows = min(
+            max(1, int(round(len(selected_indices) * val_fraction))),
+            max(1, len(selected_indices) - 1),
+        )
+        validation: list[int] = []
+        train: list[int] = []
+        for group in groups:
+            if len(validation) < target_validation_rows and len(validation) + len(group) < len(selected_indices):
+                validation.extend(group)
+            else:
+                train.extend(group)
+        if not train and validation:
+            train.extend(validation.pop())
+        rng.shuffle(train)
+        rng.shuffle(validation)
+        return train, validation
+
+    grouped = {0: [], 1: []}
+    for index in selected_indices:
+        grouped[int(rows[index].get("target_present", 0) >= 0.5)].append(index)
     train: list[int] = []
     validation: list[int] = []
     for indices in grouped.values():
@@ -129,6 +199,8 @@ def build_stage1_cache(
     n_fft: int,
     hop: int,
     target_threshold_db: float,
+    personal_conditioned: bool = False,
+    activity_mode: bool = False,
 ) -> CachedPresenceDataset:
     """Run frozen Stage 1 once so later head epochs avoid re-running SpEx+."""
 
@@ -136,42 +208,70 @@ def build_stage1_cache(
     stage1_outputs: list[torch.Tensor] = []
     frame_labels: list[torch.Tensor] = []
     target_present_values: list[torch.Tensor] = []
+    target_activity_classes: list[torch.Tensor] = []
+    enrollment_embeddings: list[torch.Tensor] = []
     for batch in loader:
         mix = batch["mixture"].to(device, non_blocking=True)
         enroll = batch["enrollment"].to(device, non_blocking=True)
         target = batch["target"].to(device, non_blocking=True)
         target_present = batch["target_present"].to(device, non_blocking=True).float()
+        activity_class = batch.get("target_activity_class")
+        if isinstance(activity_class, torch.Tensor):
+            activity_class = activity_class.to(device, non_blocking=True).long()
+        else:
+            activity_class = target_present.long()
         mc = batch.get("multichannel")
         if isinstance(mc, torch.Tensor):
             mc = mc.to(device, non_blocking=True)
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
             s1, _, _, _ = stage1(mix, enroll, multichannel=mc)
-        labels = target_activity_labels(
-            target,
-            target_present,
-            n_fft=n_fft,
-            hop=hop,
-            threshold_db_below_peak=target_threshold_db,
+        if personal_conditioned:
+            enrollment_embedding = stage1.speaker_embedding(enroll)
+            if enrollment_embedding is None:
+                raise RuntimeError("Personal presence training requires Stage 1 speaker embeddings")
+            enrollment_embeddings.append(enrollment_embedding.detach().float().cpu())
+        labels = (
+            target_activity_class_labels(
+                target,
+                activity_class,
+                n_fft=n_fft,
+                hop=hop,
+                threshold_db_below_peak=target_threshold_db,
+            )
+            if activity_mode
+            else target_activity_labels(
+                target,
+                target_present,
+                n_fft=n_fft,
+                hop=hop,
+                threshold_db_below_peak=target_threshold_db,
+            )
         )
         stage1_outputs.append(s1.detach().float().cpu())
         frame_labels.append(labels.detach().float().cpu())
         target_present_values.append(target_present.detach().float().cpu())
+        if activity_mode:
+            target_activity_classes.append(activity_class.detach().long().cpu())
     if not stage1_outputs:
         return CachedPresenceDataset(
             torch.zeros((0, 1), dtype=torch.float32),
             torch.zeros((0, 1), dtype=torch.float32),
             torch.zeros((0,), dtype=torch.float32),
+            torch.zeros((0, 256), dtype=torch.float32) if personal_conditioned else None,
+            torch.zeros((0,), dtype=torch.long) if activity_mode else None,
         )
     return CachedPresenceDataset(
         torch.cat(stage1_outputs, dim=0),
         torch.cat(frame_labels, dim=0),
         torch.cat(target_present_values, dim=0),
+        torch.cat(enrollment_embeddings, dim=0) if personal_conditioned else None,
+        torch.cat(target_activity_classes, dim=0) if activity_mode else None,
     )
 
 
 @torch.no_grad()
 def evaluate(
-    head: FramePresenceHead,
+    head: torch.nn.Module,
     stage1: Stage1System,
     loader: DataLoader,
     device: torch.device,
@@ -180,6 +280,8 @@ def evaluate(
     hop: int,
     target_threshold_db: float,
     top_fraction: float,
+    personal_conditioned: bool = False,
+    activity_mode: bool = False,
 ) -> dict:
     head.eval()
     frame_scores: list[np.ndarray] = []
@@ -188,11 +290,19 @@ def evaluate(
     chunk_labels: list[np.ndarray] = []
     for batch in loader:
         target_present = batch["target_present"].to(device, non_blocking=True).float()
+        activity_class = batch.get("target_activity_class")
+        if isinstance(activity_class, torch.Tensor):
+            activity_class = activity_class.to(device, non_blocking=True).long()
+        else:
+            activity_class = target_present.long()
         cached_s1 = batch.get("s1")
         cached_labels = batch.get("frame_labels")
         if isinstance(cached_s1, torch.Tensor) and isinstance(cached_labels, torch.Tensor):
             s1 = cached_s1.to(device, non_blocking=True)
             labels = cached_labels.to(device, non_blocking=True)
+            enrollment_embedding = batch.get("enrollment_embedding")
+            if isinstance(enrollment_embedding, torch.Tensor):
+                enrollment_embedding = enrollment_embedding.to(device, non_blocking=True)
         else:
             mix = batch["mixture"].to(device, non_blocking=True)
             enroll = batch["enrollment"].to(device, non_blocking=True)
@@ -202,22 +312,50 @@ def evaluate(
                 mc = mc.to(device, non_blocking=True)
             with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
                 s1, _, _, _ = stage1(mix, enroll, multichannel=mc)
-            labels = target_activity_labels(
-                target,
-                target_present,
-                n_fft=n_fft,
-                hop=hop,
-                threshold_db_below_peak=target_threshold_db,
+            enrollment_embedding = stage1.speaker_embedding(enroll) if personal_conditioned else None
+            labels = (
+                target_activity_class_labels(
+                    target,
+                    activity_class,
+                    n_fft=n_fft,
+                    hop=hop,
+                    threshold_db_below_peak=target_threshold_db,
+                )
+                if activity_mode
+                else target_activity_labels(
+                    target,
+                    target_present,
+                    n_fft=n_fft,
+                    hop=hop,
+                    threshold_db_below_peak=target_threshold_db,
+                )
             )
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
-            logits = head(s1.float())
-        logits, labels = align_frames(logits.float(), labels)
-        scores = torch.sigmoid(logits)
+            logits = (
+                head(s1.float(), enrollment_embedding)
+                if personal_conditioned
+                else head(s1.float())
+            )
+        logits = logits.float()
+        if activity_mode:
+            frames = min(logits.shape[-1], labels.shape[-1])
+            logits, labels = logits[..., :frames], labels[..., :frames]
+            scores = torch.softmax(logits, dim=1)[:, 1, :]
+            binary_labels = (labels == 1).float()
+        else:
+            logits, labels = align_frames(logits, labels)
+            scores = torch.sigmoid(logits)
+            binary_labels = labels
         chunk = FramePresenceHead.aggregate_probability(scores, top_fraction=top_fraction)
         frame_scores.append(scores.cpu().numpy().reshape(-1))
-        frame_labels.append(labels.cpu().numpy().reshape(-1))
+        frame_labels.append(binary_labels.cpu().numpy().reshape(-1))
         chunk_scores.append(chunk.cpu().numpy().reshape(-1))
-        chunk_labels.append((target_present >= 0.5).cpu().numpy().reshape(-1))
+        chunk_labels.append(
+            ((activity_class == 1) if activity_mode else (target_present >= 0.5))
+            .cpu()
+            .numpy()
+            .reshape(-1)
+        )
 
     frame_score_array = np.concatenate(frame_scores) if frame_scores else np.zeros(0, dtype=np.float32)
     frame_label_array = np.concatenate(frame_labels) if frame_labels else np.zeros(0, dtype=np.float32)
@@ -297,6 +435,10 @@ def main() -> int:
         manifest_names = [manifest_names]
     manifest = Path(paths["manifest_root"]) / "train" / str(manifest_names[0])
     cache_stage1 = bool(cfg["train"].get("cache_stage1", False))
+    model_cfg = cfg.get("model", {})
+    model_type = str(model_cfg.get("type", "frame")).lower()
+    personal_conditioned = model_type in {"personal", "personal_frame", "personal_activity", "personal_activity_3way"}
+    activity_mode = model_type in {"personal_activity", "personal_activity_3way"}
     dataset_kwargs = {
         "cabin_noise": bool(cfg.get("cabin_noise", True)),
         "num_mics": int(cfg.get("num_mics", 4)),
@@ -318,46 +460,19 @@ def main() -> int:
     for extra_name in list(manifest_names)[1:]:
         extra_path = Path(paths["manifest_root"]) / "train" / str(extra_name)
         train_base.rows.extend(read_jsonl(extra_path))
-    explicit_val_manifest = cfg.get("manifest_val")
-    if explicit_val_manifest:
-        # Prefer an explicitly speaker-disjoint validation manifest when one
-        # is available; legacy configs retain their deterministic row split.
-        val_manifest = Path(paths["manifest_root"]) / "val" / str(explicit_val_manifest)
-        if not val_manifest.is_file():
-            raise FileNotFoundError(f"Configured Stage 2 validation manifest not found: {val_manifest}")
-        train_ds = train_base
-        val_ds = PresenceDataset(
-            val_manifest,
-            cfg["sample_rate"],
-            cfg["segment_seconds"],
-            training=False,
-            **dataset_kwargs,
-        )
-        if not train_ds.rows or not val_ds.rows:
-            raise RuntimeError("Stage 2 train and validation manifests must both be non-empty")
-        train_speakers = {str(row.get("speaker_id", "")) for row in train_ds.rows}
-        val_speakers = {str(row.get("speaker_id", "")) for row in val_ds.rows}
-        overlap = (train_speakers & val_speakers) - {""}
-        if overlap and bool(cfg["train"].get("require_speaker_disjoint", False)):
-            raise ValueError(f"Speaker leakage between train and validation manifests: {len(overlap)} IDs")
-        print(
-            f"explicit_validation={val_manifest} train_speakers={len(train_speakers)} "
-            f"val_speakers={len(val_speakers)} speaker_overlap={len(overlap)}",
-            flush=True,
-        )
-    else:
-        train_indices, val_indices = split_indices(
-            train_base.rows,
-            float(cfg["train"].get("val_fraction", 0.2)),
-            seed,
-            max_rows=int(args.max_rows or 0),
-        )
-        val_base = PresenceDataset(manifest, cfg["sample_rate"], cfg["segment_seconds"], training=False, **dataset_kwargs)
-        for extra_name in list(manifest_names)[1:]:
-            extra_path = Path(paths["manifest_root"]) / "train" / str(extra_name)
-            val_base.rows.extend(read_jsonl(extra_path))
-        train_ds = Subset(train_base, train_indices)
-        val_ds = Subset(val_base, val_indices)
+    train_indices, val_indices = split_indices(
+        train_base.rows,
+        float(cfg["train"].get("val_fraction", 0.2)),
+        seed,
+        max_rows=int(args.max_rows or 0),
+        group_by_speaker=bool(cfg["train"].get("group_by_speaker", False)),
+    )
+    val_base = PresenceDataset(manifest, cfg["sample_rate"], cfg["segment_seconds"], training=False, **dataset_kwargs)
+    for extra_name in list(manifest_names)[1:]:
+        extra_path = Path(paths["manifest_root"]) / "train" / str(extra_name)
+        val_base.rows.extend(read_jsonl(extra_path))
+    train_ds = Subset(train_base, train_indices)
+    val_ds = Subset(val_base, val_indices)
     workers = int(cfg["train"].get("num_workers", 0))
     loader_args = {
         "num_workers": workers,
@@ -380,6 +495,8 @@ def main() -> int:
             int(cache_model_cfg.get("n_fft", 512)),
             int(cache_model_cfg.get("hop", 160)),
             float(cfg.get("model", {}).get("target_threshold_db_below_peak", 30.0)),
+            personal_conditioned=personal_conditioned,
+            activity_mode=activity_mode,
         )
         val_ds = build_stage1_cache(
             stage1,
@@ -390,6 +507,8 @@ def main() -> int:
             int(cfg.get("model", {}).get("n_fft", 512)),
             int(cfg.get("model", {}).get("hop", 160)),
             float(cfg.get("model", {}).get("target_threshold_db_below_peak", 30.0)),
+            personal_conditioned=personal_conditioned,
+            activity_mode=activity_mode,
         )
     train_loader = DataLoader(
         train_ds,
@@ -407,18 +526,29 @@ def main() -> int:
         **loader_args,
     )
 
-    model_cfg = cfg.get("model", {})
     n_fft = int(model_cfg.get("n_fft", 512))
     hop = int(model_cfg.get("hop", 160))
     target_threshold_db = float(model_cfg.get("target_threshold_db_below_peak", 30.0))
     top_fraction = float(model_cfg.get("top_fraction", 0.20))
-    head = FramePresenceHead(
-        sample_rate=int(cfg["sample_rate"]),
-        n_mels=int(model_cfg.get("n_mels", 40)),
-        hidden=int(model_cfg.get("hidden", 64)),
-        n_fft=n_fft,
-        hop=hop,
-    ).to(device)
+    head_kwargs = {
+        "sample_rate": int(cfg["sample_rate"]),
+        "n_mels": int(model_cfg.get("n_mels", 40)),
+        "hidden": int(model_cfg.get("hidden", 64)),
+        "n_fft": n_fft,
+        "hop": hop,
+    }
+    if activity_mode:
+        head = PersonalActivityHead(
+            **head_kwargs,
+            speaker_embedding_dim=int(model_cfg.get("speaker_embedding_dim", 256)),
+        ).to(device)
+    elif personal_conditioned:
+        head = PersonalFramePresenceHead(
+            **head_kwargs,
+            speaker_embedding_dim=int(model_cfg.get("speaker_embedding_dim", 256)),
+        ).to(device)
+    else:
+        head = FramePresenceHead(**head_kwargs).to(device)
     init_checkpoint = args.init_checkpoint or cfg["train"].get("init_checkpoint")
     init_path = None
     if init_checkpoint:
@@ -470,7 +600,21 @@ def main() -> int:
     use_amp = cache_use_amp
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     max_epochs = int(args.epochs or cfg["train"].get("max_epochs", 4))
-    out_dir = Path(paths["checkpoint_root"]) / run_name
+    out_dir = Path(paths["checkpoint_root"]) / cfg["name"]
+    run_id = uuid.uuid4().hex
+    history_path = Path(paths["log_root"]) / cfg["name"] / f"epoch_metrics_{run_id}.jsonl"
+    write_metrics(
+        Path(paths["log_root"]) / cfg["name"] / f"run_metadata_{run_id}.json",
+        {
+            "run_id": run_id,
+            "run_name": cfg["name"],
+            "device": str(device),
+            "config": str(args.config),
+            "train_manifest": str(manifest),
+            "additional_train_manifests": [str(value) for value in manifest_names[1:]],
+            "init_checkpoint": str(init_checkpoint) if init_checkpoint else None,
+        },
+    )
     best_f1 = float("-inf")
     if init_checkpoint:
         initial_validation = evaluate(
@@ -514,9 +658,17 @@ def main() -> int:
             target_present = batch["target_present"].to(device, non_blocking=True).float()
             cached_s1 = batch.get("s1")
             cached_labels = batch.get("frame_labels")
+            activity_class = batch.get("target_activity_class")
+            if isinstance(activity_class, torch.Tensor):
+                activity_class = activity_class.to(device, non_blocking=True).long()
+            else:
+                activity_class = target_present.long()
             if isinstance(cached_s1, torch.Tensor) and isinstance(cached_labels, torch.Tensor):
                 s1 = cached_s1.to(device, non_blocking=True)
                 labels = cached_labels.to(device, non_blocking=True)
+                enrollment_embedding = batch.get("enrollment_embedding")
+                if isinstance(enrollment_embedding, torch.Tensor):
+                    enrollment_embedding = enrollment_embedding.to(device, non_blocking=True)
             else:
                 mix = batch["mixture"].to(device, non_blocking=True)
                 enroll = batch["enrollment"].to(device, non_blocking=True)
@@ -528,21 +680,50 @@ def main() -> int:
                     device_type=device.type, dtype=torch.float16, enabled=use_amp
                 ):
                     s1, _, _, _ = stage1(mix, enroll, multichannel=mc)
-                labels = target_activity_labels(
-                    target,
-                    target_present,
-                    n_fft=n_fft,
-                    hop=hop,
-                    threshold_db_below_peak=target_threshold_db,
+                enrollment_embedding = stage1.speaker_embedding(enroll) if personal_conditioned else None
+                labels = (
+                    target_activity_class_labels(
+                        target,
+                        activity_class,
+                        n_fft=n_fft,
+                        hop=hop,
+                        threshold_db_below_peak=target_threshold_db,
+                    )
+                    if activity_mode
+                    else target_activity_labels(
+                        target,
+                        target_present,
+                        n_fft=n_fft,
+                        hop=hop,
+                        threshold_db_below_peak=target_threshold_db,
+                    )
                 )
             with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
-                logits, labels = align_frames(head(s1.float()), labels)
-                loss, _ = frame_presence_loss(
-                    logits,
-                    labels,
-                    positive_weight=float(cfg["train"].get("positive_weight", 2.0)),
-                    smooth_weight=float(cfg["train"].get("smooth_weight", 0.02)),
+                logits = (
+                    head(s1.float(), enrollment_embedding)
+                    if personal_conditioned
+                    else head(s1.float())
                 )
+                if activity_mode:
+                    frames = min(logits.shape[-1], labels.shape[-1])
+                    logits, labels = logits[..., :frames], labels[..., :frames]
+                    loss, _ = frame_activity_loss(
+                        logits,
+                        labels,
+                        class_weights=tuple(
+                            float(value)
+                            for value in model_cfg.get("class_weights", [1.0, 2.0, 1.5])
+                        ),
+                        smooth_weight=float(cfg["train"].get("smooth_weight", 0.02)),
+                    )
+                else:
+                    logits, labels = align_frames(logits, labels)
+                    loss, _ = frame_presence_loss(
+                        logits,
+                        labels,
+                        positive_weight=float(cfg["train"].get("positive_weight", 2.0)),
+                        smooth_weight=float(cfg["train"].get("smooth_weight", 0.02)),
+                    )
             if not torch.isfinite(loss):
                 raise RuntimeError(
                     "Frame presence loss became non-finite; "
@@ -572,14 +753,18 @@ def main() -> int:
             hop,
             target_threshold_db,
             top_fraction,
+            personal_conditioned=personal_conditioned,
+            activity_mode=activity_mode,
         )
         metrics = {
             "epoch": epoch,
+            "run_id": run_id,
             "train_loss": float(np.mean(losses)) if losses else None,
             "train_examples": len(train_ds),
             "val_examples": len(val_ds),
             "validation": validation,
             "model": {
+                "type": model_type,
                 "sample_rate": int(cfg["sample_rate"]),
                 "n_mels": int(model_cfg.get("n_mels", 40)),
                 "hidden": int(model_cfg.get("hidden", 64)),
@@ -587,30 +772,13 @@ def main() -> int:
                 "hop": hop,
                 "top_fraction": top_fraction,
                 "target_threshold_db_below_peak": target_threshold_db,
+                "speaker_embedding_dim": int(model_cfg.get("speaker_embedding_dim", 256)),
+                "num_classes": 3 if activity_mode else 1,
+                "group_by_speaker": bool(cfg["train"].get("group_by_speaker", False)),
             },
         }
-        write_metrics(Path(paths["log_root"]) / run_name / "metrics_last.json", metrics)
-        if wandb_run is not None:
-            best_chunk = validation["best_chunk_f1"]
-            balanced_chunk = validation["best_chunk_balanced"]
-            wandb_run.log(
-                {
-                    "epoch": epoch,
-                    "train/loss": metrics["train_loss"],
-                    "validation/chunk_f1": float(best_chunk.get("f1", 0.0)),
-                    "validation/chunk_precision": float(best_chunk.get("precision", 0.0)),
-                    "validation/chunk_recall": float(best_chunk.get("recall", 0.0)),
-                    "validation/chunk_threshold": float(best_chunk.get("threshold", 0.0)),
-                    "validation/false_accept_rate": float(best_chunk.get("false_accept_rate", 0.0)),
-                    "validation/balanced_accuracy": (
-                        float(balanced_chunk.get("recall", 0.0)) + float(balanced_chunk.get("specificity", 0.0))
-                    ) / 2.0,
-                    "validation/balanced_threshold": float(balanced_chunk.get("threshold", 0.0)),
-                    "validation/frame_f1": float(validation["best_frame_f1"].get("f1", 0.0)),
-                },
-                step=epoch,
-                commit=True,
-            )
+        write_metrics(Path(paths["log_root"]) / cfg["name"] / "metrics_last.json", metrics)
+        append_jsonl(history_path, metrics)
         best = validation["best_chunk_f1"]
         print(
             f"epoch {epoch} loss={metrics['train_loss']:.4f} "
@@ -623,8 +791,13 @@ def main() -> int:
             save_checkpoint(out_dir / "best.pt", head, epoch, metrics)
 
     write_metrics(
-        Path(paths["log_root"]) / run_name / "train_last.json",
-        {"best_chunk_f1": best_f1, "checkpoint": str(out_dir / "best.pt")},
+        Path(paths["log_root"]) / cfg["name"] / "train_last.json",
+        {
+            "best_chunk_f1": best_f1,
+            "checkpoint": str(out_dir / "best.pt"),
+            "run_id": run_id,
+            "history": str(history_path),
+        },
     )
     if wandb_run is not None:
         wandb_run.summary["best_validation_chunk_f1"] = best_f1

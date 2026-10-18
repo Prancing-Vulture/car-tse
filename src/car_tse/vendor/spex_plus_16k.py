@@ -34,6 +34,51 @@ class GlobalLayerNorm(nn.Module):
         return (normalized + self.beta.float()).to(input_dtype)
 
 
+class CausalChannelwiseLayerNorm(nn.Module):
+    """Per-frame normalization with the same parameter layout as GlobalLayerNorm.
+
+    GlobalLayerNorm aggregates over the time axis and is therefore unsuitable
+    for a causal chunked extractor.  This variant only aggregates over channel
+    values at each frame while retaining ``beta``/``gamma`` names and shapes so
+    a non-causal checkpoint can initialize a causal research candidate.
+    """
+
+    def __init__(self, channels: int, eps: float = 1e-5):
+        super().__init__()
+        self.eps = eps
+        self.beta = nn.Parameter(torch.zeros(channels, 1))
+        self.gamma = nn.Parameter(torch.ones(channels, 1))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_dtype = x.dtype
+        stats = x.float()
+        mean = stats.mean(dim=1, keepdim=True)
+        var = (stats - mean).pow(2).mean(dim=1, keepdim=True)
+        normalized = self.gamma.float() * (stats - mean) / torch.sqrt(var + self.eps)
+        return (normalized + self.beta.float()).to(input_dtype)
+
+
+class CausalDepthwiseConv1d(nn.Conv1d):
+    """Depthwise Conv1d with explicit left-only padding."""
+
+    def __init__(self, *args, left_padding: int, **kwargs):
+        super().__init__(*args, padding=0, **kwargs)
+        self.left_padding = int(left_padding)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.left_padding:
+            x = F.pad(x, (self.left_padding, 0))
+        return F.conv1d(
+            x,
+            self.weight,
+            self.bias,
+            self.stride,
+            self.padding,
+            self.dilation,
+            self.groups,
+        )
+
+
 def _match_length(x: torch.Tensor, length: int) -> torch.Tensor:
     if x.shape[-1] < length:
         return F.pad(x, (0, length - x.shape[-1]))
@@ -130,17 +175,45 @@ class SpeakerEncoder(nn.Module):
 
 
 class TCN(nn.Module):
-    def __init__(self, channels: int, kernel_size: int, speaker_channels: int, dilation: int):
+    def __init__(
+        self,
+        channels: int,
+        kernel_size: int,
+        speaker_channels: int,
+        dilation: int,
+        causal: bool = False,
+    ):
         super().__init__()
         hidden = 2 * channels
+        self.causal = bool(causal)
         padding = dilation * (kernel_size - 1) // 2
+        norm = CausalChannelwiseLayerNorm if self.causal else GlobalLayerNorm
+        depthwise = (
+            CausalDepthwiseConv1d(
+                hidden,
+                hidden,
+                kernel_size,
+                dilation=dilation,
+                groups=hidden,
+                left_padding=dilation * (kernel_size - 1),
+            )
+            if self.causal
+            else nn.Conv1d(
+                hidden,
+                hidden,
+                kernel_size,
+                padding=padding,
+                dilation=dilation,
+                groups=hidden,
+            )
+        )
         self.seq = nn.Sequential(
             nn.Conv1d(channels + speaker_channels, hidden, 1),
             nn.PReLU(),
-            GlobalLayerNorm(hidden),
-            nn.Conv1d(hidden, hidden, kernel_size, padding=padding, dilation=dilation, groups=hidden),
+            norm(hidden),
+            depthwise,
             nn.PReLU(),
-            GlobalLayerNorm(hidden),
+            norm(hidden),
             nn.Conv1d(hidden, channels, 1),
         )
 
@@ -153,11 +226,11 @@ class TCN(nn.Module):
 
 
 class StackedTCNs(nn.Module):
-    def __init__(self, channels: int, speaker_channels: int, count: int):
+    def __init__(self, channels: int, speaker_channels: int, count: int, causal: bool = False):
         super().__init__()
         self.tcns = nn.ModuleList(
-            [TCN(channels, 3, speaker_channels, 1)]
-            + [TCN(channels, 3, 0, 2**i) for i in range(1, count)]
+            [TCN(channels, 3, speaker_channels, 1, causal=causal)]
+            + [TCN(channels, 3, 0, 2**i, causal=causal) for i in range(1, count)]
         )
 
     def forward(self, x: torch.Tensor, speaker_embedding: torch.Tensor) -> torch.Tensor:
@@ -167,12 +240,18 @@ class StackedTCNs(nn.Module):
 
 
 class SpeakerExtractor(nn.Module):
-    def __init__(self, channels: int = 256, speaker_channels: int = 256, tcn_count: int = 8):
+    def __init__(
+        self,
+        channels: int = 256,
+        speaker_channels: int = 256,
+        tcn_count: int = 8,
+        causal: bool = False,
+    ):
         super().__init__()
         self.norm = ChannelLayerNorm(3 * channels)
         self.conv1 = nn.Conv1d(3 * channels, channels, 1)
         self.stacks = nn.ModuleList(
-            [StackedTCNs(channels, speaker_channels, tcn_count) for _ in range(4)]
+            [StackedTCNs(channels, speaker_channels, tcn_count, causal=causal) for _ in range(4)]
         )
         self.convs = nn.ModuleList(
             [nn.Sequential(nn.Conv1d(channels, channels, 1), nn.ReLU()) for _ in range(3)]
@@ -219,11 +298,12 @@ class SpExPlus16k(nn.Module):
         ResNetBlock_cnt: int = 3,
         TCN_cnt: int = 8,
         speakers_cnt: int = 251,
+        causal: bool = False,
     ):
         super().__init__()
         self.speech_encoder = SpeechEncoder(L1, L2, L3, N)
         self.speaker_encoder = SpeakerEncoder(N, ResNetBlock_cnt, L1, self.speech_encoder.stride, speakers_cnt)
-        self.speaker_extractor = SpeakerExtractor(N, N, TCN_cnt)
+        self.speaker_extractor = SpeakerExtractor(N, N, TCN_cnt, causal=causal)
         self.speech_decoder = SpeechDecoder(L1, L2, L3, N, self.speech_encoder.stride)
 
     @staticmethod
@@ -277,6 +357,7 @@ def load_spex_plus_16k(
         ResNetBlock_cnt=int(cfg.get("ResNetBlock_cnt", 3)),
         TCN_cnt=int(cfg.get("TCN_cnt", 8)),
         speakers_cnt=int(cfg.get("speakers_cnt", 251)),
+        causal=bool(cfg.get("causal", False)),
     )
     state = payload.get("model", payload.get("model_state_dict", payload))
     # The local no-JEPA run was produced by a model class that still carried

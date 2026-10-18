@@ -8,6 +8,7 @@ import hashlib
 import json
 import random
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -21,7 +22,7 @@ from transformers import AutoModel
 
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.data.datasets import IntentDataset
-from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, write_metrics
+from car_tse.train.utils import append_jsonl, get_device, load_checkpoint, save_checkpoint, write_metrics
 from train_stage4_intent_wav2vec import IntentHead, evaluate, normalize_waveform
 
 
@@ -91,6 +92,20 @@ def main() -> int:
     parser.add_argument("--encoder-lr", type=float, default=1.0e-5)
     parser.add_argument("--head-lr", type=float, default=3.0e-4)
     parser.add_argument("--unfreeze-layers", type=int, default=4)
+    parser.add_argument(
+        "--train-with-augmentation",
+        action="store_true",
+        help=(
+            "Enable IntentDataset training augmentation. Keep this off for "
+            "cached TSE waveforms so fine-tuning sees the same deterministic "
+            "2-second examples used by the frozen-feature head."
+        ),
+    )
+    parser.add_argument(
+        "--enable-spec-augment",
+        action="store_true",
+        help="Keep wav2vec's pretraining-time SpecAugment masks during fine-tuning.",
+    )
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--wandb", action="store_true", help="Log epoch metrics to Weights & Biases")
     parser.add_argument("--wandb-project", default="car-tse")
@@ -131,8 +146,11 @@ def main() -> int:
         train_manifest,
         cfg["sample_rate"],
         cfg["segment_seconds"],
-        training=True,
-        waveform_cache_path=cache_dir / f"train_cabin_wav_{cfg['sample_rate']}hz.npy",
+        training=bool(args.train_with_augmentation),
+        waveform_cache_path=cache_dir / cfg.get(
+            "waveform_cache_train",
+            f"train_cabin_wav_{cfg['sample_rate']}hz.npy",
+        ),
         **common_kwargs,
     )
     val_ds = IntentDataset(
@@ -140,7 +158,10 @@ def main() -> int:
         cfg["sample_rate"],
         cfg["segment_seconds"],
         training=False,
-        waveform_cache_path=cache_dir / f"val_cabin_wav_{cfg['sample_rate']}hz.npy",
+        waveform_cache_path=cache_dir / cfg.get(
+            "waveform_cache_eval",
+            f"val_cabin_wav_{cfg['sample_rate']}hz.npy",
+        ),
         **common_kwargs,
     )
     encoder = AutoModel.from_pretrained(args.encoder).to(device)
@@ -152,6 +173,14 @@ def main() -> int:
         encoder.load_state_dict(state["model_state_dict"], strict=True)
         print(f"initialized_encoder={encoder_checkpoint} epoch={state.get('epoch', 'unknown')}", flush=True)
     set_trainable_layers(encoder, args.unfreeze_layers)
+    if not args.enable_spec_augment:
+        # Wav2Vec2 applies time/feature masking whenever the module is in
+        # train() mode. That is useful during self-supervised pretraining but
+        # makes downstream cached-TSE adaptation unstable unless explicitly
+        # requested.
+        encoder.config.apply_spec_augment = False
+        encoder.config.mask_time_prob = 0.0
+        encoder.config.mask_feature_prob = 0.0
     encoder.config.use_cache = False
     hidden = int(encoder.config.hidden_size)
     head = IntentHead(hidden, 512, num_classes, 0.2).to(device)
@@ -183,6 +212,22 @@ def main() -> int:
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     out_dir = Path(paths["checkpoint_root"]) / args.run_name
     log_dir = Path(paths["log_root"]) / args.run_name
+    run_id = uuid.uuid4().hex
+    history_path = log_dir / f"epoch_metrics_{run_id}.jsonl"
+    write_metrics(
+        log_dir / f"run_metadata_{run_id}.json",
+        {
+            "run_id": run_id,
+            "run_name": args.run_name,
+            "device": str(device),
+            "config": str(args.config),
+            "init_head_checkpoint": str(args.head_checkpoint),
+            "encoder_checkpoint": str(args.encoder_checkpoint) if args.encoder_checkpoint else None,
+            "unfreeze_layers": args.unfreeze_layers,
+            "train_with_augmentation": bool(args.train_with_augmentation),
+            "enable_spec_augment": bool(args.enable_spec_augment),
+        },
+    )
     best_f1 = float("-inf")
     bad_epochs = 0
     print(
@@ -366,7 +411,7 @@ def main() -> int:
         }
         metrics = {
             "epoch": epoch,
-            "seed": args.seed,
+            "run_id": run_id,
             "device": str(device),
             "encoder": args.encoder,
             "unfreeze_layers": args.unfreeze_layers,
@@ -376,6 +421,7 @@ def main() -> int:
             "lr": [group["lr"] for group in optimizer.param_groups],
         }
         write_metrics(log_dir / "metrics_last.json", metrics)
+        append_jsonl(history_path, metrics)
         print(
             f"epoch {epoch} train_loss={metrics['train_loss']:.4f} train_acc={metrics['train_accuracy']:.3f} "
             f"val_acc={val['accuracy']:.3f} val_top5={val['top5_accuracy']:.3f} val_macro_f1={val['macro_f1']:.3f}",
@@ -391,37 +437,17 @@ def main() -> int:
         else:
             bad_epochs += 1
             if bad_epochs >= args.patience:
-                stop_early = True
-        if wandb_run is not None:
-            wandb_run.log(
-                {
-                    "epoch": epoch,
-                    "train/loss": metrics["train_loss"],
-                    "train/accuracy": metrics["train_accuracy"],
-                    "validation/accuracy": val["accuracy"],
-                    "validation/top5_accuracy": val["top5_accuracy"],
-                    "validation/macro_precision": val["macro_precision"],
-                    "validation/macro_recall": val["macro_recall"],
-                    "validation/macro_f1": val["macro_f1"],
-                    "validation/examples": val["examples"],
-                    "learning_rate/encoder": optimizer.param_groups[0]["lr"],
-                    "learning_rate/head": optimizer.param_groups[1]["lr"],
-                    "best_validation/macro_f1": best_f1,
-                },
-                step=epoch,
-                commit=True,
-            )
-        if stop_early:
-            print(f"Early stopping after {epoch} epochs", flush=True)
-            break
-    write_metrics(log_dir / "train_last.json", {"best_macro_f1": best_f1, "epochs_completed": epoch, "seed": args.seed})
-    if wandb_run is not None:
-        wandb_run.summary["best_validation_macro_f1"] = best_f1
-        wandb_run.summary["best_head_checkpoint"] = str(out_dir / "best.pt")
-        wandb_run.summary["best_encoder_checkpoint"] = str(out_dir / "encoder_best.pt")
-        wandb_run.summary["epochs_completed"] = epoch
-        wandb_run.summary["seed"] = args.seed
-        wandb_run.finish()
+                print(f"Early stopping after {epoch} epochs", flush=True)
+                break
+    write_metrics(
+        log_dir / "train_last.json",
+        {
+            "best_macro_f1": best_f1,
+            "epochs_completed": epoch,
+            "run_id": run_id,
+            "history": str(history_path),
+        },
+    )
     print(f"Done. Best head checkpoint: {out_dir / 'best.pt'}", flush=True)
     return 0
 

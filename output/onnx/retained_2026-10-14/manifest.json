@@ -1,0 +1,249 @@
+{
+  "status": "ok",
+  "components": [
+    {
+      "component": "stage1",
+      "status": "ok",
+      "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+      "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\stage1_spex_dual_domain_rms010_ft1\\best.pt",
+      "checkpoint_sha256": "4961c582ffb0640104a5112f104e821c86196581a15d7718aed06661ebd87e27",
+      "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\retained_2026-10-14\\stage1.onnx",
+      "output_sha256": "9c8354da1dab90eea3a950025e3cae959f79c70e7fe04e47b4b0923aa0d2be20",
+      "opset": 18,
+      "input_names": [
+        "multichannel_audio",
+        "enrollment_audio",
+        "playback_reference"
+      ],
+      "input_shapes": [
+        [
+          1,
+          4,
+          48000
+        ],
+        [
+          1,
+          24000
+        ],
+        [
+          1,
+          48000
+        ]
+      ],
+      "output_names": [
+        "extracted_audio"
+      ],
+      "onnx_ir_version": 8,
+      "onnxruntime_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "parity": {
+        "passed": true,
+        "max_abs_error": 0.10846090316772461,
+        "max_relative_error": 5.776166915893555,
+        "relative_l2_error": 0.00019267633615527302,
+        "cosine_similarity": 1.0000001192092896
+      },
+      "torch_version": "2.14.0+cu130",
+      "python_version": "3.14.7"
+    },
+    {
+      "component": "kws",
+      "status": "ok",
+      "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+      "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\stage3_kws_gsc_marvin_tse_ft2\\best.pt",
+      "checkpoint_sha256": "0f57debdee7728c62a20a9c62ed749982f446eca7c31f8631a3bd76fc11bcd20",
+      "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\retained_2026-10-14\\kws.onnx",
+      "output_sha256": "1abda7a087b4fbc32a749b51b0cba0a8062e3ac73516051eaa825dbadce7a0fc",
+      "opset": 18,
+      "input_names": [
+        "audio"
+      ],
+      "input_shapes": [
+        [
+          1,
+          16000
+        ]
+      ],
+      "output_names": [
+        "logits"
+      ],
+      "onnx_ir_version": 8,
+      "onnxruntime_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "parity": {
+        "passed": true,
+        "max_abs_error": 2.86102294921875e-06,
+        "max_relative_error": 3.462802453668701e-07,
+        "relative_l2_error": 2.880678664496372e-07,
+        "cosine_similarity": 1.0
+      },
+      "torch_version": "2.14.0+cu130",
+      "python_version": "3.14.7"
+    },
+    {
+      "component": "presence",
+      "status": "ok",
+      "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+      "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\stage2_frame_presence_dual_domain_nonwake_ft1\\best.pt",
+      "checkpoint_sha256": "d56b6c9d8f9efcfb211d50ba6c6ef9f6d0f628c0f417c51837582207e4331550",
+      "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\retained_2026-10-14\\presence.onnx",
+      "output_sha256": "3cd06c0bac4bdcf157e4e5aedf83dc2f963656bc9b98b933b338afefa241f223",
+      "opset": 18,
+      "input_names": [
+        "extracted_audio"
+      ],
+      "input_shapes": [
+        [
+          1,
+          48000
+        ]
+      ],
+      "output_names": [
+        "presence_logits"
+      ],
+      "onnx_ir_version": 8,
+      "onnxruntime_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "parity": {
+        "passed": true,
+        "max_abs_error": 2.86102294921875e-06,
+        "max_relative_error": 6.702893529109133e-07,
+        "relative_l2_error": 1.9951733065681765e-07,
+        "cosine_similarity": 0.9999998807907104
+      },
+      "torch_version": "2.14.0+cu130",
+      "python_version": "3.14.7"
+    },
+    {
+      "component": "target_kws",
+      "status": "ok",
+      "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+      "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker_ft1\\best.pt",
+      "checkpoint_sha256": "7331991e12e6802ab1beb17827bd707d3cc407691c53ab4aa55cf12d4d125af1",
+      "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\retained_2026-10-14\\target_kws.onnx",
+      "output_sha256": "0b23bd0921ddd7d2723bccaa5eea2e3b2bee0172713a1b8a7981b46afcf275ab",
+      "opset": 18,
+      "input_names": [
+        "audio",
+        "enrollment_embedding",
+        "extracted_embedding"
+      ],
+      "input_shapes": [
+        [
+          1,
+          16000
+        ],
+        [
+          1,
+          256
+        ],
+        [
+          1,
+          256
+        ]
+      ],
+      "output_names": [
+        "logits"
+      ],
+      "onnx_ir_version": 8,
+      "onnxruntime_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "parity": {
+        "passed": true,
+        "max_abs_error": 3.725290298461914e-08,
+        "max_relative_error": 7.072512175909651e-07,
+        "relative_l2_error": 5.678465413438971e-07,
+        "cosine_similarity": 1.0000001192092896
+      },
+      "torch_version": "2.14.0+cu130",
+      "python_version": "3.14.7"
+    },
+    {
+      "component": "compact_verifier",
+      "status": "ok",
+      "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+      "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\compact_speaker_verifier_cabin_smart_ft1\\best.pt",
+      "checkpoint_sha256": "1767d672e5b1963827ca43b93976049b8e5fb828bb8f631a44d63fe50466ecea",
+      "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\retained_2026-10-14\\compact_verifier.onnx",
+      "output_sha256": "c1cb4943b21e96c1a770439cd20c341bbcfbaa7dde84604ac8acfa754fe04791",
+      "opset": 18,
+      "input_names": [
+        "enrollment_audio",
+        "extracted_audio"
+      ],
+      "input_shapes": [
+        [
+          1,
+          16000
+        ],
+        [
+          1,
+          16000
+        ]
+      ],
+      "output_names": [
+        "verification_logit"
+      ],
+      "onnx_ir_version": 8,
+      "onnxruntime_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "parity": {
+        "passed": true,
+        "max_abs_error": 3.725290298461914e-08,
+        "max_relative_error": 3.068078058277024e-07,
+        "relative_l2_error": 3.068078058277024e-07,
+        "cosine_similarity": 1.0
+      },
+      "torch_version": "2.14.0+cu130",
+      "python_version": "3.14.7"
+    },
+    {
+      "component": "intent",
+      "status": "ok",
+      "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+      "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\stage4_intent_wav2vec_ft8_resume_tse_domain\\best.pt",
+      "checkpoint_sha256": "07fc5ca64a647699b5716a4aa1b6bbcf620fd93234a9d756be8805cc62f83be4",
+      "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\retained_2026-10-14\\intent.onnx",
+      "output_sha256": "9afb1ce382f7220cee143988b52d40c544a5a0cf95b33d5238b03106d0c681e0",
+      "opset": 18,
+      "input_names": [
+        "audio"
+      ],
+      "input_shapes": [
+        [
+          1,
+          32000
+        ]
+      ],
+      "output_names": [
+        "intent_logits"
+      ],
+      "onnx_ir_version": 8,
+      "onnxruntime_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "parity": {
+        "passed": true,
+        "max_abs_error": 2.16066837310791e-05,
+        "max_relative_error": 8.14885352156125e-05,
+        "relative_l2_error": 2.9055404411337804e-06,
+        "cosine_similarity": 1.0
+      },
+      "torch_version": "2.14.0+cu130",
+      "python_version": "3.14.7"
+    }
+  ],
+  "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+  "opset": 18
+}

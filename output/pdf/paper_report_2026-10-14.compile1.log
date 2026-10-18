@@ -1,0 +1,324 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex.fmt)
+ restricted \write18 enabled.
+entering extended mode
+(reports/paper_report_2026-10-14.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2025-12-24>
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/base\article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/base\size11.clo))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/geometry\geometry.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/graphics\keyval.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/iftex\ifvtex.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/iftex\iftex.sty))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/geometry\geometry.cfg)
+) (C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/base\fontenc.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/base\inputenc.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/lm\lmodern.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/microtype\microtype.st
+y
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/etoolbox\etoolbox.sty)
+
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/microtype\microtype-pd
+ftex.def)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/microtype\microtype.cf
+g))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphicx.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphics.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/graphics\trig.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/graphics-cfg\graphics.
+cfg)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/graphics-def\pdftex.de
+f)))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/booktabs\booktabs.sty)
+ (C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/tools\longtable.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/tools\tabularx.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/tools\array.sty))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/multirow\multirow.sty)
+ (C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/xcolor\xcolor.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/graphics-cfg\color.cfg
+)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/graphics\mathcolor.ltx
+))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/enumitem\enumitem.sty)
+ (C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsmath.sty
+For additional information on amsmath, use the `?' option.
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amstext.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsgen.sty))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsbsy.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsopn.sty))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\amssymb.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\amsfonts.sty)
+) (C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/float\float.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/listings\listings.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstpatch.sty)
+ (C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstmisc.sty)
+ (C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/listings\listings.cfg
+))
+==> First Aid for listings.sty no longer applied!
+    Expected:
+        2024/09/23 1.10c (Carsten Heinz)
+    but found:
+        2025/11/14 1.11b (Carsten Heinz)
+    so I'm assuming it got fixed.
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\hyperref.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/kvsetkeys\kvsetkeys.st
+y)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/kvdefinekeys\kvdefin
+ekeys.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/pdfescape\pdfescape.
+sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/ltxcmds\ltxcmds.sty)
+
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/pdftexcmds\pdftexcmd
+s.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/infwarerr\infwarerr.
+sty)))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/hycolor\hycolor.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\nameref.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/refcount\refcount.sty)
+
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/gettitlestring\getti
+tlestring.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/kvoptions\kvoptions.st
+y)))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/stringenc\stringenc.
+sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\pd1enc.def)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/intcalc\intcalc.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\puenc.def)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/url\url.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/bitset\bitset.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/bigintcalc\bigintcal
+c.sty)))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/hyperref\hpdftex.def
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/rerunfilecheck\rerunfi
+lecheck.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/generic/uniquecounter\unique
+counter.sty)))
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/fancyhdr\fancyhdr.sty)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/lm\t1lmr.fd)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/l3backend\l3backend-pd
+ftex.def)
+(D:\Prawin_New\tse\car-tse-main\output\pdf\paper_report_2026-10-14.aux)
+*geometry* driver: auto-detecting
+*geometry* detected driver: pdftex
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/microtype\mt-cmr.cfg)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/context/base/mkii\supp-pdf.m
+kii
+[Loading MPS to PDF converter (version 2006.09.02).]
+)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/epstopdf-pkg\epstopdf-
+base.sty
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/00miktex\epstopdf-sys.
+cfg)) (D:\Prawin_New\tse\car-tse-main\output\pdf\paper_report_2026-10-14.out)
+(D:\Prawin_New\tse\car-tse-main\output\pdf\paper_report_2026-10-14.out)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/lm\ot1lmr.fd)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/lm\omllmm.fd)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/lm\omslmsy.fd)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/lm\omxlmex.fd)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\umsa.fd)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/microtype\mt-msa.cfg)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\umsb.fd)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/microtype\mt-msb.cfg)
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/lm\t1lmtt.fd)
+(D:\Prawin_New\tse\car-tse-main\output\pdf\paper_report_2026-10-14.toc [1{C:/Us
+ers/mainpc/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}{C:/Users/mainpc/Ap
+pData/Local/Programs/MiKTeX/fonts/enc/dvips/lm/lm-ec.enc}]) [2]
+Underfull \hbox (badness 10000) in paragraph at lines 137--137
+[]|\T1/lmr/m/n/9 (+20) Real-cabin neg-a-
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/lm\ts1lmr.fd) [3]
+[4{C:/Users/mainpc/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/lm/lm-ts1.enc}
+]
+Overfull \hbox (84.08609pt too wide) in paragraph at lines 246--246
+[]|\T1/lmtt/m/n/10 stage1_spex_dual_domain_rms010_ft1/best.pt|  
+
+Overfull \hbox (141.83592pt too wide) in paragraph at lines 246--246
+[]|\T1/lmtt/m/n/10 stage2_frame_presence_dual_domain_nonwake_ft1/best.pt|  
+
+Overfull \hbox (57.83617pt too wide) in paragraph at lines 246--246
+[]|\T1/lmtt/m/n/10 stage3_kws_gsc_marvin_tse_ft2/best.pt|  
+
+Overfull \hbox (236.33565pt too wide) in paragraph at lines 246--246
+[]|\T1/lmtt/m/n/10 stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker_
+ft1/best.pt|  
+
+Overfull \hbox (115.586pt too wide) in paragraph at lines 246--246
+[]|\T1/lmtt/m/n/10 compact_speaker_verifier_cabin_smart_ft1/best.pt|  
+
+Overfull \hbox (131.33595pt too wide) in paragraph at lines 246--246
+[]|\T1/lmtt/m/n/10 stage4_intent_wav2vec_ft8_resume_tse_domain/best.pt 
+
+Underfull \hbox (badness 10000) in paragraph at lines 265--265
+[]|\T1/lmr/m/n/10.95 (+20) LibriSpeech /
+
+Underfull \hbox (badness 10000) in paragraph at lines 265--265
+[]|\T1/lmr/m/n/10.95 (+20) clean source speech,
+
+Underfull \hbox (badness 2753) in paragraph at lines 266--267
+[]|\T1/lmr/m/n/10.95 (+20) synthetic or proxy
+
+Underfull \hbox (badness 10000) in paragraph at lines 266--267
+\T1/lmr/m/n/10.95 (+20) con-tin-u-ous driver
+
+Underfull \hbox (badness 3942) in paragraph at lines 267--267
+[]|\T1/lmr/m/n/10.95 (+20) real four-channel far-
+
+Underfull \hbox (badness 1968) in paragraph at lines 267--267
+[]|\T1/lmr/m/n/10.95 (+20) target-absent neg-a-tive
+
+Underfull \hbox (badness 10000) in paragraph at lines 267--268
+[]|\T1/lmr/m/n/10.95 (+20) Mandarin; tar-get
+
+Underfull \hbox (badness 7273) in paragraph at lines 267--268
+\T1/lmr/m/n/10.95 (+20) speaker ab-sent in
+
+Underfull \hbox (badness 1253) in paragraph at lines 267--268
+\T1/lmr/m/n/10.95 (+20) neg-a-tive tests; not
+
+Underfull \hbox (badness 10000) in paragraph at lines 268--268
+[]|\T1/lmr/m/n/10.95 (+20) Google Speech
+
+Underfull \hbox (badness 4467) in paragraph at lines 268--268
+[]|\T1/lmr/m/n/10.95 (+20) KWS pos-i-tives, non-
+
+Underfull \hbox (badness 1584) in paragraph at lines 268--268
+\T1/lmr/m/n/10.95 (+20) wake neg-a-tives, hard-
+
+Underfull \hbox (badness 1215) in paragraph at lines 268--269
+[]|\T1/lmr/m/n/10.95 (+20) isolated short com-
+
+Underfull \hbox (badness 10000) in paragraph at lines 269--269
+[]|\T1/lmr/m/n/10.95 (+20) Fluent Speech
+
+Underfull \hbox (badness 10000) in paragraph at lines 270--270
+[]|\T1/lmr/m/n/10.95 (+20) Smart Speaker
+
+Underfull \hbox (badness 10000) in paragraph at lines 270--270
+\T1/lmr/m/n/10.95 (+20) Com-mand
+
+Underfull \hbox (badness 10000) in paragraph at lines 270--270
+[]|\T1/lmr/m/n/10.95 (+20) non-Marvin open-set
+
+Underfull \hbox (badness 10000) in paragraph at lines 270--270
+\T1/lmr/m/n/10.95 (+20) neg-a-tive bench-mark;
+
+Underfull \hbox (badness 5652) in paragraph at lines 270--271
+\T1/lmr/m/n/10.95 (+20) stu-dio clips du-pli-
+
+Underfull \hbox (badness 10000) in paragraph at lines 271--271
+[]|\T1/lmr/m/n/10.95 (+20) Vehicle In-te-rior
+
+Underfull \hbox (badness 6691) in paragraph at lines 271--271
+\T1/lmr/m/n/10.95 (+20) Sound / cabin-
+ignored error: Infinite glue shrinkage found in box being split [5] [6]
+[7 <./fig1_system.png>] [8] [9]
+Underfull \hbox (badness 10000) in paragraph at lines 513--513
+[]|\T1/lmr/m/n/9 (+20) Expanded split-gate
+
+Underfull \hbox (badness 10000) in paragraph at lines 513--513
+[]|\T1/lmr/m/n/9 (+20) Selected eight-scene
+
+Underfull \hbox (badness 10000) in paragraph at lines 513--513
+[]|\T1/lmr/m/n/9 (+20) Noisy CAVE-MOVE
+[10]
+Overfull \hbox (24.34836pt too wide) in paragraph at lines 537--548
+ [][] 
+
+Overfull \hbox (5.8382pt too wide) in paragraph at lines 575--575
+ []|\T1/lmr/bx/n/8 (-20) KWS/h| 
+
+Overfull \hbox (2.5878pt too wide) in paragraph at lines 575--575
+ []|\T1/lmr/m/n/8 (-20) 1,209.38| 
+
+Overfull \hbox (2.5878pt too wide) in paragraph at lines 575--575
+ []|\T1/lmr/m/n/8 (-20) 1,289.26| 
+[11] [12]
+Overfull \hbox (30.34392pt too wide) in paragraph at lines 646--648
+[]\T1/lmr/m/n/10.95 (-20) Dual-domain Stage 1 re-gres-sion: \T1/lmtt/m/n/10.95 
+logs/stage1_dual_domain_regression_full_2026-10-10.json\T1/lmr/m/n/10.95 (-20) 
+. 
+
+Overfull \hbox (42.09178pt too wide) in paragraph at lines 648--650
+[]\T1/lmr/m/n/10.95 (-20) Stage 2 val-i-da-tion: \T1/lmtt/m/n/10.95 logs/stage2
+_frame_presence_dual_domain_nonwake_ft1/metrics_last.json\T1/lmr/m/n/10.95 (-20
+) . 
+
+Overfull \hbox (377.97133pt too wide) in paragraph at lines 650--653
+[]\T1/lmr/m/n/10.95 (-20) KWS re-gres-sion: \T1/lmtt/m/n/10.95 logs/stage3_kws_
+gsc_marvin_tse_ft2/metrics_last.json \T1/lmr/m/n/10.95 (-20) and \T1/lmtt/m/n/1
+0.95 logs/stage3_target_kws_gsc_marvin_hardneg_aishell5_ft1/metrics_last.json\T
+1/lmr/m/n/10.95 (-20) . 
+
+Overfull \hbox (27.72386pt too wide) in paragraph at lines 653--656
+[]\T1/lmr/m/n/10.95 (-20) Intent: \T1/lmtt/m/n/10.95 logs/stage4_intent_wav2vec
+_ft8_resume_tse_domain/metrics_official_test.json
+
+Overfull \hbox (36.45055pt too wide) in paragraph at lines 658--660
+[]\T1/lmr/m/n/10.95 (-20) Clean/open-set follow-up: \T1/lmtt/m/n/10.95 reports/
+clean_generalization_and_noise_transfer_2026-10-14.md\T1/lmr/m/n/10.95 (-20) . 
+
+
+Overfull \hbox (64.33156pt too wide) in paragraph at lines 660--662
+[]\T1/lmr/m/n/10.95 (-20) Full-context Smart Speaker thresh-old sweep: \T1/lmtt
+/m/n/10.95 reports/smart_speaker_threshold_sweep_2026-10-14.md\T1/lmr/m/n/10.95
+ (-20) . 
+
+Overfull \hbox (51.95164pt too wide) in paragraph at lines 662--664
+[]\T1/lmr/m/n/10.95 (-20) Corrected compact-gate back-end au-dit: \T1/lmtt/m/n/
+10.95 reports/compact_gate_backend_correction_2026-10-14.md\T1/lmr/m/n/10.95 (-
+20) . 
+
+Overfull \hbox (7.16891pt too wide) in paragraph at lines 664--666
+[]\T1/lmr/m/n/10.95 (-20) Current readi-ness: \T1/lmtt/m/n/10.95 reports/produc
+tion_readiness_snapshot_current_2026-10-14_v4.md\T1/lmr/m/n/10.95 (-20) . 
+[13]
+(C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstlang1.sty)
+ (C:\Users\mainpc\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstlang1.sty
+)
+Overfull \hbox (9.17459pt too wide) in paragraph at lines 695--698
+[]\T1/lmr/m/n/10.95 (-20) Install the JetPack-compatible ONNX Run-time pack-age
+ or build the sup-ported Ten-sorRT/CUDA
+[14] [15]
+Overfull \hbox (17.75322pt too wide) in paragraph at lines 816--816
+\T1/lmtt/m/n/10 checkpoints/\T1/lmr/m/n/10 (-20) , 
+
+Overfull \hbox (47.16365pt too wide) in paragraph at lines 816--816
+\T1/lmr/m/n/10 (-20) README/checksums|  
+[16]
+Overfull \hbox (14.38783pt too wide) in paragraph at lines 819--828
+\T1/lmr/m/n/10.95 (-20) gests are re-spec-tively \T1/lmtt/m/n/10.95 7503E366E6D
+4BF13271FB2FA3BC65493FC0F4509136CFB8BB21D7BAD85407CBC
+[17]
+Overfull \hbox (33.10892pt too wide) in paragraph at lines 927--937
+ [][] 
+[18]
+Overfull \hbox (44.5639pt too wide) in paragraph at lines 985--997
+ [][] 
+[19]
+Overfull \hbox (11.32298pt too wide) in paragraph at lines 1056--1069
+ [][] 
+[20] [21]
+(D:\Prawin_New\tse\car-tse-main\output\pdf\paper_report_2026-10-14.aux)
+
+LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
+
+ )
+(see the transcript file for additional information)<C:/Users/mainpc/AppData/Lo
+cal/Programs/MiKTeX/fonts/type1/public/lm/lmbx10.pfb><C:/Users/mainpc/AppData/L
+ocal/Programs/MiKTeX/fonts/type1/public/lm/lmbx12.pfb><C:/Users/mainpc/AppData/
+Local/Programs/MiKTeX/fonts/type1/public/lm/lmbx8.pfb><C:/Users/mainpc/AppData/
+Local/Programs/MiKTeX/fonts/type1/public/lm/lmbx9.pfb><C:/Users/mainpc/AppData/
+Local/Programs/MiKTeX/fonts/type1/public/lm/lmr10.pfb><C:/Users/mainpc/AppData/
+Local/Programs/MiKTeX/fonts/type1/public/lm/lmr12.pfb><C:/Users/mainpc/AppData/
+Local/Programs/MiKTeX/fonts/type1/public/lm/lmr8.pfb><C:/Users/mainpc/AppData/L
+ocal/Programs/MiKTeX/fonts/type1/public/lm/lmr9.pfb><C:/Users/mainpc/AppData/Lo
+cal/Programs/MiKTeX/fonts/type1/public/lm/lmtk10.pfb><C:/Users/mainpc/AppData/L
+ocal/Programs/MiKTeX/fonts/type1/public/lm/lmtt10.pfb><C:/Users/mainpc/AppData/
+Local/Programs/MiKTeX/fonts/type1/public/lm/lmtt8.pfb><C:/Users/mainpc/AppData/
+Local/Programs/MiKTeX/fonts/type1/public/lm/lmtti10.pfb>
+Output written on D:\Prawin_New\tse\car-tse-main\output\pdf\paper_report_2026-1
+0-14.pdf (21 pages, 985900 bytes).
+Transcript written on D:\Prawin_New\tse\car-tse-main\output\pdf\paper_report_20
+26-10-14.log.
+pdflatex: major issue: So far, you have not checked for MiKTeX updates.

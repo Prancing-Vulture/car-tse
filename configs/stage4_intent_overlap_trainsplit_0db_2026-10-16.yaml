@@ -1,0 +1,18 @@
+name: stage4_intent_overlap_trainsplit_0db_2026-10-16
+sample_rate: 16000
+segment_seconds: 2.0
+manifest_train: stage4_intent_overlap_trainsplit_0db_2026-10-16.jsonl
+manifest_eval: stage4_intent_overlap_trainsplit_0db_2026-10-16.jsonl
+label_map: intent_label_map.json
+waveform_cache_dir: data/cache/stage4_intent_overlap_trainsplit_0db_2026-10-16_16k
+waveform_cache_includes_cabin_noise: true
+waveform_cache_train: train_overlap_wav_16000hz.npy
+waveform_cache_eval: val_overlap_wav_16000hz.npy
+
+# The passenger pool used to build this cache is train-only and disjoint from
+# the held-out passenger manifest used by the corrected multi-speaker tests.
+# Clean and co-channel examples are balanced in both train and validation.
+train:
+  passenger_snr_db: 0.0
+  clean_and_overlap_balanced: true
+  passenger_pool: manifests/train/stage3_kws_cabin_train.jsonl

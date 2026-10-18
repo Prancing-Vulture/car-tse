@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import random
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -19,7 +20,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from car_tse.config import REPO_ROOT, load_stage_config
 from car_tse.data.datasets import KWSDataset
 from car_tse.models.kws_model import KWSModel
-from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, write_metrics
+from car_tse.train.utils import append_jsonl, get_device, load_checkpoint, save_checkpoint, write_metrics
 
 
 def file_fingerprint(path: Path) -> dict[str, int | str | bool]:
@@ -219,60 +220,20 @@ def main() -> int:
     run_name = args.run_name or cfg["name"]
     print(f"training_sampler_strategy={sampler_strategy}", flush=True)
     out_dir = paths["checkpoint_root"] / run_name
-    wandb_run = None
-    if args.wandb:
-        import wandb
-
-        init_checkpoint_path = (
-            (args.init_checkpoint if args.init_checkpoint.is_absolute() else REPO_ROOT / args.init_checkpoint)
-            if args.init_checkpoint is not None
-            else None
-        )
-
-        if args.wandb_dir is not None:
-            args.wandb_dir.mkdir(parents=True, exist_ok=True)
-        wandb_run = wandb.init(
-            project=args.wandb_project,
-            entity=args.wandb_entity,
-            name=run_name,
-            job_type="train-stage3-kws",
-            mode=args.wandb_mode,
-            dir=str(args.wandb_dir) if args.wandb_dir is not None else None,
-            config={
-                "stage": "stage3_kws",
-                "config": args.config.name,
-                "config_sha256": file_fingerprint(args.config if args.config.is_absolute() else REPO_ROOT / args.config).get("sha256"),
-                "init_checkpoint": file_fingerprint(init_checkpoint_path) if init_checkpoint_path else None,
-                "train_manifest": file_fingerprint(train_manifest),
-                "validation_manifest": file_fingerprint(val_manifest),
-                "train_waveform_cache": file_fingerprint(train_cache_path),
-                "validation_waveform_cache": file_fingerprint(val_cache_path),
-                "input_domain": (
-                    "cached_frozen_stage1_extracted_with_cabin_noise"
-                    if train_ds.waveform_cache is not None
-                    else "raw_waveform_with_optional_on_the_fly_cabin_noise"
-                ),
-                "max_epochs": int(cfg["train"]["max_epochs"]),
-                "validation_threshold": decision_threshold,
-                "learning_rate": float(cfg["train"]["lr"]),
-                "batch_size": int(cfg["train"]["batch_size"]),
-                "train_examples": len(train_ds),
-                "train_positive_examples": int(labels.sum().item()),
-                "train_negative_examples": int(len(labels) - labels.sum().item()),
-                "training_sampler_strategy": sampler_strategy,
-                "negative_to_positive_sampling_ratio": negative_to_positive_ratio,
-                "validation_examples": len(val_ds),
-                "cabin_noise_augmentation_on_the_fly": bool(cfg.get("cabin_noise", False)),
-                "waveform_cache_includes_cabin_noise": bool(cfg.get("waveform_cache_includes_cabin_noise", False)),
-                "waveform_cache_crop_start_seconds": float(cfg.get("waveform_cache_crop_start_seconds", 0.0)),
-                "cabin_noise_snr_db": cfg.get("cabin_noise_snr_db"),
-                "seed": int(cfg["train"].get("seed", 0)),
-                "device": str(device),
-            },
-        )
-    # A fine-tune candidate must never lose its warm-start if training does not
-    # improve validation F1. This also makes the saved candidate directly
-    # comparable with the checkpoint it started from.
+    run_id = uuid.uuid4().hex
+    history_path = paths["log_root"] / run_name / f"epoch_metrics_{run_id}.jsonl"
+    write_metrics(
+        paths["log_root"] / run_name / f"run_metadata_{run_id}.json",
+        {
+            "run_id": run_id,
+            "run_name": run_name,
+            "device": str(device),
+            "config": str(args.config),
+            "train_manifest": str(train_manifest),
+            "val_manifest": str(val_manifest),
+            "init_checkpoint": str(args.init_checkpoint) if args.init_checkpoint else None,
+        },
+    )
     best_f1 = float("-inf")
     if args.init_checkpoint is not None:
         initial_val = evaluate(model, val_loader, device, decision_threshold)
@@ -335,6 +296,7 @@ def main() -> int:
         train_loss = accumulated_train_loss / max(total, 1)
         metrics = {
             "epoch": epoch,
+            "run_id": run_id,
             "train_accuracy": train_acc,
             "train_loss": train_loss,
             "sampled_positive_examples": sampled_positives,
@@ -345,27 +307,7 @@ def main() -> int:
             "best_f1": best_f1,
         }
         write_metrics(paths["log_root"] / run_name / "metrics_last.json", metrics)
-        if wandb_run is not None:
-            wandb_run.log(
-                {
-                    "epoch": epoch,
-                    "train/accuracy": train_acc,
-                    "train/loss": train_loss,
-                    "train/sampled_positive_examples": sampled_positives,
-                    "train/sampled_negative_examples": sampled_negatives,
-                    "train/sampled_negative_to_positive_ratio": metrics["sampled_negative_to_positive_ratio"],
-                    "validation/accuracy": val["accuracy"],
-                    "validation/precision": val["precision"],
-                    "validation/recall": val["recall"],
-                    "validation/f1": val["f1"],
-                    "validation/false_positive": val["false_positive"],
-                    "validation/false_negative": val["false_negative"],
-                    "validation/decision_threshold": decision_threshold,
-                    "learning_rate": scheduler.get_last_lr()[0],
-                },
-                step=epoch,
-                commit=True,
-            )
+        append_jsonl(history_path, metrics)
         print(
             f"epoch {epoch} train_acc={train_acc:.3f} train_loss={train_loss:.4f} "
             f"sampled_neg_pos={metrics['sampled_negative_to_positive_ratio']:.2f} "
@@ -382,32 +324,10 @@ def main() -> int:
             if bad_epochs >= patience:
                 print(f"Early stopping after {epoch} epochs", flush=True)
                 break
-    write_metrics(paths["log_root"] / run_name / "train_last.json", {"best_f1": best_f1})
-    if wandb_run is not None:
-        wandb_run.summary["best_validation_f1"] = best_f1
-        wandb_run.summary["validation_decision_threshold"] = decision_threshold
-        best_checkpoint = out_dir / "best.pt"
-        wandb_run.summary["best_checkpoint"] = best_checkpoint.name
-        if best_checkpoint.is_file():
-            artifact = wandb.Artifact(
-                name=f"{run_name}-best",
-                type="model",
-                metadata={"best_validation_f1": best_f1, "stage": "stage3_kws"},
-            )
-            artifact.add_file(str(best_checkpoint), name=best_checkpoint.name)
-            try:
-                logged_artifact = wandb_run.log_artifact(artifact)
-                logged_artifact.wait()
-                wandb_run.summary["best_checkpoint_artifact"] = (
-                    f"{logged_artifact.name}:{logged_artifact.version}"
-                )
-            except Exception as exc:
-                # Artifact upload is optional; never leave a completed training
-                # run in a failed state when its metrics/checkpoint are saved.
-                wandb_run.summary["checkpoint_artifact_upload_error"] = (
-                    f"{type(exc).__name__}: {exc}"
-                )
-        wandb_run.finish()
+    write_metrics(
+        paths["log_root"] / run_name / "train_last.json",
+        {"best_f1": best_f1, "run_id": run_id, "history": str(history_path)},
+    )
     print(f"Done. Best checkpoint: {out_dir / 'best.pt'}")
     return 0
 

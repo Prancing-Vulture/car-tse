@@ -1,0 +1,34 @@
+name: stage2_frame_presence_english_clean_identity_ft1
+sample_rate: 16000
+segment_seconds: 3.0
+manifest: stage2_presence_english_clean_identity.jsonl
+stage1_config: configs/stage1_spex_english_clean_identity_ft1.yaml
+spex_checkpoint: stage1_spex_english_clean_identity_ft1/best.pt
+cabin_noise: false
+num_mics: 4
+cabin_noise_channels: [0, 2, 4, 6]
+
+model:
+  n_mels: 40
+  hidden: 64
+  n_fft: 512
+  hop: 160
+  top_fraction: 0.20
+  target_threshold_db_below_peak: 30.0
+
+train:
+  batch_size: 64
+  val_batch_size: 64
+  max_epochs: 3
+  val_fraction: 0.20
+  group_by_speaker: true
+  seed: 20261014
+  lr: 7.5e-5
+  grad_clip: 5.0
+  positive_weight: 2.0
+  smooth_weight: 0.02
+  amp: true
+  num_workers: 0
+  cache_stage1: true
+  cache_batch_size: 64
+  init_checkpoint: stage2_frame_presence_dual_domain_nonwake_ft1/best.pt

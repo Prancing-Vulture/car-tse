@@ -8,6 +8,7 @@ import hashlib
 import json
 import random
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -21,16 +22,24 @@ from car_tse.data.datasets import TripletExtractionDataset
 from car_tse.losses.stage1 import stage1_loss
 from car_tse.metrics.si_sdr import si_sdr, si_sdr_per_example
 from car_tse.models.stage1_system import Stage1System
-from car_tse.train.utils import get_device, load_checkpoint, save_checkpoint, schedule_for_epoch, write_metrics
+from car_tse.train.utils import append_jsonl, get_device, load_checkpoint, save_checkpoint, schedule_for_epoch, write_metrics
 
 
 def collate(batch):
     out = {}
-    for k in batch[0]:
-        if isinstance(batch[0][k], torch.Tensor):
-            out[k] = torch.stack([b[k] for b in batch])
+    keys = set().union(*(item.keys() for item in batch))
+    for k in keys:
+        # Speaker IDs are optional: AISHELL rows have speaker_id strings but
+        # no classifier label, while LibriMix/CAVEMOVE rows may carry one.
+        # Do not manufacture a numeric label for a mixed-domain batch; the
+        # Stage 1 loss will simply omit the auxiliary speaker CE term.
+        if k == "speaker_label" and not all(k in item for item in batch):
+            continue
+        values = [item.get(k) for item in batch]
+        if all(isinstance(value, torch.Tensor) for value in values):
+            out[k] = torch.stack(values)
         else:
-            out[k] = [b[k] for b in batch]
+            out[k] = values
     return out
 
 
@@ -236,6 +245,20 @@ def main() -> int:
     run_name = args.run_name or str(cfg["name"])
     out_dir = paths["checkpoint_root"] / run_name
     out_dir.mkdir(parents=True, exist_ok=True)
+    run_id = uuid.uuid4().hex
+    history_path = paths["log_root"] / cfg["name"] / f"epoch_metrics_{run_id}.jsonl"
+    write_metrics(
+        paths["log_root"] / cfg["name"] / f"run_metadata_{run_id}.json",
+        {
+            "run_id": run_id,
+            "run_name": cfg["name"],
+            "device": str(device),
+            "config": str(args.config),
+            "train_manifest": str(cfg["train"].get("manifest")),
+            "val_manifest": str(cfg["train"].get("val_manifest")),
+            "init_checkpoint": str(init_ckpt) if init_ckpt else None,
+        },
+    )
     use_amp = bool(cfg["train"].get("amp", False)) and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     optimizer = None
@@ -391,37 +414,19 @@ def main() -> int:
                 epoch,
                 {"train_si_sdr_s1": mean_si, "val": val_stats, "selection_metric": metric, "seed": seed},
             )
-        train_stats = {key: value / max(n, 1) for key, value in stats_acc.items()}
         metrics = {
             "epoch": epoch,
-            "seed": seed,
-            "train_loss": loss_sum / max(n, 1),
-            "train": train_stats,
+            "run_id": run_id,
+            "train_si_sdr_s1": mean_si,
             "val": val_stats,
             "best_metric": best_si,
         }
-        write_metrics(
-            paths["log_root"] / run_name / "metrics_last.json",
-            metrics,
-        )
-        if wandb_run is not None:
-            log_row = {
-                "epoch": epoch,
-                "train/loss": loss_sum / max(n, 1),
-                "train/si_sdr_s1": mean_si,
-                "validation/si_sdri": metric,
-                "best_validation/si_sdri": best_si,
-            }
-            log_row.update({f"train/{key}": value for key, value in train_stats.items()})
-            log_row.update({f"validation/{key}": value for key, value in val_stats.items()})
-            log_row.update({f"learning_rate/group_{index}": group["lr"] for index, group in enumerate(optimizer.param_groups)})
-            wandb_run.log(log_row, step=epoch, commit=True)
-    write_metrics(paths["log_root"] / run_name / "train_last.json", {"best_metric": best_si, "seed": seed})
-    if wandb_run is not None:
-        wandb_run.summary["best_validation_si_sdri"] = best_si
-        wandb_run.summary["seed"] = seed
-        wandb_run.summary["best_checkpoint"] = str(out_dir / "best.pt")
-        wandb_run.finish()
+        write_metrics(paths["log_root"] / cfg["name"] / "metrics_last.json", metrics)
+        append_jsonl(history_path, metrics)
+    write_metrics(
+        paths["log_root"] / cfg["name"] / "train_last.json",
+        {"best_metric": best_si, "run_id": run_id, "history": str(history_path)},
+    )
     print(f"Done. Best checkpoint: {out_dir / 'best.pt'}")
     return 0
 
