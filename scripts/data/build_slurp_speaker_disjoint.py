@@ -105,7 +105,8 @@ def main() -> int:
             "recordings": len(split_rows),
             "speakers": len(assigned_speakers[split]),
             "speaker_ids": sorted(assigned_speakers[split]),
-            "intents": len({row.get("intent") for row in split_rows}),
+            "raw_intents": len({row.get("intent") for row in split_rows}),
+            "actions": len({row.get("action") for row in split_rows}),
             "distant_recordings": sum(row.get("microphone") == "distant" for row in split_rows),
             "close_talk_recordings": sum(row.get("microphone") == "close_talk" for row in split_rows),
             "missing_audio": sum(not row.get("audio_exists", False) for row in split_rows),
@@ -118,7 +119,7 @@ def main() -> int:
         "splits": {
             split: {
                 key: summary["splits"][split][key]
-                for key in ("recordings", "speakers", "intents", "distant_recordings", "close_talk_recordings", "missing_audio")
+                for key in ("recordings", "speakers", "raw_intents", "actions", "distant_recordings", "close_talk_recordings", "missing_audio")
             }
             for split in OFFICIAL_SPLITS
         },

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Train and evaluate a frozen-wav2vec2 SLURP intent baseline.
+"""Train and evaluate a frozen-wav2vec2 SLURP action baseline.
 
 This is intentionally separate from the FSC/car pipeline.  It uses the
-official SLURP label inventory, trains only a 91-class intent head on the
+official SLURP action inventory, trains only a 46-class action head on the
 official train split, selects on development, and reports the held-out test
 score for all, distant, and close-talk recordings.  The same script can be
 pointed at the derived speaker-disjoint manifests for the stress protocol.
@@ -43,7 +43,7 @@ class FeatureDataset(Dataset):
         if self.features.shape[0] != len(rows):
             raise ValueError(f"Feature/manifest length mismatch: {self.features.shape[0]} vs {len(rows)}")
         if any(label < 0 for label in self.labels):
-            raise ValueError("SLURP manifest contains an intent outside the real-train label space")
+            raise ValueError("SLURP manifest contains an action outside the real-train label space")
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -109,7 +109,7 @@ def main() -> int:
     parser.add_argument("--head-hidden", type=int, default=512)
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--feature-dir", type=Path, default=Path("D:/datasets/slurp/features_wav2vec4s"))
-    parser.add_argument("--run-name", default="slurp_intent_wav2vec_official_all_2026-10-18")
+    parser.add_argument("--run-name", default="slurp_action_wav2vec_official_all_2026-10-18")
     parser.add_argument("--checkpoint-root", type=Path, default=REPO_ROOT / "checkpoints")
     parser.add_argument("--log-root", type=Path, default=REPO_ROOT / "logs")
     parser.add_argument("--amp", action="store_true")
@@ -133,7 +133,7 @@ def main() -> int:
     if not train_rows or not devel_rows or not test_rows:
         raise RuntimeError("train, devel, and test manifests must be non-empty")
     if any(int(row.get("label", -1)) < 0 for row in train_rows + devel_rows + test_rows):
-        raise RuntimeError("all official evaluation rows must be in the real-train intent label map")
+        raise RuntimeError("all official evaluation rows must be in the real-train action label map")
     num_classes = max(int(row["label"]) for row in train_rows + devel_rows + test_rows) + 1
 
     feature_dir = args.feature_dir.resolve()

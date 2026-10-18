@@ -137,12 +137,14 @@ def main() -> int:
         raise FileNotFoundError(f"Missing SLURP metadata: {metadata_path}")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
 
-    # The official real-train inventory is the label space for the primary
-    # benchmark.  Synthetic-only intents are left with label=-1 in the flat
-    # manifests so they cannot silently enter an official real-data score.
+    # SLURP's raw ``intent`` strings are not a stable cross-split inventory
+    # (for example, some partitions use ``music_likeness`` while another uses
+    # ``likeness``).  The canonical 46-value ``action`` field is consistent
+    # and matches the paper's primary semantic metric.  Synthetic-only actions
+    # are left with label=-1 in the flat manifests.
     train_rows_for_labels = read_jsonl(annotation_root / "train.jsonl")
-    train_intents = sorted({str(row.get("intent")) for row in train_rows_for_labels})
-    label_map = {intent: index for index, intent in enumerate(train_intents)}
+    train_actions = sorted({str(row.get("action")) for row in train_rows_for_labels})
+    label_map = {action: index for index, action in enumerate(train_actions)}
 
     split_rows: dict[str, list[dict[str, Any]]] = {}
     split_recordings: dict[str, list[dict[str, Any]]] = {}
@@ -160,7 +162,7 @@ def main() -> int:
         "annotation_root": str(annotation_root.resolve()),
         "splits": {},
         "speaker_overlap": {},
-        "real_train_label_map": label_map,
+        "real_train_action_label_map": label_map,
     }
     for split in SPLITS:
         summary["splits"][split] = summarize_split(split_rows[split], split_recordings[split])
@@ -170,7 +172,7 @@ def main() -> int:
             with manifest_path.open("w", encoding="utf-8") as handle:
                 for item in split_recordings[split]:
                     item = dict(item)
-                    item["label"] = label_map.get(str(item["intent"]), -1)
+                    item["label"] = label_map.get(str(item["action"]), -1)
                     handle.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     speaker_sets = {
