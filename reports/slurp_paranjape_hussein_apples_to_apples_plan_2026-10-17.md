@@ -4,6 +4,31 @@ Date: 2026-10-17
 
 ## Important correction before comparing
 
+### SLURP split caveat (verified 2026-10-18)
+
+The official SLURP train/development/test files must be preserved for the
+primary benchmark, but they must **not** be described as speaker-disjoint by
+default.  The released metadata links recordings to speaker IDs, and an audit
+of the official JSONL files shows speaker IDs shared across the published
+splits.  Therefore the paper comparison will report two distinct protocols:
+
+1. **Official SLURP protocol:** exact released train/development/test files,
+   with close-talk and distant recordings reported separately.  This is the
+   apples-to-apples protocol against published SLURP baselines, but it is not
+   a speaker-independent generalization test.
+2. **Speaker-disjoint stress protocol:** a deterministic derived split made by
+   assigning complete speaker IDs to train/development/test.  This is the
+   appropriate protocol for claims about unseen drivers, but its scores must
+   not be substituted for the official SLURP score.
+
+The current audit found 11,514/2,033/2,974 annotation rows and
+50,628/8,690/13,078 real recordings in train/development/test, respectively,
+matching the published distribution.  It also found 166/137/142 speaker IDs
+present within the individual splits and substantial cross-split overlap.
+These counts are recorded from the local official annotations; the audio
+archives are stored outside this repository because the released audio is
+CC BY-NC 4.0.
+
 The two vehicle-assistant papers should not be treated as SLURP baselines without checking their methods:
 
 - Paranjape et al., *Voice-Based Smart Assistant System for Vehicles using RASA* (arXiv:2312.01642), describes a RASA vehicle assistant for navigation, calls, weather/news, and music. The public abstract does not identify SLURP as its dataset. The workspace handoff records a reported 93.67% intent result on 300 test inputs and the wake word “coffee”; those details must be extracted from the paper's methods/results before quoting them.
