@@ -139,6 +139,26 @@ encoder or use an ASR-to-NLU baseline, then report both official and
 speaker-disjoint scores. The current run is retained as the frozen-feature
 reference so improvements remain measurable.
 
+### Initial speaker-disjoint stress baseline
+
+The identical frozen-feature/action-head configuration was retrained on the
+deterministic 80/10/10 speaker-disjoint split. Its best development
+macro-F1 was 22.89% at epoch 15. The derived held-out test results were:
+
+| Test view | Accuracy | Top-5 | Macro-F1 | Recordings |
+|---|---:|---:|---:|---:|
+| all real microphones | 23.28% | 54.93% | 22.85% | 7,002 |
+| distant only | 17.01% | 46.49% | 16.17% | 3,734 |
+| close-talk only | 30.45% | 64.57% | 31.07% | 3,268 |
+
+The stress result is not directly comparable to the official SLURP test because
+it uses a different speaker assignment and has a different train/test mixture.
+It is included to expose speaker-generalization behavior and to prevent the
+official split's speaker overlap from being mistaken for an unseen-driver
+result. Its training log and plot are at
+`D:\datasets\slurp\artifacts\logs\slurp_action_wav2vec_speaker_disjoint_2026-10-18`
+and `reports/figures/slurp_action_wav2vec_speaker_disjoint_2026-10-18.{png,pdf}`.
+
 ### Track C — full in-car pipeline
 
 SLURP cannot by itself validate this track. We will use a separate fixed scene
