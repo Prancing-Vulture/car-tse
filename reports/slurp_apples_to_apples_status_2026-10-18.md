@@ -134,10 +134,48 @@ SLURP actions. The raw epoch log and paper-ready plot are kept at
 `D:\datasets\slurp\artifacts\logs\slurp_action_wav2vec_official_all_2026-10-18`
 and `reports/figures/slurp_action_wav2vec_official_all_2026-10-18.{png,pdf}`.
 
-The next comparison model should fine-tune a streaming-capable acoustic
-encoder or use an ASR-to-NLU baseline, then report both official and
-speaker-disjoint scores. The current run is retained as the frozen-feature
-reference so improvements remain measurable.
+The frozen-feature run is retained as the lower-bound reference. The stronger
+fine-tuned candidate and a separate ASR-to-NLU track should both be reported
+with official and speaker-disjoint scores; the latter is the closer match to
+published SLURP semantic-understanding evaluations.
+
+### Fine-tuned variable-length WavLM action model
+
+The first stronger direct-audio candidate was trained with
+`microsoft/wavlm-base-plus`. It keeps the encoder's feature extractor frozen,
+fine-tunes the upper six transformer layers, and uses complete variable-length
+recordings up to an 8-second cap rather than a fixed 4-second crop. Batches are
+masked at the waveform and encoder-frame levels. The classifier combines
+masked attentive pooling with masked mean pooling, and trains an auxiliary
+18-class scenario head alongside the stable 46-class action head. The action
+loss uses a restrained class-frequency weight (`power=0.25`); the scenario loss
+weight is 0.15. Five epochs completed; epoch 4 was selected by development
+macro-F1 and epoch 5 had already plateaued.
+
+Held-out official test results from the protected epoch-4 checkpoint:
+
+| Test view | Accuracy | Top-5 | Macro-F1 | Recordings |
+|---|---:|---:|---:|---:|
+| all real microphones | **81.11%** | **95.22%** | **74.20%** | 13,078 |
+| distant only | **79.40%** | **94.48%** | **72.19%** | 6,797 |
+| close-talk only | **83.01%** | **95.84%** | **76.24%** | 6,281 |
+
+Relative to the frozen-feature lower bound, this is +61.79 percentage points
+of top-1 accuracy and +56.10 points of macro-F1 on the all-microphone test
+view. It is a strong direct-audio baseline, but it is still not the complete
+in-car system and it does not reproduce a text/ASR-to-NLU paper number. The
+official SLURP split has speaker overlap, so a separate speaker-disjoint run is
+still required before claiming unseen-speaker generalization.
+
+The training history and paper-ready curves are stored at:
+
+- `D:\datasets\slurp\artifacts\logs\slurp_action_wavlm_attn_ft_b16w2_2026-10-18`
+- `reports/figures/slurp_action_wavlm_attn_ft_b16w2_2026-10-18.{png,pdf}`
+
+The reproducible training entry point is
+`scripts/train/train_slurp_action_finetune.py`. The 381 MB best checkpoint is
+kept outside git at
+`D:\datasets\slurp\artifacts\checkpoints\slurp_action_wavlm_attn_ft_b16w2_2026-10-18\best.pt`.
 
 ### Initial speaker-disjoint stress baseline
 
