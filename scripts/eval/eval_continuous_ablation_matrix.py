@@ -12,6 +12,8 @@ Variants:
 * ``no_presence``: TSE + target-speaker KWS, presence gate disabled;
 * ``no_speaker_matching``: TSE + generic KWS, target conditioning disabled;
 * ``no_wake_smoothing``: TSE + presence + target-speaker KWS, one-hit wake;
+* ``oracle_extraction``: the clean target track replaces TSE output;
+* ``oracle_gate``: ground-truth target activity replaces the learned presence gate;
 * ``direct_command_oracle``: intent on the labeled command window without
   wake-word gating (an oracle segmentation baseline, not a deployable path).
 
@@ -23,6 +25,7 @@ version when available so the comparison can be repeated.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -132,6 +135,14 @@ def git_revision() -> str | None:
         return None
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def pad_or_crop(wav: torch.Tensor, samples: int) -> torch.Tensor:
     if wav.shape[-1] >= samples:
         return wav[..., :samples]
@@ -163,6 +174,7 @@ def collect_window_scores(
     mixture: np.ndarray,
     multichannel: np.ndarray,
     enrollment: np.ndarray,
+    oracle_target: np.ndarray,
     truth: dict[str, Any],
     sample_rate: int,
     stage1_seconds: float,
@@ -199,6 +211,21 @@ def collect_window_scores(
             ).mean()
             extracted_downstream = normalize_extracted_waveform(extracted)
             raw_downstream = normalize_extracted_waveform(mix_tensor)
+            oracle_window = np.zeros(window_samples, dtype=np.float32)
+            if end > start:
+                oracle_window[: end - start] = oracle_target[start:end]
+            oracle_downstream = normalize_extracted_waveform(
+                torch.from_numpy(oracle_window).to(device).unsqueeze(0)
+            )
+            oracle_embedding = pipeline.stage1.speaker_embedding(oracle_downstream)
+            compact_probability = None
+            if pipeline.compact_speaker_verifier is not None:
+                compact_enrollment = pipeline._prepare_compact_speaker_input(enrollment_tensor)
+                compact_extracted = pipeline._prepare_compact_speaker_input(extracted_downstream)
+                compact_logits, _, _ = pipeline.compact_speaker_verifier(
+                    compact_enrollment, compact_extracted
+                )
+                compact_probability = float(torch.sigmoid(compact_logits).mean().cpu())
             target_kws_input = pad_or_crop(
                 extracted_downstream,
                 max(1, int(round(pipeline.kws_sample_rate * pipeline.kws_input_seconds))),
@@ -222,6 +249,8 @@ def collect_window_scores(
                     "presence_probability": float(pipeline.presence_probability(extracted).mean().cpu()),
                     "raw_presence_probability": float(pipeline.presence_probability(raw_downstream).mean().cpu()),
                     "speaker_similarity": float(speaker_similarity.detach().cpu()),
+                    "compact_speaker_probability": compact_probability,
+                    "oracle_presence_probability": float(pipeline.presence_probability(oracle_downstream).mean().cpu()),
                     "generic_kws_probability": kws_score(
                         pipeline.kws,
                         target_kws_input,
@@ -242,8 +271,22 @@ def collect_window_scores(
                         enrollment_embedding,
                         extracted_embedding,
                     ),
+                    "oracle_generic_kws_probability": kws_score(
+                        pipeline.kws,
+                        pad_or_crop(oracle_downstream, max(1, int(round(pipeline.kws_sample_rate * pipeline.kws_input_seconds)))),
+                        pipeline.kws_sample_rate,
+                        pipeline.kws_input_seconds,
+                        pipeline.wake_class_id,
+                    ),
+                    "oracle_target_kws_probability": target_kws_score(
+                        pipeline,
+                        pad_or_crop(oracle_downstream, max(1, int(round(pipeline.kws_sample_rate * pipeline.kws_input_seconds)))),
+                        enrollment_embedding,
+                        oracle_embedding,
+                    ),
                     "extracted_waveform": extracted_downstream.detach(),
                     "raw_waveform": raw_downstream.detach(),
+                    "oracle_waveform": oracle_downstream.detach(),
                 }
             )
     return rows
@@ -271,8 +314,9 @@ def summarize_variant(
     if not settings["use_wake_gate"]:
         command_start = float(truth["target_command_start_seconds"])
         row = min(rows, key=lambda item: abs(item["window_start_seconds"] - command_start))
+        intent_wave = row["oracle_waveform"] if settings.get("use_oracle_extraction", False) else row["extracted_waveform"]
         probabilities = torch.softmax(
-            pipeline.intent(pad_or_crop(row["extracted_waveform"], int(round(pipeline.intent_sample_rate * pipeline.intent_input_seconds)))),
+            pipeline.intent(pad_or_crop(intent_wave, int(round(pipeline.intent_sample_rate * pipeline.intent_input_seconds)))),
             dim=-1,
         )[0]
         predicted_id = str(int(probabilities.argmax().item()))
@@ -306,19 +350,28 @@ def summarize_variant(
 
     with torch.inference_mode():
         for row in rows:
-            accepted = True
-            presence = row["presence_probability"] if settings["use_tse"] else row["raw_presence_probability"]
+            accepted = not (settings.get("use_oracle_gate", False) and not bool(row["target_active"]))
+            if settings.get("use_oracle_extraction", False):
+                presence = row["oracle_presence_probability"]
+            else:
+                presence = row["presence_probability"] if settings["use_tse"] else row["raw_presence_probability"]
             active_presence_threshold = (
                 float(settings.get("command_presence_threshold", getattr(pipeline, "command_presence_threshold", presence_threshold)))
                 if state.awaiting_command
                 else presence_threshold
             )
+            speaker_score_key = str(settings.get("speaker_score_key", "speaker_similarity"))
+            speaker_score = row.get(speaker_score_key)
             speaker_rejected = bool(
                 settings.get("use_speaker_gate", False)
                 and speaker_gate_threshold is not None
-                and float(row.get("speaker_similarity", -1.0)) < float(speaker_gate_threshold)
+                and (speaker_score is None or float(speaker_score) < float(speaker_gate_threshold))
             )
-            if (settings["use_presence"] and presence < active_presence_threshold) or speaker_rejected:
+            if (
+                (settings["use_presence"] and presence < active_presence_threshold)
+                or speaker_rejected
+                or not accepted
+            ):
                 accepted = False
                 state.kws_scores.clear()
                 if state.awaiting_command:
@@ -335,7 +388,11 @@ def summarize_variant(
                 continue
 
             if state.awaiting_command:
-                waveform = row["extracted_waveform"] if settings["use_tse"] else row["raw_waveform"]
+                waveform = (
+                    row["oracle_waveform"]
+                    if settings.get("use_oracle_extraction", False)
+                    else (row["extracted_waveform"] if settings["use_tse"] else row["raw_waveform"])
+                )
                 intent_samples = int(round(pipeline.intent_sample_rate * pipeline.intent_input_seconds))
                 intent_input = pad_or_crop(waveform, intent_samples)
                 logits = pipeline.intent(intent_input)[0]
@@ -398,7 +455,9 @@ def summarize_variant(
                 continue
 
             if settings["use_tse"] and settings["use_speaker_matching"]:
-                score = row["target_kws_probability"]
+                score = row["oracle_target_kws_probability"] if settings.get("use_oracle_extraction", False) else row["target_kws_probability"]
+            elif settings.get("use_oracle_extraction", False):
+                score = row["oracle_generic_kws_probability"]
             else:
                 score = row["generic_kws_probability"] if settings["use_tse"] else row["raw_generic_kws_probability"]
             if score is None:
@@ -457,21 +516,33 @@ def summarize_variant(
         "suppressed_command_events_detail": suppressed_command_events,
         "target_presence_pass_rate": float(
             np.mean([
-                (row["presence_probability"] if settings["use_tse"] else row["raw_presence_probability"]) >= presence_threshold
+                (
+                    row["oracle_presence_probability"]
+                    if settings.get("use_oracle_extraction", False)
+                    else (row["presence_probability"] if settings["use_tse"] else row["raw_presence_probability"])
+                ) >= presence_threshold
                 for row in rows
                 if row["target_active"]
             ])
         ),
         "passenger_presence_pass_rate": float(
             np.mean([
-                (row["presence_probability"] if settings["use_tse"] else row["raw_presence_probability"]) >= presence_threshold
+                (
+                    row["oracle_presence_probability"]
+                    if settings.get("use_oracle_extraction", False)
+                    else (row["presence_probability"] if settings["use_tse"] else row["raw_presence_probability"])
+                ) >= presence_threshold
                 for row in rows
                 if row["passenger_region"]
             ])
         ),
         "speaker_similarity_mean": float(np.mean([row["speaker_similarity"] for row in rows])),
         "speaker_gate_pass_rate": (
-            float(np.mean([row["speaker_similarity"] >= float(speaker_gate_threshold) for row in rows]))
+            float(np.mean([
+                row.get(str(settings.get("speaker_score_key", "speaker_similarity"))) is not None
+                and float(row[str(settings.get("speaker_score_key", "speaker_similarity"))]) >= float(speaker_gate_threshold)
+                for row in rows
+            ]))
             if speaker_gate_threshold is not None
             else None
         ),
@@ -499,7 +570,15 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=REPO_ROOT / "logs/continuous_ablation_matrix.json")
     parser.add_argument("--scenes", type=int, default=2)
     parser.add_argument("--cabin-snr-db", nargs="+", type=float, default=[-5.0, 0.0, 10.0, 20.0])
-    parser.add_argument("--passenger-snr-db", type=float, default=0.0)
+    parser.add_argument(
+        "--passenger-sir-db",
+        "--passenger-snr-db",
+        dest="passenger_snr_db",
+        type=float,
+        default=0.0,
+        help="Requested target-to-passenger RMS ratio in dB; negative values mean louder passenger speech.",
+    )
+    parser.add_argument("--overlap", action="store_true", help="Place passenger utterances over the target wake and command windows.")
     parser.add_argument("--kws-threshold", type=float, default=None)
     parser.add_argument("--presence-threshold", type=float, default=None)
     parser.add_argument("--hop-seconds", type=float, default=1.0)
@@ -552,6 +631,20 @@ def main() -> int:
         settings = dict(VARIANTS["full"])
         settings.update({"use_speaker_gate": True, "speaker_gate_threshold": float(threshold)})
         variant_defs[f"full_speaker_gate_{label}"] = settings
+        compact_settings = dict(VARIANTS["full"])
+        compact_settings.update({
+            "use_speaker_gate": True,
+            "speaker_gate_threshold": float(threshold),
+            "speaker_score_key": "compact_speaker_probability",
+        })
+        variant_defs[f"full_compact_verifier_gate_{label}"] = compact_settings
+        generic_compact_settings = dict(VARIANTS["no_speaker_matching"])
+        generic_compact_settings.update({
+            "use_speaker_gate": True,
+            "speaker_gate_threshold": float(threshold),
+            "speaker_score_key": "compact_speaker_probability",
+        })
+        variant_defs[f"generic_kws_compact_verifier_gate_{label}"] = generic_compact_settings
         for command_threshold in command_presence_thresholds:
             command_label = f"{float(command_threshold):.3f}".replace("-", "m").replace(".", "p")
             joint_settings = dict(settings)
@@ -574,8 +667,44 @@ def main() -> int:
             settings = dict(VARIANTS["full"])
             settings["min_intent_confidence"] = float(confidence_threshold)
             variant_defs[f"full_intent_confidence_{confidence_label}"] = settings
+    oracle_extraction = dict(VARIANTS["full"])
+    oracle_extraction["use_oracle_extraction"] = True
+    variant_defs["oracle_extraction"] = oracle_extraction
+    oracle_gate = dict(VARIANTS["full"])
+    oracle_gate.update({"use_presence": False, "use_oracle_gate": True})
+    variant_defs["oracle_gate"] = oracle_gate
+    oracle_both = dict(oracle_extraction)
+    oracle_both.update({"use_presence": False, "use_oracle_gate": True})
+    variant_defs["oracle_extraction_and_gate"] = oracle_both
     device = get_device()
     pipeline = load_pipeline(cfg, cfg["paths"], device)
+    runtime_model_artifacts: dict[str, dict[str, str]] = {}
+    for component, attribute in (
+        ("stage1", "stage1"),
+        ("presence", "presence"),
+        ("kws", "kws"),
+        ("target_kws", "target_kws"),
+        ("compact_verifier", "compact_speaker_verifier"),
+        ("intent", "intent"),
+    ):
+        model = getattr(pipeline, attribute, None)
+        model_path = getattr(model, "model_path", None)
+        if model_path is not None and Path(model_path).is_file():
+            resolved_model_path = Path(model_path).resolve()
+            runtime_model_artifacts[component] = {
+                "path": str(resolved_model_path),
+                "sha256": sha256_file(resolved_model_path),
+                "format": "onnx",
+            }
+    stage1_checkpoint = resolve_path(
+        Path(cfg["paths"]["checkpoint_root"]) / cfg["checkpoints"]["spex"]
+    )
+    if stage1_checkpoint.is_file():
+        runtime_model_artifacts["stage1"] = {
+            "path": str(stage1_checkpoint.resolve()),
+            "sha256": sha256_file(stage1_checkpoint),
+            "format": "pytorch",
+        }
     sample_rate = int(cfg["sample_rate"])
     stage1_seconds = float(cfg.get("segment_seconds", 3.0))
     presence_threshold = float(cfg.get("presence_threshold", 0.5))
@@ -653,7 +782,7 @@ def main() -> int:
                 list(cfg.get("cabin_noise_channels", [0, 2, 4, 6])),
                 int(cfg.get("num_mics", 4)),
             )
-            mixture, multichannel, _, _, truth = build_scene(
+            mixture, multichannel, oracle_target, _, truth = build_scene(
                 target_wake,
                 target_command,
                 passenger_wake,
@@ -662,6 +791,8 @@ def main() -> int:
                 sample_rate,
                 float(cabin_snr_db),
                 float(args.passenger_snr_db),
+                overlap=bool(args.overlap),
+                include_noise_in_overlap=bool(args.overlap),
             )
             truth.update(
                 {
@@ -681,6 +812,7 @@ def main() -> int:
                 mixture,
                 multichannel,
                 enrollment,
+                oracle_target,
                 truth,
                 sample_rate,
                 stage1_seconds,
@@ -724,6 +856,7 @@ def main() -> int:
         results = [scene["variants"][name] for scene in scene_results]
         wake_values = [row["target_wake_detected"] for row in results if row["target_wake_detected"] is not None]
         intent_values = [bool(row["target_intent_correct"]) for row in results]
+        captured_commands = [row for row in results if row.get("target_intent") is not None]
         false_wakes = [row["false_wake_events"] for row in results if row["false_wake_events"] is not None]
         false_actions = [row["false_action_events"] for row in results if row["false_action_events"] is not None]
         latencies = [row["target_wake_latency_seconds"] for row in results if row["target_wake_latency_seconds"] is not None]
@@ -731,7 +864,13 @@ def main() -> int:
         variant_summary[name] = {
             "scenes": len(results),
             "target_wake_recall": float(np.mean(wake_values)) if wake_values else None,
+            "target_command_capture_rate": float(len(captured_commands) / max(len(results), 1)),
             "target_intent_accuracy": float(np.mean(intent_values)) if intent_values else None,
+            "target_intent_accuracy_given_captured_command": (
+                float(np.mean([bool(row["target_intent_correct"]) for row in captured_commands]))
+                if captured_commands
+                else None
+            ),
             "false_wake_events": int(sum(false_wakes)) if false_wakes else None,
             "false_action_events": int(sum(false_actions)) if false_actions else None,
             "false_action_rate_per_hour": (
@@ -746,11 +885,17 @@ def main() -> int:
             ),
         }
 
+    intent_model_path = getattr(pipeline.intent, "model_path", None)
+    intent_model_sha256 = runtime_model_artifacts.get("intent", {}).get("sha256")
+
     report = {
         "benchmark": "continuous_pipeline_ablation_matrix_cross_corpus_proxy",
         "device": str(device),
         "config": str(resolve_path(args.config)),
         "checkpoints": cfg.get("checkpoints"),
+        "intent_model_path": str(intent_model_path) if intent_model_path is not None else None,
+        "intent_model_sha256": intent_model_sha256,
+        "runtime_model_artifacts": runtime_model_artifacts,
         "code_revision": git_revision(),
         "sample_rate": sample_rate,
         "stage1_context_seconds": stage1_seconds,
@@ -758,10 +903,14 @@ def main() -> int:
         "presence_threshold": presence_threshold,
         "kws_threshold": kws_threshold,
         "passenger_snr_db": float(args.passenger_snr_db),
+        "requested_target_passenger_sir_db": float(args.passenger_snr_db),
+        "overlap_stress_test": bool(args.overlap),
+        "cabin_noise_in_overlap_stress_test": bool(args.overlap),
         "enrollment_source": args.enrollment_source,
         "scenes": len(scene_results),
         "duration_seconds": sum(float(scene["truth"]["duration_seconds"]) for scene in scene_results),
         "speaker_consistent": args.enrollment_source in ("command", "same_speaker_other"),
+        "working_tree_dirty": True,
         "production_valid": False,
         "variants": variant_defs,
         "summary": variant_summary,

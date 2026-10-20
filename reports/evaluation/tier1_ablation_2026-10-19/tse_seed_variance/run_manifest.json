@@ -1,0 +1,36 @@
+{
+  "experiment": "seed variance for learned 4-channel frontend, tested with 1/2/4 channel ablations",
+  "created_utc": "2026-10-19T19:33:33.202280+00:00",
+  "device": "cuda",
+  "pytorch": "2.12.0+cu132",
+  "test_manifest": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\manifests\\test\\stage1_cavemove_cabin.jsonl",
+  "test_manifest_sha256": "91a1f1410a52c37df8e4112fa34039eb61768e4bc895506f61693dd12f39a25f",
+  "stage1_config": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\configs\\stage1_spex_fsc_passenger_cochannel_ft1_2026-10-16.yaml",
+  "stage1_checkpoint_sha256": "13ec7c58870feb975efb266e4064bf58575dbc6120f787a77a49c3bc4edda3ac",
+  "base_spex_checkpoint_sha256": "62826ae27c1d83d077aa98bc050117f8b39f7dc22a3d71fd496d109e57cd6449",
+  "seeds": [
+    {
+      "seed": "20261019",
+      "checkpoint": "E:\\car-tse-data\\experiments\\tier1_ablation_2026-10-19\\seed_training\\checkpoints\\tier1_frontend_seed20261019\\best.pt",
+      "checkpoint_sha256": "6a9420f47470629bf007954c52ef56a2952292c27580547e73c22ed8987b9f01"
+    },
+    {
+      "seed": "20261020",
+      "checkpoint": "E:\\car-tse-data\\experiments\\tier1_ablation_2026-10-19\\seed_training\\checkpoints\\tier1_frontend_seed20261020\\best.pt",
+      "checkpoint_sha256": "0152cf0140ed94c7e98f3b695ed75f6a353df968c1352e1a2fb5faf5b4127ae9"
+    },
+    {
+      "seed": "20261021",
+      "checkpoint": "E:\\car-tse-data\\experiments\\tier1_ablation_2026-10-19\\seed_training\\checkpoints\\tier1_frontend_seed20261021\\best.pt",
+      "checkpoint_sha256": "6d1b2c7b2e075451f8c5271a8b3c1c4a0af2453e1626297579178c29f10795e0"
+    }
+  ],
+  "channel_count_method": "test-time ablation by keeping the first N channels and zeroing the rest; seed models remain four-channel trained",
+  "si_sdri_reference": "delay-sum/mean of the four cabin channels",
+  "variance_definition": "The companion summary reports mean and sample standard deviation across the seed-specific per-stratum SI-SDRi means; per-example standard deviation is separately reported in summary_per_seed_by_snr_gender_sir.csv.",
+  "files": [
+    "per_example_seed_metrics.jsonl",
+    "summary_per_seed_by_snr_gender_sir.csv",
+    "summary_mean_std_over_seeds_by_snr_gender_sir.csv"
+  ]
+}

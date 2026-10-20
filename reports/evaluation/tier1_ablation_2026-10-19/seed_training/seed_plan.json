@@ -1,0 +1,42 @@
+{
+  "experiment": "seed variance for current selected learned frontend, additional cabin-noise fine-tuning",
+  "seeds": [
+    20261019,
+    20261020,
+    20261021
+  ],
+  "initialization": "E:\\car-tse-data\\experiments\\tier1_ablation_2026-10-19\\seed_training\\seed_init_from_current_best.pt",
+  "training_manifest": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\manifests\\train\\stage1_cavemove_cabin.jsonl",
+  "training_manifest_sha256": "bcb002936f79e74785ff7d1573bcf1d3fac98d216af09b61f65ae75cd4fae450",
+  "validation_manifest": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\manifests\\val\\stage1_cavemove_cabin.jsonl",
+  "validation_manifest_sha256": "4351f787d1daf1291501de2960c48e33a69ced0a11c9e4b68c1b3cf99483810a",
+  "train_limit": 768,
+  "validation_limit": 512,
+  "max_epochs": 4,
+  "batch_size": 4,
+  "data_splits_disjoint_by_example_id": true,
+  "note": "The selected current best is the common initialization. These are fresh continuation fine-tunes with seed-controlled sampling/noise and frozen SpEx; they are not reruns from the missing historical pre-FT initialization.",
+  "completed_checkpoints": [
+    {
+      "seed": 20261019,
+      "checkpoint": "E:\\car-tse-data\\experiments\\tier1_ablation_2026-10-19\\seed_training\\checkpoints\\tier1_frontend_seed20261019\\best.pt",
+      "sha256": "6a9420f47470629bf007954c52ef56a2952292c27580547e73c22ed8987b9f01",
+      "best_epoch": 3,
+      "best_validation_si_sdri": 10.819520950317383
+    },
+    {
+      "seed": 20261020,
+      "checkpoint": "E:\\car-tse-data\\experiments\\tier1_ablation_2026-10-19\\seed_training\\checkpoints\\tier1_frontend_seed20261020\\best.pt",
+      "sha256": "0152cf0140ed94c7e98f3b695ed75f6a353df968c1352e1a2fb5faf5b4127ae9",
+      "best_epoch": 4,
+      "best_validation_si_sdri": 10.80458927154541
+    },
+    {
+      "seed": 20261021,
+      "checkpoint": "E:\\car-tse-data\\experiments\\tier1_ablation_2026-10-19\\seed_training\\checkpoints\\tier1_frontend_seed20261021\\best.pt",
+      "sha256": "6d1b2c7b2e075451f8c5271a8b3c1c4a0af2453e1626297579178c29f10795e0",
+      "best_epoch": 4,
+      "best_validation_si_sdri": 10.805917739868164
+    }
+  ]
+}

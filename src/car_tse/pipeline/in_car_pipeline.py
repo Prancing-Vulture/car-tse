@@ -382,6 +382,12 @@ class InCarPipeline:
         **kwargs: Any,
     ) -> "InCarPipeline":
         pipeline_kwargs = dict(kwargs)
+        presence_model_override = pipeline_kwargs.pop("presence_model_override", None)
+        kws_model_override = pipeline_kwargs.pop("kws_model_override", None)
+        target_kws_model_override = pipeline_kwargs.pop("target_kws_model_override", None)
+        compact_verifier_model_override = pipeline_kwargs.pop(
+            "compact_verifier_model_override", None
+        )
         presence_type = str(pipeline_kwargs.pop("presence_type", "scalar")).lower()
         presence_sample_rate = int(pipeline_kwargs.pop("presence_sample_rate", kws_sample_rate))
         # These parameters belong to the optional framewise presence head.  Pop
@@ -422,12 +428,16 @@ class InCarPipeline:
             presence = PresenceHead()
         else:
             raise ValueError(f"Unsupported presence_type: {presence_type}")
+        if presence_model_override is not None:
+            presence = presence_model_override
         kws = KWSModel(
             sample_rate=kws_sample_rate,
             n_mels=int(kws_n_mels),
             channels=kws_channels,
             num_classes=kws_num_classes,
         )
+        if kws_model_override is not None:
+            kws = kws_model_override
         secondary_checkpoint = pipeline_kwargs.pop("kws_secondary_checkpoint", None)
         kws_secondary = None
         if secondary_checkpoint:
@@ -468,7 +478,7 @@ class InCarPipeline:
         target_kws_secondary = None
         compact_speaker_verifier = None
         if target_kws_checkpoint:
-            target_kws = TargetSpeakerKWSModel(
+            target_kws = target_kws_model_override or TargetSpeakerKWSModel(
                 sample_rate=kws_sample_rate,
                 n_mels=target_kws_n_mels,
                 channels=target_kws_channels,
@@ -476,7 +486,7 @@ class InCarPipeline:
                 speaker_embedding_dim=target_kws_speaker_embedding_dim,
                 hidden=target_kws_hidden,
             )
-            if target_kws_secondary_checkpoint:
+            if target_kws_secondary_checkpoint and target_kws_model_override is None:
                 target_kws_secondary = TargetSpeakerKWSModel(
                     sample_rate=kws_sample_rate,
                     n_mels=target_kws_n_mels,
@@ -486,7 +496,7 @@ class InCarPipeline:
                     hidden=target_kws_hidden,
                 )
         if compact_speaker_verifier_checkpoint:
-            compact_speaker_verifier = CompactSpeakerVerifier(
+            compact_speaker_verifier = compact_verifier_model_override or CompactSpeakerVerifier(
                 embedding_dim=compact_speaker_verifier_embedding_dim,
                 hidden=compact_speaker_verifier_hidden,
                 sample_rate=compact_speaker_verifier_sample_rate,
@@ -499,6 +509,7 @@ class InCarPipeline:
             )
             load_checkpoint(stage23_fusion_checkpoint, stage23_fusion)
         intent_input_seconds = float(pipeline_kwargs.get("intent_input_seconds", 2.0))
+        intent_model_override = pipeline_kwargs.pop("intent_model_override", None)
         intent_ensemble = pipeline_kwargs.pop("intent_ensemble", None)
         intent_ensemble_selection = str(
             pipeline_kwargs.pop("intent_ensemble_selection", "weighted_mean")
@@ -506,7 +517,9 @@ class InCarPipeline:
         intent_ensemble_gate_threshold = float(
             pipeline_kwargs.pop("intent_ensemble_gate_threshold", 0.90)
         )
-        if intent_type == "wav2vec" and intent_ensemble:
+        if intent_model_override is not None:
+            intent = intent_model_override
+        elif intent_type == "wav2vec" and intent_ensemble:
             members: list[Wav2VecIntentClassifier] = []
             weights: list[float] = []
             for index, spec in enumerate(intent_ensemble):
@@ -558,15 +571,17 @@ class InCarPipeline:
                 normalize_input=bool(intent_normalize_input),
                 bidirectional=bool(intent_bidirectional),
             )
-        load_checkpoint(ckpt_presence, presence)
-        load_checkpoint(ckpt_kws, kws)
+        if presence_model_override is None:
+            load_checkpoint(ckpt_presence, presence)
+        if kws_model_override is None:
+            load_checkpoint(ckpt_kws, kws)
         if kws_secondary is not None:
             load_checkpoint(secondary_checkpoint, kws_secondary)
-        if target_kws is not None:
+        if target_kws is not None and target_kws_model_override is None:
             load_checkpoint(target_kws_checkpoint, target_kws)
         if target_kws_secondary is not None:
             load_checkpoint(target_kws_secondary_checkpoint, target_kws_secondary)
-        if compact_speaker_verifier is not None:
+        if compact_speaker_verifier is not None and compact_verifier_model_override is None:
             load_checkpoint(compact_speaker_verifier_checkpoint, compact_speaker_verifier)
         if intent_type != "wav2vec":
             load_checkpoint(ckpt_intent, intent)

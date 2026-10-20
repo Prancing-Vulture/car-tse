@@ -185,6 +185,10 @@ def main() -> int:
         training=True,
         **dataset_kwargs,
     )
+    # Dataset-local crop and cabin-noise sampling use a NumPy Generator, which
+    # is independent of np.random.seed(). Tie it to the run seed so distinct
+    # training seeds also produce distinct, reproducible augmentations.
+    ds.rng = np.random.default_rng(seed)
     if len(ds) == 0:
         print(f"No data in {manifest}; run data prep first.")
         return 1

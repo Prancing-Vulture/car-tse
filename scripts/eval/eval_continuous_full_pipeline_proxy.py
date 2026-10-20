@@ -70,6 +70,64 @@ class _IdentityStage1(torch.nn.Module):
         return mixture, None, None, None
 
 
+class _OnnxComponent(torch.nn.Module):
+    """Call a selected FT6 graph through the pipeline module API."""
+
+    def __init__(
+        self,
+        model_path: Path,
+        *,
+        framewise: bool = False,
+    ) -> None:
+        super().__init__()
+        try:
+            import onnxruntime as ort
+        except ImportError as exc:  # pragma: no cover - environment-specific
+            raise RuntimeError("onnxruntime is required for the selected FT6 intent graph") from exc
+        self.model_path = model_path.resolve()
+        self.session = ort.InferenceSession(
+            str(self.model_path), providers=["CPUExecutionProvider"]
+        )
+        self.input_metas = self.session.get_inputs()
+        self.output_names = [meta.name for meta in self.session.get_outputs()]
+        self.is_framewise = bool(framewise)
+        self.requires_enrollment = False
+
+    def forward(self, *inputs: torch.Tensor) -> torch.Tensor:
+        if len(inputs) != len(self.input_metas):
+            raise ValueError(
+                f"{self.model_path.name} expects {len(self.input_metas)} inputs, got {len(inputs)}"
+            )
+        arrays: dict[str, np.ndarray] = {}
+        output_device = inputs[0].device
+        output_dtype = inputs[0].dtype
+        for meta, value in zip(self.input_metas, inputs):
+            if value.dim() == 1:
+                value = value.unsqueeze(0)
+            shape = meta.shape
+            if value.dim() >= 2 and len(shape) == value.dim() and isinstance(shape[-1], int):
+                samples = int(shape[-1])
+                if value.shape[-1] > samples:
+                    value = value[..., :samples]
+                elif value.shape[-1] < samples:
+                    value = F.pad(value, (0, samples - value.shape[-1]))
+            array = value.detach().to(device="cpu", dtype=torch.float32).numpy()
+            arrays[meta.name] = np.ascontiguousarray(array)
+        outputs = self.session.run(self.output_names, arrays)
+        logits = torch.as_tensor(outputs[0], device=output_device, dtype=output_dtype)
+        return logits
+
+
+class _OnnxCompactVerifier(_OnnxComponent):
+    """Keep the Python verifier's three-item return contract for evaluation."""
+
+    def forward(
+        self, enrollment: torch.Tensor, extracted: torch.Tensor
+    ) -> tuple[torch.Tensor, None, None]:
+        logits = super().forward(enrollment, extracted)
+        return logits, None, None
+
+
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
@@ -411,6 +469,16 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
     stage1_cfg_path = resolve_path(cfg["stage1_config"])
     stage1_cfg = load_stage_config(stage1_cfg_path, REPO_ROOT / "configs" / "paths.yaml")
     pretrained = resolve_path(stage1_cfg["pretrained_checkpoint"])
+    if not pretrained.is_file():
+        configured_model_dir = Path(paths.get("spex_pretrained_dir", ""))
+        fallback = configured_model_dir / "car_tse_spexplus_from_stage1.pt"
+        if fallback.is_file():
+            pretrained = fallback
+        else:
+            raise FileNotFoundError(
+                "Stage-1 initialization checkpoint is missing and no local "
+                f"fallback was found: configured={pretrained}, fallback={fallback}"
+            )
     stage1 = Stage1System(
         spex_cfg=stage1_cfg["spex"],
         sample_rate=int(stage1_cfg["sample_rate"]),
@@ -486,6 +554,41 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
             resolved_intent_ensemble.append(spec)
         intent_ensemble = resolved_intent_ensemble
 
+    intent_model_override = None
+    onnx_component_overrides: dict[str, Any] = {}
+    bundle_component_dir = (
+        REPO_ROOT
+        / "car_tse_jetson_onnx_ft6_2026-10-19_v3"
+        / "models"
+        / "onnx"
+        / "ft6"
+    )
+    for component, kwarg, framewise in (
+        ("presence", "presence_model_override", True),
+        ("kws", "kws_model_override", False),
+        ("target_kws", "target_kws_model_override", False),
+    ):
+        component_path = bundle_component_dir / f"{component}.onnx"
+        if component_path.is_file():
+            onnx_component_overrides[kwarg] = _OnnxComponent(
+                component_path, framewise=framewise
+            )
+    verifier_path = bundle_component_dir / "compact_verifier.onnx"
+    verifier_configured = bool(cfg.get("checkpoints", {}).get("compact_speaker_verifier"))
+    if verifier_path.is_file() and verifier_configured:
+        onnx_component_overrides["compact_verifier_model_override"] = _OnnxCompactVerifier(
+            verifier_path
+        )
+
+    intent_onnx_path = cfg.get("intent_onnx_path")
+    if not intent_onnx_path and str(cfg.get("intent_type", "crnn")).lower() == "wav2vec":
+        # The selected FT6 runtime bundle contains the current intent graph;
+        # the matching large PyTorch fallback checkpoint is absent locally.
+        intent_onnx_path = bundle_component_dir / "intent.onnx"
+    if intent_onnx_path:
+        intent_onnx_path = resolve_path(intent_onnx_path)
+        intent_model_override = _OnnxComponent(intent_onnx_path)
+
     pipeline = InCarPipeline.from_checkpoints(
         stage1,
         resolve_path(Path(paths["checkpoint_root"]) / cfg["checkpoints"]["presence"]),
@@ -505,6 +608,8 @@ def load_pipeline(cfg: dict[str, Any], paths: dict[str, Any], device: torch.devi
         intent_encoder=str(cfg.get("intent_encoder", "facebook/wav2vec2-base-960h")),
         intent_encoder_checkpoint=encoder_checkpoint,
         intent_num_classes=int(cfg.get("intent_num_classes", 31)),
+        intent_model_override=intent_model_override,
+        **onnx_component_overrides,
         intent_ensemble=intent_ensemble,
         intent_ensemble_selection=str(cfg.get("intent_ensemble_selection", "weighted_mean")),
         intent_ensemble_gate_threshold=float(cfg.get("intent_ensemble_gate_threshold", 0.90)),
@@ -623,6 +728,7 @@ def build_scene(
     clean: bool = False,
     passenger_only: bool = False,
     overlap: bool = False,
+    include_noise_in_overlap: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
     """Build one scene with optional passenger/target overlap.
 
@@ -668,6 +774,34 @@ def build_scene(
     )
     speech = target + passenger_scaled
 
+    # Compute SIR only over samples where target and passenger speech are both
+    # active. The requested whole-track RMS ratio can differ from this local
+    # overlap ratio because the utterance durations and placements differ.
+    target_intervals = (
+        (wake_start, wake_start + len(target_wake)),
+        (command_start, command_start + len(target_command)),
+    )
+    passenger_intervals = (
+        (passenger_wake_start, passenger_wake_start + len(passenger_wake)),
+        (passenger_nonwake_start, passenger_nonwake_start + len(passenger_nonwake)),
+    )
+    overlap_mask = np.zeros(total_samples, dtype=bool)
+    for target_start, target_end in target_intervals:
+        for passenger_start, passenger_end in passenger_intervals:
+            overlap_start = max(target_start, passenger_start)
+            overlap_end = min(target_end, passenger_end)
+            if overlap_end > overlap_start:
+                overlap_mask[overlap_start:overlap_end] = True
+    overlap_target_energy = float(np.square(target[overlap_mask], dtype=np.float64).sum())
+    overlap_passenger_energy = float(
+        np.square(passenger_scaled[overlap_mask], dtype=np.float64).sum()
+    )
+    overlap_sir_db = (
+        float(10.0 * np.log10(overlap_target_energy / overlap_passenger_energy))
+        if overlap_target_energy > 0.0 and overlap_passenger_energy > 0.0
+        else None
+    )
+
     noise = np.asarray(cabin_noise, dtype=np.float32)
     if noise.ndim == 1:
         noise = noise[:, None]
@@ -675,7 +809,7 @@ def build_scene(
         repeats = int(np.ceil(total_samples / max(1, len(noise))))
         noise = np.tile(noise, (repeats, 1))
     noise = noise[:total_samples]
-    if clean or passenger_only or overlap:
+    if clean or passenger_only or (overlap and not include_noise_in_overlap):
         noise_scaled = np.zeros_like(noise)
     else:
         noise_scale = target_rms * (10.0 ** (-float(cabin_snr_db) / 20.0)) / max(rms(noise), 1.0e-6)
@@ -694,6 +828,9 @@ def build_scene(
         "passenger_nonwake_end_seconds": (passenger_nonwake_start + len(passenger_nonwake)) / sample_rate,
         "cabin_snr_db": float(cabin_snr_db),
         "passenger_snr_db": float(passenger_snr_db),
+        "requested_target_passenger_sir_db": float(passenger_snr_db),
+        "overlap_target_passenger_sir_db": overlap_sir_db,
+        "overlap_speech_samples": int(overlap_mask.sum()),
         "clean": bool(clean),
         "passenger_only": bool(passenger_only),
         "overlap": bool(overlap),
@@ -1323,7 +1460,14 @@ def main() -> int:
         ),
     )
     parser.add_argument("--cabin-snr-db", nargs="+", type=float, default=[-5.0, 0.0])
-    parser.add_argument("--passenger-snr-db", type=float, default=0.0)
+    parser.add_argument(
+        "--passenger-sir-db",
+        "--passenger-snr-db",
+        dest="passenger_snr_db",
+        type=float,
+        default=0.0,
+        help="Requested target-to-passenger RMS ratio in dB; negative values mean louder passenger speech.",
+    )
     parser.add_argument(
         "--clean",
         action="store_true",
