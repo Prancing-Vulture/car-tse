@@ -1,7 +1,7 @@
 # Project plot index
 
 The `multi-speaker-eval` branch and its remote counterpart contain the
-paper/research figures below. There are currently 90 tracked plot/PDF/SVG
+paper/research figures below. There are currently 92 tracked plot/PDF/SVG
 artifacts. Most are under `reports/figures/`; the older paper-ready set is
 under `reports/paper_figures_2026-10-05/`.
 
