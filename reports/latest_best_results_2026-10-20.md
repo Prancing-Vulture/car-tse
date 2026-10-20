@@ -3,7 +3,7 @@
 **Date:** 2026-10-20  
 **Repository:** `Prancing-Vulture/car-tse`  
 **Branch:** `multi-speaker-eval`  
-**Source revision for the figure pack:** `610f261`  
+**Source revision for the figure pack:** current `multi-speaker-eval` branch after the Stage-1 plot repair  
 **Evidence status:** research-engineering preview; not production-ready
 
 ## 1. Executive summary

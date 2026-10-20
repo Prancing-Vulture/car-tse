@@ -28,6 +28,10 @@ recommended soft-gate configuration is
 
 - `fig1_system.png` — architecture overview.
 - `stage1_*` — TSE adaptation and training evidence.
+- `stage1_spex_fsc_passenger_cochannel_ft1_training_2026-10-16.*` was
+  regenerated on 2026-10-20 with `scripts/reporting/plot_stage1_history.py`.
+  The original artifact was empty because a generic classification-curve
+  renderer was pointed at Stage-1 SI-SDR logs.
 - `stage2_presence_training_comparison_2026-10-20.*` — retained Stage-2
   training-history comparison. The current dual-domain FT1 log contains only
   a final summary, so this is not a current FT1 epoch curve.

@@ -65,6 +65,16 @@ source JSON histories remain the reproducibility source of truth.
 - `reports/figures/ft6_resource_summary_2026-10-20.*`
 - `fig1_system.png`
 
+### Stage-1 plot audit
+
+The co-channel FT1 training figure was repaired on 2026-10-20. Its source
+history contains SI-SDR fields (`train_si_sdr_s1`, `val.si_sdr_s1`,
+`val.si_sdri`, and `val.si_sdri_median`), but the original plot had been
+rendered with a generic classification renderer that expected
+`train_loss`/`val.accuracy`. It was regenerated with
+`scripts/reporting/plot_stage1_history.py`; the other Stage-1 figures were
+visually checked and contain plotted data.
+
 The PNG and PDF variants are both tracked where available. The current
 end-to-end figures use the corrected FT6 1,000-scene logs, not the older
 candidate comparison plots. The plots remain synthetic/clean proxy evidence;
