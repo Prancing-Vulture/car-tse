@@ -1,0 +1,6 @@
+Component,Parameters (M)
+Stage 1 TSE + front end,10.73
+Stage 2 presence,0.25
+Stage 3 KWS,0.09
+Wav2vec encoder,94.37
+Intent head,0.41

@@ -1,0 +1,967 @@
+{
+  "benchmark": "continuous_pipeline_ablation_matrix_cross_corpus_proxy",
+  "device": "cuda",
+  "config": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\configs\\eval_end_to_end_fscpassenger_identity_runtimealignedintent_ft6_jitter_prewakebuffer_postcommand08_2026-10-17.yaml",
+  "checkpoints": {
+    "spex": "stage1_spex_fsc_passenger_cochannel_ft1_2026-10-16/best.pt",
+    "presence": "stage2_frame_presence_dual_domain_nonwake_ft1/best.pt",
+    "kws": "stage3_kws_clean_control_large_ft1/best.pt",
+    "target_kws": "stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker_ft1/best.pt",
+    "compact_speaker_verifier": "compact_speaker_verifier_cabin_smart_ft1/best.pt",
+    "intent": "stage4_intent_runtime_jitter_clean_overlap_ft6_fromft4_2026-10-17/best.pt"
+  },
+  "intent_model_path": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\car_tse_jetson_onnx_ft6_2026-10-19_v3\\models\\onnx\\ft6\\intent.onnx",
+  "intent_model_sha256": "e544799007166ccafe904eb8e5219c868d191654a0142ec90b56e5b58f83f78f",
+  "code_revision": "002b91e8b3bb2211fd953fa48cb30f42c7ecdaa7",
+  "sample_rate": 16000,
+  "stage1_context_seconds": 3.0,
+  "hop_seconds": 1.0,
+  "presence_threshold": 0.15,
+  "kws_threshold": 0.45,
+  "passenger_snr_db": -5.0,
+  "requested_target_passenger_sir_db": -5.0,
+  "overlap_stress_test": true,
+  "cabin_noise_in_overlap_stress_test": true,
+  "enrollment_source": "same_speaker_other",
+  "scenes": 1,
+  "duration_seconds": 14.0,
+  "speaker_consistent": true,
+  "working_tree_dirty": true,
+  "production_valid": false,
+  "variants": {
+    "full": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true
+    },
+    "no_tse": {
+      "use_tse": false,
+      "use_presence": true,
+      "use_speaker_matching": false,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true
+    },
+    "no_presence": {
+      "use_tse": true,
+      "use_presence": false,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true
+    },
+    "no_speaker_matching": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": false,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true
+    },
+    "no_wake_smoothing": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": false,
+      "use_wake_gate": true
+    },
+    "raw_intent_after_wake": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true,
+      "intent_source": "raw"
+    },
+    "fused_intent_after_wake": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true,
+      "intent_source": "mean_logits"
+    },
+    "direct_command_oracle": {
+      "use_tse": true,
+      "use_presence": false,
+      "use_speaker_matching": false,
+      "use_wake_smoothing": false,
+      "use_wake_gate": false
+    },
+    "full_speaker_gate_0p150": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true,
+      "use_speaker_gate": true,
+      "speaker_gate_threshold": 0.15
+    },
+    "full_compact_verifier_gate_0p150": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true,
+      "use_speaker_gate": true,
+      "speaker_gate_threshold": 0.15,
+      "speaker_score_key": "compact_speaker_probability"
+    },
+    "generic_kws_compact_verifier_gate_0p150": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": false,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true,
+      "use_speaker_gate": true,
+      "speaker_gate_threshold": 0.15,
+      "speaker_score_key": "compact_speaker_probability"
+    },
+    "oracle_extraction": {
+      "use_tse": true,
+      "use_presence": true,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true,
+      "use_oracle_extraction": true
+    },
+    "oracle_gate": {
+      "use_tse": true,
+      "use_presence": false,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true,
+      "use_oracle_gate": true
+    },
+    "oracle_extraction_and_gate": {
+      "use_tse": true,
+      "use_presence": false,
+      "use_speaker_matching": true,
+      "use_wake_smoothing": true,
+      "use_wake_gate": true,
+      "use_oracle_extraction": true,
+      "use_oracle_gate": true
+    }
+  },
+  "summary": {
+    "full": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 1.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": 2.5,
+      "target_wake_latency_p95_seconds": 2.5,
+      "note": null
+    },
+    "no_tse": {
+      "scenes": 1,
+      "target_wake_recall": 0.0,
+      "target_intent_accuracy": 0.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": null,
+      "target_wake_latency_p95_seconds": null,
+      "note": null
+    },
+    "no_presence": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 1.0,
+      "false_wake_events": 3,
+      "false_action_events": 2,
+      "false_action_rate_per_hour": 514.2857142857143,
+      "target_wake_latency_mean_seconds": 2.5,
+      "target_wake_latency_p95_seconds": 2.5,
+      "note": null
+    },
+    "no_speaker_matching": {
+      "scenes": 1,
+      "target_wake_recall": 0.0,
+      "target_intent_accuracy": 0.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": null,
+      "target_wake_latency_p95_seconds": null,
+      "note": null
+    },
+    "no_wake_smoothing": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 1.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": 1.5,
+      "target_wake_latency_p95_seconds": 1.5,
+      "note": null
+    },
+    "raw_intent_after_wake": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 0.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": 2.5,
+      "target_wake_latency_p95_seconds": 2.5,
+      "note": null
+    },
+    "fused_intent_after_wake": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 0.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": 2.5,
+      "target_wake_latency_p95_seconds": 2.5,
+      "note": null
+    },
+    "direct_command_oracle": {
+      "scenes": 1,
+      "target_wake_recall": null,
+      "target_intent_accuracy": 1.0,
+      "false_wake_events": null,
+      "false_action_events": null,
+      "false_action_rate_per_hour": null,
+      "target_wake_latency_mean_seconds": null,
+      "target_wake_latency_p95_seconds": null,
+      "note": "direct_command_oracle uses labeled command segmentation and is not a streaming result"
+    },
+    "full_speaker_gate_0p150": {
+      "scenes": 1,
+      "target_wake_recall": 0.0,
+      "target_intent_accuracy": 0.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": null,
+      "target_wake_latency_p95_seconds": null,
+      "note": null
+    },
+    "full_compact_verifier_gate_0p150": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 0.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": 3.5,
+      "target_wake_latency_p95_seconds": 3.5,
+      "note": null
+    },
+    "generic_kws_compact_verifier_gate_0p150": {
+      "scenes": 1,
+      "target_wake_recall": 0.0,
+      "target_intent_accuracy": 0.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": null,
+      "target_wake_latency_p95_seconds": null,
+      "note": null
+    },
+    "oracle_extraction": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 1.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": 2.5,
+      "target_wake_latency_p95_seconds": 2.5,
+      "note": null
+    },
+    "oracle_gate": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 1.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": 2.5,
+      "target_wake_latency_p95_seconds": 2.5,
+      "note": null
+    },
+    "oracle_extraction_and_gate": {
+      "scenes": 1,
+      "target_wake_recall": 1.0,
+      "target_intent_accuracy": 1.0,
+      "false_wake_events": 0,
+      "false_action_events": 0,
+      "false_action_rate_per_hour": 0.0,
+      "target_wake_latency_mean_seconds": 2.5,
+      "target_wake_latency_p95_seconds": 2.5,
+      "note": null
+    }
+  },
+  "scenes_detail": [
+    {
+      "scene_index": 0,
+      "cabin_snr_db": -5.0,
+      "truth": {
+        "duration_seconds": 14.0,
+        "target_wake_start_seconds": 1.0,
+        "target_wake_end_seconds": 2.0,
+        "target_command_start_seconds": 2.1,
+        "target_command_end_seconds": 4.1,
+        "passenger_wake_start_seconds": 2.4,
+        "passenger_wake_end_seconds": 3.4,
+        "passenger_nonwake_start_seconds": 3.2,
+        "passenger_nonwake_end_seconds": 4.7,
+        "cabin_snr_db": -5.0,
+        "passenger_snr_db": -5.0,
+        "requested_target_passenger_sir_db": -5.0,
+        "overlap_target_passenger_sir_db": -5.171215096486662,
+        "overlap_speech_samples": 27200,
+        "clean": false,
+        "passenger_only": false,
+        "overlap": true,
+        "passenger_present": true,
+        "expected_intent": "activate|lamp",
+        "target_wake_source": "E:\\car-tse-data\\speech_commands_v2\\marvin\\022cd682_nohash_0.wav",
+        "target_command_source": "E:\\car-tse-data\\fluent_speech_commands\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\3f7a8630-452d-11e9-b1e4-e5985dca719e.wav",
+        "passenger_wake_source": "E:\\car-tse-data\\speech_commands_v2\\marvin\\03401e93_nohash_0.wav",
+        "passenger_nonwake_source": "E:\\car-tse-data\\speech_commands_v2\\no\\ffa76c4a_nohash_0.wav",
+        "noise_source": "E:\\car-tse-data\\cavemove\\extracted\\cavemove_dataset\\AlfaRomeo_146\\distributed\\noise\\s30_w2_coarse.wav",
+        "enrollment_source_wav": "E:\\car-tse-data\\fluent_speech_commands\\fluent_speech_commands_dataset\\wavs\\speakers\\4BrX8aDqK2cLZRYl\\00143870-4531-11e9-b1e4-e5985dca719e.wav",
+        "speaker_consistent": true,
+        "enrollment_source": "same_speaker_other"
+      },
+      "variants": {
+        "full": {
+          "variant": "full",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": "activate|lamp",
+          "target_intent_correct": true,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 2.5,
+          "wake_events": [
+            {
+              "window_index": 2,
+              "window_center_seconds": 3.5,
+              "probability": 0.4892464280128479
+            }
+          ],
+          "command_events": [
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "intent": "activate|lamp",
+              "intent_confidence": 0.7395457029342651,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            }
+          ],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "no_tse": {
+          "variant": "no_tse",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": false,
+          "target_intent": null,
+          "target_intent_correct": false,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": null,
+          "wake_events": [],
+          "command_events": [],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 0.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "no_presence": {
+          "variant": "no_presence",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": "activate|lamp",
+          "target_intent_correct": true,
+          "false_wake_events": 3,
+          "false_action_events": 2,
+          "false_action_rate_per_hour": 514.2857142857143,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 2.5,
+          "wake_events": [
+            {
+              "window_index": 2,
+              "window_center_seconds": 3.5,
+              "probability": 0.4892464280128479
+            },
+            {
+              "window_index": 5,
+              "window_center_seconds": 6.5,
+              "probability": 0.46657317876815796
+            },
+            {
+              "window_index": 8,
+              "window_center_seconds": 9.5,
+              "probability": 0.4669140577316284
+            },
+            {
+              "window_index": 11,
+              "window_center_seconds": 12.5,
+              "probability": 0.46464991569519043
+            }
+          ],
+          "command_events": [
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "intent": "activate|lamp",
+              "intent_confidence": 0.7395457029342651,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            },
+            {
+              "window_index": 6,
+              "window_center_seconds": 7.5,
+              "intent": "increase|heat",
+              "intent_confidence": 0.19769737124443054,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            },
+            {
+              "window_index": 9,
+              "window_center_seconds": 10.5,
+              "intent": "increase|heat",
+              "intent_confidence": 0.24627739191055298,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            }
+          ],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "no_speaker_matching": {
+          "variant": "no_speaker_matching",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": false,
+          "target_intent": null,
+          "target_intent_correct": false,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": null,
+          "wake_events": [],
+          "command_events": [],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "no_wake_smoothing": {
+          "variant": "no_wake_smoothing",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": "activate|lamp",
+          "target_intent_correct": true,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 1.5,
+          "wake_events": [
+            {
+              "window_index": 1,
+              "window_center_seconds": 2.5,
+              "probability": 0.47944167256355286
+            },
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "probability": 0.5161358118057251
+            }
+          ],
+          "command_events": [
+            {
+              "window_index": 2,
+              "window_center_seconds": 3.5,
+              "intent": "activate|lamp",
+              "intent_confidence": 0.9879820942878723,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            }
+          ],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "raw_intent_after_wake": {
+          "variant": "raw_intent_after_wake",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": "deactivate|lamp",
+          "target_intent_correct": false,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 2.5,
+          "wake_events": [
+            {
+              "window_index": 2,
+              "window_center_seconds": 3.5,
+              "probability": 0.4892464280128479
+            }
+          ],
+          "command_events": [
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "intent": "deactivate|lamp",
+              "intent_confidence": 0.8842752575874329,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            }
+          ],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "fused_intent_after_wake": {
+          "variant": "fused_intent_after_wake",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": "deactivate|lamp",
+          "target_intent_correct": false,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 2.5,
+          "wake_events": [
+            {
+              "window_index": 2,
+              "window_center_seconds": 3.5,
+              "probability": 0.4892464280128479
+            }
+          ],
+          "command_events": [
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "intent": "deactivate|lamp",
+              "intent_confidence": 0.7076451778411865,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            }
+          ],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "direct_command_oracle": {
+          "variant": "direct_command_oracle",
+          "mode": "oracle_command_window_without_wake_gate",
+          "target_wake_detected": null,
+          "target_intent": "activate|lamp",
+          "target_intent_correct": true,
+          "false_wake_events": null,
+          "false_action_events": null,
+          "false_action_rate_per_hour": null,
+          "target_wake_latency_seconds": null,
+          "intent_confidence": 0.9879820942878723,
+          "note": "Uses the labeled command window; wake recall and false-action rate are not comparable."
+        },
+        "full_speaker_gate_0p150": {
+          "variant": "full_speaker_gate_0p150",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": false,
+          "target_intent": null,
+          "target_intent_correct": false,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": null,
+          "wake_events": [],
+          "command_events": [],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": 0.08333333333333333
+        },
+        "full_compact_verifier_gate_0p150": {
+          "variant": "full_compact_verifier_gate_0p150",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": null,
+          "target_intent_correct": false,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 3.5,
+          "wake_events": [
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "probability": 0.5161358118057251
+            }
+          ],
+          "command_events": [],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": 0.16666666666666666
+        },
+        "generic_kws_compact_verifier_gate_0p150": {
+          "variant": "generic_kws_compact_verifier_gate_0p150",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": false,
+          "target_intent": null,
+          "target_intent_correct": false,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": null,
+          "wake_events": [],
+          "command_events": [],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": 0.16666666666666666
+        },
+        "oracle_extraction": {
+          "variant": "oracle_extraction",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": "activate|lamp",
+          "target_intent_correct": true,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 2.5,
+          "wake_events": [
+            {
+              "window_index": 2,
+              "window_center_seconds": 3.5,
+              "probability": 0.476324200630188
+            }
+          ],
+          "command_events": [
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "intent": "activate|lamp",
+              "intent_confidence": 0.7107018828392029,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            }
+          ],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 1.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "oracle_gate": {
+          "variant": "oracle_gate",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": "activate|lamp",
+          "target_intent_correct": true,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 2.5,
+          "wake_events": [
+            {
+              "window_index": 2,
+              "window_center_seconds": 3.5,
+              "probability": 0.4892464280128479
+            }
+          ],
+          "command_events": [
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "intent": "activate|lamp",
+              "intent_confidence": 0.7395457029342651,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            }
+          ],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 0.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        },
+        "oracle_extraction_and_gate": {
+          "variant": "oracle_extraction_and_gate",
+          "mode": "streaming_wake_then_command",
+          "target_wake_detected": true,
+          "target_intent": "activate|lamp",
+          "target_intent_correct": true,
+          "false_wake_events": 0,
+          "false_action_events": 0,
+          "false_action_rate_per_hour": 0.0,
+          "suppressed_command_events": 0,
+          "target_wake_latency_seconds": 2.5,
+          "wake_events": [
+            {
+              "window_index": 2,
+              "window_center_seconds": 3.5,
+              "probability": 0.476324200630188
+            }
+          ],
+          "command_events": [
+            {
+              "window_index": 3,
+              "window_center_seconds": 4.5,
+              "intent": "activate|lamp",
+              "intent_confidence": 0.7107018828392029,
+              "capture_calls": 1,
+              "aggregation": "mean_logits"
+            }
+          ],
+          "suppressed_command_events_detail": [],
+          "target_presence_pass_rate": 1.0,
+          "passenger_presence_pass_rate": 1.0,
+          "speaker_similarity_mean": 0.04581956774927676,
+          "speaker_gate_pass_rate": null
+        }
+      },
+      "window_scores": [
+        {
+          "window_index": 0,
+          "window_start_seconds": 0.0,
+          "window_center_seconds": 1.5,
+          "target_active": true,
+          "passenger_region": false,
+          "presence_probability": 0.21131852269172668,
+          "raw_presence_probability": 0.07496830075979233,
+          "speaker_similarity": 0.08215595781803131,
+          "compact_speaker_probability": 0.018056826665997505,
+          "oracle_presence_probability": 0.8938290476799011,
+          "generic_kws_probability": 0.007530298084020615,
+          "raw_generic_kws_probability": 0.029992207884788513,
+          "target_kws_probability": 0.444936603307724,
+          "oracle_generic_kws_probability": 0.04206112027168274,
+          "oracle_target_kws_probability": 0.4218719005584717
+        },
+        {
+          "window_index": 1,
+          "window_start_seconds": 1.0,
+          "window_center_seconds": 2.5,
+          "target_active": true,
+          "passenger_region": false,
+          "presence_probability": 0.29793646931648254,
+          "raw_presence_probability": 0.09451938420534134,
+          "speaker_similarity": 0.15103717148303986,
+          "compact_speaker_probability": 0.08752266317605972,
+          "oracle_presence_probability": 0.810891330242157,
+          "generic_kws_probability": 0.24246889352798462,
+          "raw_generic_kws_probability": 0.9954966306686401,
+          "target_kws_probability": 0.47944167256355286,
+          "oracle_generic_kws_probability": 0.9998216032981873,
+          "oracle_target_kws_probability": 0.4620736241340637
+        },
+        {
+          "window_index": 2,
+          "window_start_seconds": 2.0,
+          "window_center_seconds": 3.5,
+          "target_active": true,
+          "passenger_region": false,
+          "presence_probability": 0.3232482373714447,
+          "raw_presence_probability": 0.07918938994407654,
+          "speaker_similarity": 0.12712766230106354,
+          "compact_speaker_probability": 0.7855889797210693,
+          "oracle_presence_probability": 0.9691016674041748,
+          "generic_kws_probability": 0.0008649576338939369,
+          "raw_generic_kws_probability": 0.9841175079345703,
+          "target_kws_probability": 0.4892464280128479,
+          "oracle_generic_kws_probability": 0.004143677186220884,
+          "oracle_target_kws_probability": 0.476324200630188
+        },
+        {
+          "window_index": 3,
+          "window_start_seconds": 3.0,
+          "window_center_seconds": 4.5,
+          "target_active": true,
+          "passenger_region": false,
+          "presence_probability": 0.23820306360721588,
+          "raw_presence_probability": 0.05135169252753258,
+          "speaker_similarity": 0.07500586658716202,
+          "compact_speaker_probability": 0.3496053218841553,
+          "oracle_presence_probability": 0.9750387072563171,
+          "generic_kws_probability": 0.018130270764231682,
+          "raw_generic_kws_probability": 0.039437856525182724,
+          "target_kws_probability": 0.5161358118057251,
+          "oracle_generic_kws_probability": 0.00039508825284428895,
+          "oracle_target_kws_probability": 0.5013589859008789
+        },
+        {
+          "window_index": 4,
+          "window_start_seconds": 4.0,
+          "window_center_seconds": 5.5,
+          "target_active": false,
+          "passenger_region": true,
+          "presence_probability": 0.042134325951337814,
+          "raw_presence_probability": 0.030869638547301292,
+          "speaker_similarity": 0.01580636203289032,
+          "compact_speaker_probability": 0.006579880602657795,
+          "oracle_presence_probability": 0.4909750819206238,
+          "generic_kws_probability": 0.0368884801864624,
+          "raw_generic_kws_probability": 0.1736006736755371,
+          "target_kws_probability": 0.4694439172744751,
+          "oracle_generic_kws_probability": 0.022571789100766182,
+          "oracle_target_kws_probability": 0.4217115342617035
+        },
+        {
+          "window_index": 5,
+          "window_start_seconds": 5.0,
+          "window_center_seconds": 6.5,
+          "target_active": false,
+          "passenger_region": true,
+          "presence_probability": 0.035849977284669876,
+          "raw_presence_probability": 0.03241556137800217,
+          "speaker_similarity": 0.017859812825918198,
+          "compact_speaker_probability": 0.01861671730875969,
+          "oracle_presence_probability": 0.9013853073120117,
+          "generic_kws_probability": 0.024549486115574837,
+          "raw_generic_kws_probability": 0.0560835525393486,
+          "target_kws_probability": 0.46657317876815796,
+          "oracle_generic_kws_probability": 0.04206112027168274,
+          "oracle_target_kws_probability": 0.42107728123664856
+        },
+        {
+          "window_index": 6,
+          "window_start_seconds": 6.0,
+          "window_center_seconds": 7.5,
+          "target_active": false,
+          "passenger_region": true,
+          "presence_probability": 0.03657536208629608,
+          "raw_presence_probability": 0.03126416355371475,
+          "speaker_similarity": 0.01374111883342266,
+          "compact_speaker_probability": 0.012696035206317902,
+          "oracle_presence_probability": 0.9013853073120117,
+          "generic_kws_probability": 0.014738991856575012,
+          "raw_generic_kws_probability": 0.0732787549495697,
+          "target_kws_probability": 0.46586471796035767,
+          "oracle_generic_kws_probability": 0.04206112027168274,
+          "oracle_target_kws_probability": 0.42107728123664856
+        },
+        {
+          "window_index": 7,
+          "window_start_seconds": 7.0,
+          "window_center_seconds": 8.5,
+          "target_active": false,
+          "passenger_region": true,
+          "presence_probability": 0.03535115718841553,
+          "raw_presence_probability": 0.03036932460963726,
+          "speaker_similarity": 0.01524655893445015,
+          "compact_speaker_probability": 0.006653143092989922,
+          "oracle_presence_probability": 0.9013853073120117,
+          "generic_kws_probability": 0.08283337950706482,
+          "raw_generic_kws_probability": 0.15003840625286102,
+          "target_kws_probability": 0.4677053391933441,
+          "oracle_generic_kws_probability": 0.04206112027168274,
+          "oracle_target_kws_probability": 0.42107728123664856
+        },
+        {
+          "window_index": 8,
+          "window_start_seconds": 8.0,
+          "window_center_seconds": 9.5,
+          "target_active": false,
+          "passenger_region": true,
+          "presence_probability": 0.03578215464949608,
+          "raw_presence_probability": 0.02976885996758938,
+          "speaker_similarity": 0.017228681594133377,
+          "compact_speaker_probability": 0.013070372864603996,
+          "oracle_presence_probability": 0.9013853073120117,
+          "generic_kws_probability": 0.04189056158065796,
+          "raw_generic_kws_probability": 0.04164229705929756,
+          "target_kws_probability": 0.4669140577316284,
+          "oracle_generic_kws_probability": 0.04206112027168274,
+          "oracle_target_kws_probability": 0.42107728123664856
+        },
+        {
+          "window_index": 9,
+          "window_start_seconds": 9.0,
+          "window_center_seconds": 10.5,
+          "target_active": false,
+          "passenger_region": true,
+          "presence_probability": 0.035096608102321625,
+          "raw_presence_probability": 0.029846154153347015,
+          "speaker_similarity": 0.01602410525083542,
+          "compact_speaker_probability": 0.00687284953892231,
+          "oracle_presence_probability": 0.9013853073120117,
+          "generic_kws_probability": 0.05970245227217674,
+          "raw_generic_kws_probability": 0.15595705807209015,
+          "target_kws_probability": 0.4716557264328003,
+          "oracle_generic_kws_probability": 0.04206112027168274,
+          "oracle_target_kws_probability": 0.42107728123664856
+        },
+        {
+          "window_index": 10,
+          "window_start_seconds": 10.0,
+          "window_center_seconds": 11.5,
+          "target_active": false,
+          "passenger_region": true,
+          "presence_probability": 0.034994594752788544,
+          "raw_presence_probability": 0.02965947799384594,
+          "speaker_similarity": 0.009316261857748032,
+          "compact_speaker_probability": 0.017143551260232925,
+          "oracle_presence_probability": 0.9013853073120117,
+          "generic_kws_probability": 0.1226947158575058,
+          "raw_generic_kws_probability": 0.07318682223558426,
+          "target_kws_probability": 0.4904864430427551,
+          "oracle_generic_kws_probability": 0.04206112027168274,
+          "oracle_target_kws_probability": 0.42107728123664856
+        },
+        {
+          "window_index": 11,
+          "window_start_seconds": 11.0,
+          "window_center_seconds": 12.5,
+          "target_active": false,
+          "passenger_region": false,
+          "presence_probability": 0.03544756397604942,
+          "raw_presence_probability": 0.030174776911735535,
+          "speaker_similarity": 0.00928525347262621,
+          "compact_speaker_probability": 0.009986262768507004,
+          "oracle_presence_probability": 0.9013853073120117,
+          "generic_kws_probability": 0.08386246860027313,
+          "raw_generic_kws_probability": 0.12904290854930878,
+          "target_kws_probability": 0.46464991569519043,
+          "oracle_generic_kws_probability": 0.04206112027168274,
+          "oracle_target_kws_probability": 0.42107728123664856
+        }
+      ]
+    }
+  ],
+  "limitation": "Diagnostic same-speaker enrollment only: a different FSC utterance from the command speaker is used, but the Marvin wake clip is not verified to be from that speaker; this is not a real-driver evaluation."
+}

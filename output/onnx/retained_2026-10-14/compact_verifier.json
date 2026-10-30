@@ -1,0 +1,40 @@
+{
+  "component": "compact_verifier",
+  "status": "ok",
+  "config": "D:\\Prawin_New\\tse\\car-tse-main\\configs\\eval_end_to_end_cavemove_target_kws_smart_speaker_compact_cabin_smart_thr030_2026-10-12.yaml",
+  "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\compact_speaker_verifier_cabin_smart_ft1\\best.pt",
+  "checkpoint_sha256": "1767d672e5b1963827ca43b93976049b8e5fb828bb8f631a44d63fe50466ecea",
+  "output": "D:\\Prawin_New\\tse\\car-tse-main\\output\\onnx\\retained_2026-10-14\\compact_verifier.onnx",
+  "output_sha256": "c1cb4943b21e96c1a770439cd20c341bbcfbaa7dde84604ac8acfa754fe04791",
+  "opset": 18,
+  "input_names": [
+    "enrollment_audio",
+    "extracted_audio"
+  ],
+  "input_shapes": [
+    [
+      1,
+      16000
+    ],
+    [
+      1,
+      16000
+    ]
+  ],
+  "output_names": [
+    "verification_logit"
+  ],
+  "onnx_ir_version": 8,
+  "onnxruntime_providers": [
+    "AzureExecutionProvider",
+    "CPUExecutionProvider"
+  ],
+  "parity": {
+    "passed": true,
+    "max_abs_error": 3.725290298461914e-08,
+    "max_relative_error": 3.068078058277024e-07,
+    "cosine_similarity": 1.0
+  },
+  "torch_version": "2.14.0+cu130",
+  "python_version": "3.14.7"
+}

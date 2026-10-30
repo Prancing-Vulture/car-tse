@@ -1,0 +1,26 @@
+name: stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker
+sample_rate: 16000
+segment_seconds: 1.0
+manifest_train: stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker_train.jsonl
+manifest_val: stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker_val.jsonl
+manifest_eval: stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker_test.jsonl
+cache_dir: data/cache/stage3_target_kws_gsc_marvin_hardneg_aishell5_smart_speaker_16k
+init_checkpoint: checkpoints/stage3_target_kws_gsc_marvin_hardneg_aishell5_ft1/best.pt
+
+model:
+  n_mels: 40
+  channels: [32, 64, 128]
+  num_classes: 2
+  speaker_embedding_dim: 256
+  hidden: 256
+
+train:
+  batch_size: 512
+  val_batch_size: 512
+  max_epochs: 10
+  patience: 3
+  lr: 2.5e-5
+  grad_clip: 5.0
+  amp: true
+  balanced_sampler: true
+  num_workers: 0

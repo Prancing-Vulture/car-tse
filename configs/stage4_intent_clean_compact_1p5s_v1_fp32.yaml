@@ -1,0 +1,27 @@
+name: stage4_intent_clean_compact_1p5s_v1_fp32
+sample_rate: 16000
+segment_seconds: 1.5
+manifest_train: stage4_intent_train.jsonl
+manifest_eval: stage4_intent_eval.jsonl
+label_map: intent_label_map.json
+cabin_noise: false
+audio_cache_size: 4096
+waveform_cache_dir: data/cache/stage4_intent_clean_compact_1p5s_v1_16k
+waveform_cache_includes_cabin_noise: false
+
+model:
+  n_mels: 80
+  hidden: 384
+  num_layers: 2
+  normalize_input: true
+
+train:
+  batch_size: 512
+  val_batch_size: 512
+  max_epochs: 20
+  patience: 5
+  lr: 5.0e-4
+  grad_clip: 5.0
+  amp: false
+  balanced_sampler: true
+  num_workers: 0

@@ -1,0 +1,40 @@
+{
+  "experiment": "Tier-1 TSE ablation matrix",
+  "created_utc": "2026-10-19T18:19:22.462036+00:00",
+  "repository": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse",
+  "stage1_config": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\configs\\stage1_spex_fsc_passenger_cochannel_ft1_2026-10-16.yaml",
+  "stage1_checkpoint": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\checkpoints\\stage1_spex_fsc_passenger_cochannel_ft1_2026-10-16\\best.pt",
+  "stage1_checkpoint_sha256": "13ec7c58870feb975efb266e4064bf58575dbc6120f787a77a49c3bc4edda3ac",
+  "base_spex_checkpoint": "E:\\car-tse-data\\models\\car_tse_spexplus_from_stage1.pt",
+  "base_spex_checkpoint_sha256": "62826ae27c1d83d077aa98bc050117f8b39f7dc22a3d71fd496d109e57cd6449",
+  "base_spex_sanitized_tensor_state_sha256": "44fa2e0b094df7ad297452b35f06902536554dac3c87c913a76064bd2d226110",
+  "external_spex_checkpoint": "E:\\car-tse-data\\models\\tier1_external\\spexplus_librispeech_init_checkpoint.pt",
+  "external_spex_checkpoint_sha256": "5280182c2076ed3cf2908e47da69826f0ec0ca1218984396dda4bde1b4d52d5f",
+  "external_spex_source": "Hugging Face niobures/SpEx-Plus@2cab2f77d560734f83a9cfead45d7f128b804f0f, code/SpExPlus_LibriSpeech.zip; initial checkpoint epoch 0; downloaded archive SHA256 9cdf093b9cb31e6a654ef2fffe0aa08931881b976a661629211bcd939ee879f5; restricted weights_only load; bundled source was inspected but not executed",
+  "speakerbeam_checkpoint": "E:\\car-tse-data\\models\\tier1_external\\espnet_speakerbeam\\99epoch.pth",
+  "speakerbeam_checkpoint_sha256": "7e1d6831d0df187ae8b23ed4d6804d07d0ec314336266e99f7da41a2f8ad055f",
+  "speakerbeam_source": "Hugging Face espnet/Wangyou_Zhang_librimix_train_enh_tse_td_speakerbeam_raw@db03c34c0b8c26a87c0d6cac41229891c34b4a02; CC-BY-4.0; restricted weights_only load; pinned ESPnet architecture",
+  "test_manifest": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\manifests\\test\\stage1_cavemove_cabin.jsonl",
+  "test_manifest_sha256": "91a1f1410a52c37df8e4112fa34039eb61768e4bc895506f61693dd12f39a25f",
+  "speakers_file": "E:\\bss-audio-data\\speech\\LibriSpeech\\LibriSpeech\\SPEAKERS.TXT",
+  "sample_rate_hz": 16000,
+  "examples": 8,
+  "cabin_noise_snr_levels_db": [
+    -5.0,
+    0.0,
+    5.0,
+    10.0,
+    15.0,
+    20.0
+  ],
+  "device": "cuda",
+  "pytorch": "2.12.0+cu132",
+  "interpretation_limit": "LibriMix target and passenger speech are duplicated identically across channels; only CAVEMOVE noise differs by microphone. Channel count tests are test-time channel-drop ablations of the current four-input frontend, not separately trained 1/2/4-mic models. MVDR uses the paired clean CAVEMOVE noise recording for covariance and is an oracle upper bound, not an on-vehicle deployable estimator.",
+  "si_sdri_reference": "All SI-SDRi values use delay-and-sum/mean of the four cabin channels as the common input reference.",
+  "seeds": "One current best checkpoint per trained variant; seed-to-seed training variance is not estimated in this run.",
+  "files": [
+    "per_example_metrics.jsonl",
+    "summary_by_snr_gender_sir.csv",
+    "base_spex_safe_state_dict.pt"
+  ]
+}

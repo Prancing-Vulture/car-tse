@@ -1,0 +1,4 @@
+System,SI-SDRi (dB)
+Cabin-noise mean-pool baseline,8.01
+Clean transferred SpEx+ baseline,10.73
+SpEx+ + learned cabin front end,10.98

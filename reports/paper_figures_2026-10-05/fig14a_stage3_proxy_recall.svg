@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1050" height="610" viewBox="0 0 1050 610">
+<rect width="100%" height="100%" fill="#fff"/>
+<style>text{font-family:Arial,sans-serif;fill:#253247}.title{font-size:23px;font-weight:bold}.label{font-size:14px}.small{font-size:12px}.grid{stroke:#d9e0e8;stroke-width:1}.axis{stroke:#536273;stroke-width:1.2}</style>
+<text class="title" x="525.0" y="38" text-anchor="middle">Stage 3: eight-speaker proxy wake recall</text>
+<line class="grid" x1="100" y1="480.0" x2="970" y2="480.0"/>
+<text class="small" x="88" y="484.0" text-anchor="end">0.0</text>
+<line class="grid" x1="100" y1="401.0" x2="970" y2="401.0"/>
+<text class="small" x="88" y="405.0" text-anchor="end">20.0</text>
+<line class="grid" x1="100" y1="322.0" x2="970" y2="322.0"/>
+<text class="small" x="88" y="326.0" text-anchor="end">40.0</text>
+<line class="grid" x1="100" y1="243.0" x2="970" y2="243.0"/>
+<text class="small" x="88" y="247.0" text-anchor="end">60.0</text>
+<line class="grid" x1="100" y1="164.0" x2="970" y2="164.0"/>
+<text class="small" x="88" y="168.0" text-anchor="end">80.0</text>
+<line class="grid" x1="100" y1="85.0" x2="970" y2="85.0"/>
+<text class="small" x="88" y="89.0" text-anchor="end">100.0</text>
+<text class="small" x="100.0" y="503" text-anchor="middle">-5</text>
+<text class="small" x="390.0" y="503" text-anchor="middle">0</text>
+<text class="small" x="680.0" y="503" text-anchor="middle">10</text>
+<text class="small" x="970.0" y="503" text-anchor="middle">20</text>
+<circle cx="100.0" cy="455.115" r="6" fill="#386cb0"/>
+<circle cx="390.0" cy="405.74" r="6" fill="#386cb0"/>
+<circle cx="680.0" cy="270.255" r="6" fill="#386cb0"/>
+<circle cx="970.0" cy="381.25" r="6" fill="#386cb0"/>
+<polyline points="100.0,455.115 390.0,405.74 680.0,270.255 970.0,381.25" fill="none" stroke="#386cb0" stroke-width="3"/>
+<line x1="100" y1="552" x2="128" y2="552" stroke="#386cb0" stroke-width="3"/>
+<text class="small" x="135" y="556">One-clip enrollment</text>
+<circle cx="100.0" cy="418.38" r="6" fill="#f0027f"/>
+<circle cx="390.0" cy="356.365" r="6" fill="#f0027f"/>
+<circle cx="680.0" cy="294.745" r="6" fill="#f0027f"/>
+<circle cx="970.0" cy="393.495" r="6" fill="#f0027f"/>
+<polyline points="100.0,418.38 390.0,356.365 680.0,294.745 970.0,393.495" fill="none" stroke="#f0027f" stroke-width="3"/>
+<line x1="340" y1="552" x2="368" y2="552" stroke="#f0027f" stroke-width="3"/>
+<text class="small" x="375" y="556">Two-clip enrollment</text>
+<text class="label" x="535.0" y="532" text-anchor="middle">SNR (dB)</text>
+<text class="label" transform="translate(25 282.5) rotate(-90)" text-anchor="middle">Smoothed wake recall (%)</text>
+<text class="small" x="100" y="596">32 expected wakes per SNR in synthetic cabin-noise scenes; not a real-cabin benchmark.</text>
+</svg>

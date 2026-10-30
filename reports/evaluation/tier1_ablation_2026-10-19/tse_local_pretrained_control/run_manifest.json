@@ -1,0 +1,42 @@
+{
+  "experiment": "matched local SpEx+ initialization versus selected cabin frontend checkpoint",
+  "created_utc": "2026-10-19T19:54:05.769749+00:00",
+  "device": "cuda",
+  "pytorch": "2.12.0+cu132",
+  "test_manifest": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\manifests\\test\\stage1_cavemove_cabin.jsonl",
+  "test_manifest_sha256": "91a1f1410a52c37df8e4112fa34039eb61768e4bc895506f61693dd12f39a25f",
+  "main_results": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\reports\\evaluation\\tier1_ablation_2026-10-19\\tse\\per_example_metrics.jsonl",
+  "main_results_sha256": "b79fb84228ec973f717ce556cae44e79c7cb5905f71b69468b41ca2cfff35a59",
+  "base_spex_checkpoint": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\reports\\evaluation\\tier1_ablation_2026-10-19\\tse\\base_spex_safe_state_dict.pt",
+  "base_spex_checkpoint_sha256": "44fa2e0b094df7ad297452b35f06902536554dac3c87c913a76064bd2d226110",
+  "selected_stage1_checkpoint_sha256": "13ec7c58870feb975efb266e4064bf58575dbc6120f787a77a49c3bc4edda3ac",
+  "base_spex_tensor_count": 456,
+  "base_spex_tensor_values_different_from_selected_checkpoint": 18,
+  "different_state_keys": [
+    "speaker_encoder.resnet_blocks.0.part1.1.running_mean",
+    "speaker_encoder.resnet_blocks.0.part1.1.running_var",
+    "speaker_encoder.resnet_blocks.0.part1.1.num_batches_tracked",
+    "speaker_encoder.resnet_blocks.0.part1.4.running_mean",
+    "speaker_encoder.resnet_blocks.0.part1.4.running_var",
+    "speaker_encoder.resnet_blocks.0.part1.4.num_batches_tracked",
+    "speaker_encoder.resnet_blocks.1.part1.1.running_mean",
+    "speaker_encoder.resnet_blocks.1.part1.1.running_var",
+    "speaker_encoder.resnet_blocks.1.part1.1.num_batches_tracked",
+    "speaker_encoder.resnet_blocks.1.part1.4.running_mean",
+    "speaker_encoder.resnet_blocks.1.part1.4.running_var",
+    "speaker_encoder.resnet_blocks.1.part1.4.num_batches_tracked",
+    "speaker_encoder.resnet_blocks.2.part1.1.running_mean",
+    "speaker_encoder.resnet_blocks.2.part1.1.running_var",
+    "speaker_encoder.resnet_blocks.2.part1.1.num_batches_tracked",
+    "speaker_encoder.resnet_blocks.2.part1.4.running_mean",
+    "speaker_encoder.resnet_blocks.2.part1.4.running_var",
+    "speaker_encoder.resnet_blocks.2.part1.4.num_batches_tracked"
+  ],
+  "baseline_definition": "The local transfer-SpEx+ initialization checkpoint is evaluated on the delay-sum mean of the four cabin channels with the same enrollment as the selected checkpoint; it has no learned cabin front end and no cabin fine-tuning.",
+  "paired_comparisons": "The summary and paired gain file compare against the already-completed main run, which used the identical fixed test rows and delay-sum SI-SDRi reference.",
+  "files": [
+    "per_example_metrics.jsonl",
+    "summary_by_snr_gender_sir.csv",
+    "paired_sidr_gains.csv"
+  ]
+}

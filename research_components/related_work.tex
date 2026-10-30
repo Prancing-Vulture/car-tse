@@ -1,0 +1,514 @@
+% Expanded, implementation-aligned related work and technical build-up.
+% Required packages in the manuscript preamble:
+% \usepackage{amsmath,amssymb,booktabs,graphicx,float,algorithm,algpseudocode}
+% Load the complete bibliography with: \addbibresource{sample.bib}
+% All original citation keys are retained; the added foundation keys are in sample.bib.
+
+\section{Related Work and Technical Foundations}
+\label{sec:related-work}
+
+This section builds from trainable neural networks to the four decisions in the in-car pipeline. It distinguishes established methods used as foundations from the implementation choices made in this repository. The stages are trained separately and connected at inference; the system is therefore a staged cascade, not a single jointly optimized end-to-end neural network.
+
+\subsection{Neural Networks, Objectives, and Optimization}
+\label{subsec:nn-optimization}
+
+Neural networks learn a parameterized mapping by repeatedly comparing predictions with a task-specific target and propagating the resulting gradient through the layers. Back-propagation supplies these derivatives; Adam estimates adaptive first and second moments; AdamW separates weight decay from the gradient-based update; gradient clipping limits unstable update norms; cosine schedules reduce the learning rate over training; and label smoothing replaces one-hot targets with softened targets in multiclass learning \cite{backprop1986,adam2015,adamw2019,sgdr2017,gradclip2013,labelsmooth2019}. These are complementary pieces of a training procedure rather than interchangeable losses. The repository uses AdamW across the principal training stages, uses gradient clipping in its configured training scripts, applies cosine decay to the KWS and wav2vec intent recipes, and uses label smoothing of 0.03 in the wav2vec intent fine-tuning script.
+
+\begin{table}[H]
+  \caption{Neural-network learning and optimization concepts used in the implementation.}
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lll}
+    \toprule
+    Concept & Mathematical role & Use in this repository \\
+    \midrule
+    Back-propagation \cite{backprop1986} & Computes $\nabla_{\theta}\mathcal{L}$ by the chain rule & Trains each stage's trainable parameters \\
+    Adam / AdamW \cite{adam2015,adamw2019} & Adaptive moment updates; AdamW decouples decay & AdamW is the configured optimizer \\
+    Gradient clipping \cite{gradclip2013} & Bounds the global gradient norm & Several trainers clip at norm 5 \\
+    Cosine decay \cite{sgdr2017} & Smoothly reduces the learning rate & Used by KWS and wav2vec intent recipes \\
+    Label smoothing \cite{labelsmooth2019} & Softens multiclass target distributions & Intent fine-tuning uses $\epsilon=0.03$ \\
+    \bottomrule
+  \end{tabular}%
+  }
+  \label{tab:learning-choices}
+\end{table}
+
+For an input $\mathbf{x}$, a feed-forward network forms hidden states $\mathbf{h}^{(0)}=\mathbf{x}$ and
+\begin{equation}
+  \mathbf{h}^{(\ell)}=\phi\!\left(\mathbf{W}^{(\ell)}\mathbf{h}^{(\ell-1)}+\mathbf{b}^{(\ell)}\right),
+  \qquad
+  \mathbf{z}=\mathbf{W}^{(L)}\mathbf{h}^{(L-1)}+\mathbf{b}^{(L)},
+  \label{eq:feedforward}
+\end{equation}
+where $\phi$ is a nonlinear activation. For $K$ mutually exclusive classes, the softmax probability and cross-entropy objective are
+\begin{equation}
+  p_k=\frac{\exp(z_k)}{\sum_{j=1}^{K}\exp(z_j)},\qquad
+  \mathcal{L}_{\mathrm{CE}}=-\sum_{k=1}^{K}q_k\log p_k.
+  \label{eq:ce}
+\end{equation}
+With label smoothing, $q_k=(1-\epsilon)\mathbb{1}[k=y]+\epsilon/K$. The 31-class intent head uses cross-entropy and, in the fine-tuning script, $\epsilon=0.03$; the binary KWS head uses the ordinary two-class cross-entropy. The scalar target-presence head instead uses binary cross-entropy with logits,
+\begin{equation}
+  \mathcal{L}_{\mathrm{BCE}}(z,y)=\log(1+e^z)-yz,\qquad y\in\{0,1\}.
+  \label{eq:bce}
+\end{equation}
+The objective is chosen to match the prediction: waveform reconstruction for extraction, a binary decision for presence, and class likelihood for wake-word and intent outputs.
+
+For a minibatch loss $\mathcal{L}$, gradient descent updates $\theta$ in the direction opposite its gradient. Adam maintains exponential moving averages $m_t$ and $v_t$ of the gradient and squared gradient. AdamW applies decoupled weight decay in addition to the adaptive step. In compact form,
+\begin{align}
+  g_t&=\nabla_{\theta}\mathcal{L}_t,\quad
+  m_t=\beta_1m_{t-1}+(1-\beta_1)g_t,\quad
+  v_t=\beta_2v_{t-1}+(1-\beta_2)g_t^2,\\
+  \theta_{t+1}&=\theta_t-\eta_t\left(\frac{\widehat{m}_t}{\sqrt{\widehat{v}_t}+\varepsilon_{\mathrm{opt}}}+\lambda\theta_t\right).
+  \label{eq:adamw}
+\end{align}
+Here $\widehat m_t,\widehat v_t$ are bias-corrected moments, $\eta_t$ is the learning rate, and $\lambda$ is decoupled weight decay. The implementation clips a gradient $g$ when its global norm exceeds $c$:
+\begin{equation}
+  g\leftarrow g\min\!\left(1,\frac{c}{\lVert g\rVert_2}\right),
+  \qquad
+  \eta_e=\eta_{\min}+\frac{\eta_{\max}-\eta_{\min}}{2}\left(1+\cos\frac{\pi e}{E}\right).
+  \label{eq:clip-cosine}
+\end{equation}
+The second expression is the no-restart cosine schedule used by the relevant repository trainers; the cited SGDR work introduced cosine annealing with warm restarts, whereas the code uses ordinary cosine annealing. In Stage 1, the schedule is instead a three-phase transfer curriculum: train the cabin front end with SpEx+ frozen, train the non-encoder extraction parameters while freezing the encoder, and finally unfreeze the encoder at a much smaller learning rate. This staged unfreezing reduces disruption to pretrained speech features.
+
+The following pseudocode describes the common optimization skeleton, with a different objective and trainable parameter set for each independently trained stage. It does not imply that gradients pass through all four stages jointly.
+
+\begin{algorithm}[H]
+  \caption{Stage-wise training with the loss and parameter schedule for each model}
+  \label{alg:stagewise-training}
+  \begin{algorithmic}[1]
+    \Require Stage model $f_s$, training set $D_s$, validation set $V_s$, stage loss $\mathcal{L}_s$, optimizer and schedule configuration
+    \Ensure Best validation checkpoint $\theta_s^*$
+    \State Initialize $\theta_s$ from the configured initialization or pretrained checkpoint
+    \For{$e=1$ to $E_s$}
+      \State Set trainable parameter groups and learning rates for epoch $e$
+      \ForAll{minibatches $(x,y)\in D_s$}
+        \State $\hat y\gets f_s(x;\theta_s)$
+        \State $\ell\gets\mathcal{L}_s(\hat y,y)$
+        \State $g\gets\nabla_{\theta_s}\ell$
+        \State $g\gets g\min(1,c/\lVert g\rVert_2)$ \Comment{when gradient clipping is enabled}
+        \State Update $\theta_s$ with the configured optimizer
+      \EndFor
+      \State Update the epoch learning-rate scheduler, when configured
+      \State Evaluate the stage metric on $V_s$; save the best checkpoint
+      \If{validation metric has not improved for the patience interval}
+        \State \textbf{break}
+      \EndIf
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{From Acoustic Features to CNNs and Transformers}
+\label{subsec:architectures}
+
+Model structure should follow the shape of the signal and the decision. Convolutional networks learn local patterns with shared filters; batch normalization stabilizes intermediate feature scales; recurrent networks such as LSTMs maintain a gated state across frames; and Transformers use self-attention to relate positions over a sequence. Self-supervised wav2vec 2.0 pretraining provides contextual speech representations that can be fine-tuned for recognition with a smaller task-specific head \cite{lecun1998,batchnorm2015,lstm1997,transformer2017,wav2vec2,dscnnkws}. This progression explains the repository's compact log-mel CNN for one-second wake-word classification and its pretrained wav2vec 2.0 encoder for 31-class intent recognition. A CRNN intent baseline is also implemented, but the PDF's reported best intent model is wav2vec 2.0, not Word2Vec.
+
+\begin{table}[H]
+  \caption{Architecture families and their role in this speech pipeline.}
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{llll}
+    \toprule
+    Family & Core operation & Reference & Repository mapping \\
+    \midrule
+    CNN \cite{lecun1998,dscnnkws} & Local time-frequency filters and pooling & Shared local patterns & Stage 3 log-mel KWS \\
+    Batch-normalized CNN \cite{batchnorm2015} & Normalize feature channels during training & Stable CNN blocks & Stage 3 Conv-BN-ReLU blocks \\
+    LSTM / CRNN \cite{lstm1997} & Gated recurrence over frame sequence & Temporal state & Implemented Stage 4 baseline \\
+    Transformer \cite{transformer2017} & Self-attention across sequence positions & Long-range context & Contextual speech encoder family \\
+    wav2vec 2.0 \cite{wav2vec2} & Self-supervised speech pretraining + Transformer & Transferable speech states & Reported Stage 4 intent encoder \\
+    \bottomrule
+  \end{tabular}%
+  }
+  \label{tab:architecture-families}
+\end{table}
+
+For waveform $x[n]$, the short-time Fourier transform (STFT) provides local spectral frames,
+\begin{equation}
+  X[m,k]=\sum_{n=0}^{N-1}x[n+mH]w[n]e^{-j2\pi kn/N},\qquad
+  F[m,r]=\log\!\left(\sum_k M[r,k]|X[m,k]|^2+\epsilon\right),
+  \label{eq:logmel}
+\end{equation}
+where $w$ is a window, $H$ is the hop, and $M$ is a mel filter bank. The repository's Stage 3 recipe uses 16-kHz, one-second waveforms, 40 mel bins, a 256-sample FFT, and an 80-sample hop. Its CNN repeatedly applies a learned two-dimensional convolution, batch normalization, ReLU, and max pooling; global average pooling gives a fixed-dimensional vector for the class head. A simplified convolutional block is
+\begin{equation}
+  H^{(\ell)}=\operatorname{Pool}\!\left(\operatorname{ReLU}\left(\operatorname{BN}\left(W^{(\ell)}*H^{(\ell-1)}+b^{(\ell)}\right)\right)\right).
+  \label{eq:cnn-block}
+\end{equation}
+
+For comparison, a gated recurrent layer updates a hidden state from frame $x_t$ and previous state $h_{t-1}$. An LSTM uses input, forget, and output gates to control its memory state:
+\begin{align}
+  i_t&=\sigma(W_i x_t+U_i h_{t-1}+b_i),\quad
+  f_t=\sigma(W_f x_t+U_f h_{t-1}+b_f),\quad
+  o_t=\sigma(W_o x_t+U_o h_{t-1}+b_o),\\
+  c_t&=f_t\odot c_{t-1}+i_t\odot\tanh(W_c x_t+U_c h_{t-1}+b_c),\quad
+  h_t=o_t\odot\tanh(c_t).
+  \label{eq:lstm-state}
+\end{align}
+A Transformer layer computes scaled dot-product attention,
+\begin{equation}
+  \operatorname{Attention}(Q,K,V)=\operatorname{softmax}\!\left(\frac{QK^{\mathsf T}}{\sqrt{d_k}}\right)V.
+  \label{eq:attention}
+\end{equation}
+The actual Stage 4 classifier sends normalized two-second audio through the pretrained wav2vec 2.0 encoder, averages its contextual frame states $H_t$, then predicts with a $768\!\rightarrow\!512\!\rightarrow\!31$ LayerNorm--Linear--GELU--Dropout--Linear head:
+\begin{equation}
+  \bar{H}=\frac{1}{T}\sum_{t=1}^{T}H_t,\qquad
+  \mathbf{z}_{\mathrm{intent}}=W_2\,\operatorname{Dropout}\!\left(\operatorname{GELU}(W_1\operatorname{LN}(\bar H)+b_1)\right)+b_2.
+  \label{eq:wav2vec-head}
+\end{equation}
+The encoder and the small classifier head are trained in separate phases in the repository: first the head is fitted on cached/frozen encoder features; a later recipe partially unfreezes upper encoder layers and uses a smaller encoder learning rate. The speech encoder is pretrained, but the complete TSE-to-action pipeline is not jointly trained.
+
+\begin{algorithm}[H]
+  \caption{Feature and classifier paths used by KWS and intent models}
+  \label{alg:features}
+  \begin{algorithmic}[1]
+    \Require Waveform $x$ sampled at 16 kHz; task $q\in\{\mathrm{KWS},\mathrm{intent}\}$
+    \Ensure Task logits $z$
+    \If{$q=\mathrm{KWS}$}
+      \State Compute STFT power and 40-bin log-mel features using the configured window and hop
+      \State Apply CNN blocks: Conv2D $\rightarrow$ BatchNorm $\rightarrow$ ReLU $\rightarrow$ MaxPool
+      \State Global-average-pool the final feature map and apply the binary classifier
+    \Else
+      \State Crop or pad audio to two seconds; subtract mean and normalize by standard deviation
+      \State Compute contextual wav2vec 2.0 states $H_1,\ldots,H_T$
+      \State Mean-pool states and apply the intent MLP head
+    \EndIf
+    \State \Return $z$
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{Target-Speaker Extraction and Target-Presence Decisions}
+\label{subsec:tse-presence}
+
+Target-speaker extraction (TSE) uses an enrollment utterance to select a speaker from an acoustic mixture. VoiceFilter conditions spectrogram masking on a speaker representation; SpeakerBeam connects target-speaker adaptation to recognition; SpEx+ performs time-domain extraction at multiple temporal resolutions; and Direction-Aware Speaker Beam incorporates multichannel spatial evidence. Target-speaker VAD, enrollment-robust extraction, target-absent training, false-alarm control, and target-confusion analysis address complementary failure modes \cite{voicefilter,speakerbeam,spexplus,directionaware,tsvad,satorobust,universalabsence,tsefalsealarms,targetconfusion}. AISHELL-5 and CAVEMOVE add real or simulated vehicle conditions for which generic mixtures alone are insufficient \cite{aishell5,cavemove,librimix,librispeech,visdataset}. These methods motivate a cabin-adapted extractor followed by an explicit presence decision; extraction quality and confidence that the desired person is speaking are separate quantities.
+
+\begin{table}[H]
+  \caption{Comparison of speaker extraction, activity, and target-presence research.}
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lll}
+    \toprule
+    Study or resource & Evidence or stress condition & Relevance to this pipeline \\
+    \midrule
+    VoiceFilter \cite{voicefilter} & Enrollment speaker embedding & Speaker-conditioned spectral extraction \\
+    SpeakerBeam \cite{speakerbeam} & Target-adaptive extraction and ASR & Connects extraction with recognition \\
+    SpEx+ \cite{spexplus} & Enrollment and mixture waveforms & Time-domain extraction backbone \\
+    Direction-Aware Beam \cite{directionaware} & Multichannel spatial evidence & Motivates cabin microphone front end \\
+    TS-VAD \cite{tsvad} & Speaker-conditioned activity over time & Activity decision complements extraction \\
+    Sato et al. \cite{satorobust} & Enrollment utterance variation & Motivates multi-enrollment testing \\
+    Borsdorf / Delcroix / Zhao \cite{universalabsence,tsefalsealarms,targetconfusion} & Target absent, false alarms, or wrong speaker & Motivates explicit negative and identity checks \\
+    AISHELL-5 / CAVEMOVE \cite{aishell5,cavemove} & Real or simulated in-car acoustics & Cabin-specific training and evaluation \\
+    \bottomrule
+  \end{tabular}%
+  }
+  \label{tab:tse-literature}
+\end{table}
+
+An in-car recording can be modeled as a sum of reverberant sources, noise, and (when provided) loudspeaker playback. For microphone $c$,
+\begin{equation}
+  x_c[t]=\sum_{j=1}^{J}(h_{cj}*s_j)[t]+n_c[t]+(g_c*r)[t],
+  \label{eq:cabin-mixture}
+\end{equation}
+where $s_j$ are speakers, $h_{cj}$ are room/vehicle impulse responses, $n_c$ is background noise, and $r$ is a playback reference. The four-microphone cabin front end in the selected Stage 1 configuration estimates a residual for each channel from the channels and optional playback reference, subtracts that residual, then adds a learned spatial correction to the direct channel mean:
+\begin{equation}
+  \widetilde{x}_c=x_c-\widehat{r}_c,\qquad
+  x_{\mathrm{mono}}=\frac{1}{C}\sum_{c=1}^{C}x_c+g_{\mathrm{spatial}}(\widetilde{\mathbf{x}}).
+  \label{eq:cabin-frontend}
+\end{equation}
+This is a learned convolutional residual front end initialized to preserve a usable signal; it should not be described as a classical adaptive acoustic echo canceller. The resulting signal and enrollment waveform are passed to the pretrained SpEx+ model, which returns multi-scale estimates $\hat{s}_1,\hat{s}_2,\hat{s}_3$.
+
+The repository computes scale-invariant SDR after subtracting each waveform's mean. For reference $s$ and estimate $\hat{s}$, let
+\begin{equation}
+  s_{\mathrm{target}}=\frac{\langle\hat{s},s\rangle}{\lVert s\rVert_2^2+\epsilon}s,
+  \quad e_{\mathrm{noise}}=\hat{s}-s_{\mathrm{target}},
+  \quad \operatorname{SI\text{-}SDR}(\hat{s},s)=10\log_{10}\frac{\lVert s_{\mathrm{target}}\rVert_2^2}{\lVert e_{\mathrm{noise}}\rVert_2^2+\epsilon}.
+  \label{eq:sisdr}
+\end{equation}
+The multi-output extraction loss and its selected weights are
+\begin{equation}
+  \mathcal{L}_{\mathrm{TSE}}=-\operatorname{SI\text{-}SDR}(\hat{s}_1,s)
+  -\alpha\operatorname{SI\text{-}SDR}(\hat{s}_2,s)
+  -\beta\operatorname{SI\text{-}SDR}(\hat{s}_3,s),\qquad \alpha=\beta=0.1.
+  \label{eq:tse-loss}
+\end{equation}
+The code can add a speaker-classification cross-entropy term $\gamma\mathcal{L}_{\mathrm{spk}}$ when speaker labels are passed and $\gamma>0$. In the selected CAVEMOVE cabin-adaptation configuration, $\gamma=0$, so that auxiliary term is disabled. Likewise, an absent-output penalty exists in the Stage 1 loss implementation but is not enabled in this selected Stage 1 configuration. SI-SDR improvement is the output SI-SDR minus mixture-input SI-SDR; the PDF reports a mean improvement of 10.98 dB on 400 held-out CAVEMOVE examples.
+
+Because an extractor can return speech-like leakage when the target is absent, Stage 2 estimates a target-presence probability from the extracted waveform. For logit $z_p$ and threshold $\tau_p$,
+\begin{equation}
+  p_{\mathrm{present}}=\sigma(z_p)=\frac{1}{1+e^{-z_p}},\qquad
+  d_{\mathrm{present}}=\mathbb{1}[p_{\mathrm{present}}\geq\tau_p].
+  \label{eq:presence-gate}
+\end{equation}
+The selected scalar-head objective is binary cross-entropy plus a penalty on extracted energy for absent-target examples:
+\begin{equation}
+  \mathcal{L}_{\mathrm{presence}}=\mathcal{L}_{\mathrm{BCE}}+\lambda_{\mathrm{abs}}
+  \frac{1}{|A|}\sum_{i\in A}\frac{1}{T}\sum_{t=1}^{T}\hat{s}_{1,i}[t]^2,
+  \qquad \lambda_{\mathrm{abs}}=1.
+  \label{eq:presence-loss}
+\end{equation}
+Here $A$ is the set of target-absent examples in the minibatch; the energy term is zero when $A$ is empty. The selected training path does not use triplet or contrastive losses.
+For an optional framewise presence model, clean-target frame energy supplies weak activity labels; weighted frame BCE is augmented with a small probability-smoothness term, and the top 20\% frame probabilities are averaged to form a chunk score. That framewise model is an alternate implementation path, not the scalar-head result in the current PDF. The scalar gate illustrates why the operating threshold matters: on the reported validation split, threshold 0.50 has 100\% recall but 96.25\% false-accept rate, whereas threshold 0.90 has 91.13\% recall, 82.50\% specificity, 17.50\% false-accept rate, and 8.88\% false-reject rate.
+For this optional framewise path, if $r_{i,t}$ is the clean target's frame RMS, a weak activity label is $y_{i,t}=y_i\mathbb{1}[r_{i,t}\geq\max(r_{\min},10^{-30/20}\max_u r_{i,u})]$. The implementation uses a 512-sample STFT with 160-sample hop, positive-class weight 2, and smoothness weight 0.02:
+\begin{equation}
+  \mathcal{L}_{\mathrm{frame}}=\operatorname{BCE}_{w}(z_t,y_t)
+  +0.02\,\frac{1}{T-1}\sum_{t=2}^{T}\left|\sigma(z_t)-\sigma(z_{t-1})\right|,
+  \qquad
+  p_{\mathrm{chunk}}=\operatorname{MeanTopK}_{20\%}\!\left(\sigma(z_1),\ldots,\sigma(z_T)\right).
+  \label{eq:frame-presence-loss}
+\end{equation}
+
+\begin{algorithm}[H]
+  \caption{Cabin extraction followed by scalar or framewise target-presence gating}
+  \label{alg:tse-presence}
+  \begin{algorithmic}[1]
+    \Require Multichannel chunk $\mathbf{x}$, enrollment $e$, optional playback reference $r$, presence threshold $\tau_p$
+    \Ensure Extracted waveform $\hat{s}_1$ and accept/reject decision $d_p$
+    \State Estimate per-channel residuals from $[\mathbf{x},r]$ when a playback reference is available
+    \State Form front-end signal $x_{\mathrm{mono}}$ with residual suppression and spatial correction
+    \State $(\hat{s}_1,\hat{s}_2,\hat{s}_3)\gets\operatorname{SpExPlus}(x_{\mathrm{mono}},e)$
+    \If{the configured scalar head is active}
+      \State $p\gets\sigma(\operatorname{PresenceHead}(\hat{s}_1))$
+    \Else
+      \State $p_t\gets\sigma(\operatorname{FramePresenceHead}(\hat{s}_1)_t)$ for each frame $t$
+      \State $p\gets\operatorname{MeanTopK}(p_t,\text{fraction}=0.20)$
+    \EndIf
+    \State $d_p\gets\mathbb{1}[p\geq\tau_p]$
+    \State \Return $(\hat{s}_1,d_p)$
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{Wake-Word Detection, Intent, and the Cascade}
+\label{subsec:kws-intent}
+
+Keyword spotting (KWS) recognizes a predefined phrase under strict latency, compute, and false-alarm constraints. Compact CNNs and Speech Commands establish small-footprint keyword-recognition baselines; VoiceFilter-Lite studies a related streaming target-speaker front end, while Fluent Speech Commands and SLURP support fixed-domain and broader spoken-language-understanding evaluation. Textual knowledge distillation and wav2vec 2.0 represent alternative approaches to learning intent from speech \cite{dscnnkws,speechcommands,voicefilterlite,fluentcommands,slurp,textualkd,wav2vec2}. In this repository, Stage 3 is a binary Marvin/non-Marvin log-mel CNN, and Stage 4 is a 31-class wav2vec 2.0 intent classifier. Their separate training sets and clean-set scores do not, by themselves, measure whether a target user can traverse the full wake-to-action cascade.
+
+\begin{table}[H]
+  \caption{Wake-word and spoken-intent approaches and the scope of their evidence.}
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lll}
+    \toprule
+    Study or resource & Task and evidence & Limitation for the in-car cascade \\
+    \midrule
+    Sainath and Parada \cite{dscnnkws} & Compact CNN keyword spotting & Footprint and isolated KWS do not equal stream FAR \\
+    Speech Commands \cite{speechcommands} & Limited-vocabulary speech recognition & Requires cabin and continuous-stream validation \\
+    VoiceFilter-Lite \cite{voicefilterlite} & Streaming target-speech preservation & A front end, not a wake detector or intent model \\
+    Fluent Speech Commands \cite{fluentcommands} & Fixed-domain speech-to-intent corpus & Clean test performance is domain-specific \\
+    SLURP \cite{slurp} & Multi-domain spoken language understanding & Broader domain scope differs from fixed car commands \\
+    Textual distillation \cite{textualkd} & Speech-to-intent teacher/student learning & Not a matched training comparison with this model \\
+    wav2vec 2.0 \cite{wav2vec2} & Self-supervised speech encoder & Requires task- and domain-specific evaluation \\
+    \bottomrule
+  \end{tabular}%
+  }
+  \label{tab:kws-intent-literature}
+\end{table}
+
+Let $z_w$ be the two-class KWS logits computed on a one-second extracted-speech window. The wake score is the wake-class softmax probability,
+\begin{equation}
+  q_w=\operatorname{softmax}(z_w)_{\mathrm{wake}}.
+  \label{eq:wake-score}
+\end{equation}
+At runtime, the repository keeps a finite history of scores and requires a configured number of individual threshold-crossing hits within that history; after a detection it applies a refractory interval. On a wake decision, the state machine arms command capture; the wake-word window itself is not reused as the intent command. The next accepted target-speech window is passed to the intent model, and its highest-logit label is mapped through the intent-to-action table. Optional speaker-similarity checking or secondary-KWS score fusion is supported by the pipeline but is not active in every reported experiment.
+
+For 31 intent classes, the prediction and supervised objective are
+\begin{equation}
+  \hat{c}=\arg\max_{k\in\{1,\ldots,31\}}z_k,\qquad
+  \mathcal{L}_{\mathrm{intent}}=-\sum_{k=1}^{31}q_k\log\operatorname{softmax}(\mathbf{z})_k,
+  \label{eq:intent}
+\end{equation}
+where $q$ is one-hot for ordinary cross-entropy and is smoothed in the wav2vec fine-tuning recipe. The distinction between isolated-stage and cascade success can be written explicitly. If $A$ is the event that the correct target's wake word is accepted, $I$ the event that the following intent is correct, and $M$ the event that the corresponding action is mapped correctly, then successful execution requires $A\cap I\cap M$; consequently, high intent accuracy conditional on a clean command does not guarantee high end-to-end success. The current pipeline uses a held-out CAVEMOVE test for extraction, validation windows for the scalar gate, several KWS datasets/candidates, and Fluent Speech Commands for intent; these are not a single jointly held-out real-car wake-to-action test.
+
+The PDF reports 97.79\% accuracy and 79.67\% F1 for its post-TSE hybrid KWS candidate, with 75.38\% recall and an estimated 30.4 false activations per hour from independent one-second windows. The AISHELL-5-augmented candidate reports 98.40\% accuracy and 80.74\% F1, again with a window-based false-activation estimate. The fine-tuned wav2vec 2.0 intent model reports 99.31\% top-1 accuracy on the Fluent Speech Commands test set and 90.71\% / 90.49\% top-1 accuracy on the local raw-cabin / TSE-domain validation sets. These figures are stage-specific; they do not establish the probability of correct action execution through the cascade.
+
+\begin{algorithm}[H]
+  \caption{Streaming inference from target enrollment to an intent action}
+  \label{alg:full-pipeline}
+  \begin{algorithmic}[1]
+    \Require Incoming audio chunk $x$, enrollment $e$, state $S$, thresholds $\tau_p,\tau_w$
+    \Ensure Updated state $S$ and optional action $a$
+    \State $(\hat{s}_1,d_p)\gets\operatorname{ExtractAndCheckPresence}(x,e)$
+    \If{$d_p=0$}
+      \State Clear accumulated KWS scores; keep waiting for accepted target speech
+      \If{$S$ is awaiting a command and the configured wait timeout has elapsed}
+        \State Reset command-capture state
+      \EndIf
+      \State \Return $(S,\varnothing)$
+    \EndIf
+    \State Normalize extracted waveform without amplifying quiet samples
+    \If{$S$ is awaiting a command after a prior wake decision}
+      \State Form the configured command window from this later target-speech chunk
+      \State $\mathbf{z}_{i}\gets\operatorname{IntentModel}(\text{command window})$
+      \State $\hat{c}\gets\arg\max_k z_{i,k}$; $a\gets\operatorname{MapIntentToAction}(\hat{c})$
+      \State Reset command-capture state and \Return $(S,a)$
+    \EndIf
+    \State $q_w\gets\operatorname{KWS}(\text{one-second extracted window})_{\mathrm{wake}}$
+    \State Append $q_w$ to the smoothing history; update hit count and refractory counter
+    \If{at least the configured number of scores in the history are $\geq\tau_w$}
+      \State Set $S$ to awaiting-command; clear wake history
+    \EndIf
+    \State \Return $(S,\varnothing)$
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{Evaluation: Signal Quality, Decisions, and Task Success}
+\label{subsec:evaluation}
+
+No single metric captures the full task. SI-SDR compares an estimated waveform with a reference after scale alignment; STOI estimates intelligibility changes; PESQ estimates perceptual speech quality under telephone-network/codec conditions. Separation resources such as LibriMix, vehicle acoustic resources such as CAVEMOVE and AISHELL-5, and vehicle-interior sound classification provide different data conditions rather than interchangeable benchmarks \cite{leroux2019sdr,taal2011stoi,pesq2001,librimix,cavemove,aishell5,visdataset,spexplus}. The paper's extraction score is therefore evidence about waveform reconstruction on its CAVEMOVE split; the FSC intent score is evidence about the clean intent test split. Neither is an end-to-end vehicle action-success rate.
+
+\begin{table}[H]
+  \caption{Evaluation measures and what they establish for this pipeline.}
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lll}
+    \toprule
+    Measure or corpus & Measures / contains & What it does not establish \\
+    \midrule
+    SI-SDR / SI-SDRi \cite{leroux2019sdr} & Scale-aligned reconstruction and gain over mixture & Correct target identity or command success \\
+    STOI \cite{taal2011stoi} & Predicted intelligibility change & Wake detection or mapped action correctness \\
+    PESQ \cite{pesq2001} & Perceptual speech quality in telephony/codecs & Full cabin acoustic robustness \\
+    LibriMix / LibriSpeech \cite{librimix,librispeech} & Clean speech and synthetic mixtures & Real vehicle microphone and noise effects \\
+    CAVEMOVE / AISHELL-5 \cite{cavemove,aishell5} & Simulated cabin conditions / real in-car multichannel speech & A complete target-conditioned wake-to-action trial by themselves \\
+    \bottomrule
+  \end{tabular}%
+  }
+  \label{tab:evaluation-measures}
+\end{table}
+
+For a presence classifier, with true positives $TP$, false positives $FP$, true negatives $TN$, and false negatives $FN$, threshold-dependent metrics are
+\begin{equation}
+  \mathrm{Recall}=\frac{TP}{TP+FN},\quad
+  \mathrm{Specificity}=\frac{TN}{TN+FP},\quad
+  \mathrm{FAR}=\frac{FP}{FP+TN},\quad
+  \mathrm{FRR}=\frac{FN}{FN+TP},\quad
+  \mathrm{BalancedAcc}=\frac{\mathrm{Recall}+\mathrm{Specificity}}{2}.
+  \label{eq:presence-metrics}
+\end{equation}
+For extraction, $\mathrm{SI\text{-}SDRi}=\mathrm{SI\text{-}SDR}(\hat{s},s)-\mathrm{SI\text{-}SDR}(x,s)$. For command recognition, report top-1 accuracy and macro-F1; for activation, report recall with false accepts per unit of continuous audio. The PDF's current FA/hour values are estimates from independent one-second windows, not a continuous-stream measurement. An eventual end-to-end test should measure the fraction of target-speaker trials that both activate on the intended wake phrase and map the subsequent command to the correct action, alongside false actions per hour and latency. That experiment should preserve speaker identity across wake and command speech and use continuous vehicle recordings; the proxy evaluation in the repository currently shows domain/speaker mismatch and should be described as diagnostic rather than deployment validation.
+
+\paragraph{Reproduction and citation notes.}
+The equations and algorithms above mirror the checked source configuration: four-microphone 16-kHz, three-second Stage 1 adaptation; a scalar Stage 2 presence head; a 16-kHz, one-second 40-bin log-mel KWS CNN; and a two-second, 31-class wav2vec 2.0 intent path. The paper currently calls the intent model ``Word2vec'' in several places; change those mentions to ``wav2vec 2.0'' to match the repository and reported checkpoint. The original 24 bibliography keys are preserved in \texttt{sample.bib}; ten foundation references are appended there. The tables above are literature/method comparisons and should remain immediately after the paragraph that introduces each comparison.
+
+\section{Methodology}
+\label{sec:methodology}
+
+This section specifies the implemented system as a sequence of separately trained models. Let $\mathbf{x}_{1:C}[n]$ denote a $C$-channel cabin recording, $e[n]$ the enrolled target-speaker reference, and $r[n]$ an optional playback-reference signal. At inference, Stage 1 produces an estimate $\hat{s}[n]$; Stage 2 decides whether that estimate contains the enrolled speaker; Stage 3 checks for the wake phrase; and Stage 4 classifies the following command. The stages are composed as
+\begin{equation}
+  \mathbf{x}_{1:C},e,r \xrightarrow{f_{\mathrm{TSE}}} \hat{s}
+  \xrightarrow{f_{\mathrm{pres}}} d_p
+  \xrightarrow{f_{\mathrm{KWS}}} d_w
+  \xrightarrow{f_{\mathrm{intent}}} \hat{c}
+  \xrightarrow{\mathcal{M}} a,
+  \label{eq:method-cascade}
+\end{equation}
+where $d_p,d_w\in\{0,1\}$ are presence and wake decisions, $\hat{c}$ is an intent class, and $\mathcal{M}$ maps a class to an application action $a$. A rejected presence decision prevents downstream models from acting. Parameters are trained stage by stage on their own datasets; consequently, Equation~\eqref{eq:method-cascade} describes inference composition and not a joint differentiable objective.
+
+\subsection{Data preparation and signal conventions}
+\label{subsec:method-data}
+
+All audio is converted to 16 kHz before model input. For a discrete waveform $u[n]$, resampling is treated as a band-limited interpolation operation; all channels of a multichannel recording share the same time alignment. Training examples are represented by a waveform, an enrollment sample when applicable, and task-specific labels. The Stage 1 adaptation uses three-second multichannel segments and a four-microphone selection, while KWS windows are one second and intent inputs are two seconds. A shorter input is padded and a longer input is cropped according to the relevant dataset loader. The stages use distinct train/validation/test partitions, so their reported scores must be interpreted as stage-level results rather than as a common end-to-end test.
+
+For source speech $s[n]$ and an interference/noise signal $v[n]$, an SNR-controlled mixture is formed as
+\begin{equation}
+  x[n]=s[n]+\alpha v[n],\qquad
+  \alpha=\sqrt{\frac{P_s}{P_v\,10^{\rho/10}}},\qquad
+  P_u=\frac{1}{N}\sum_{n=0}^{N-1}u[n]^2,
+  \label{eq:method-mixing}
+\end{equation}
+where $\rho$ is the desired signal-to-interference ratio in dB. In a cabin recording, each source is additionally filtered by a channel-dependent acoustic response and microphones observe different mixtures, as in Equation~\eqref{eq:cabin-mixture}. The prepared examples retain target-present and target-absent cases for the presence detector; the latter are essential because an extractor may produce a plausible waveform even when the enrolled speaker is not active. Audio normalization is applied consistently within each task; the intent waveform path subtracts its mean and divides by a stabilized standard deviation before encoding.
+
+\subsection{Stage 1: cabin front end and target-speaker extraction}
+\label{subsec:method-stage1}
+
+For each selected microphone channel $c$, a learned convolutional front end estimates a residual component $\hat{r}_c[n]$ from the microphone array and, when available, the playback reference. It forms a corrected channel $\tilde{x}_c[n]=x_c[n]-\hat{r}_c[n]$ and combines channel-average information with a learned spatial correction:
+\begin{equation}
+  u[n]=\frac{1}{C}\sum_{c=1}^{C}x_c[n]
+      +g_{\mathrm{spatial}}(\tilde{x}_1[n],\ldots,\tilde{x}_C[n]).
+  \label{eq:method-front-end}
+\end{equation}
+This front end is trained jointly with the currently unfrozen extraction components during adaptation. It is a learned residual-suppression/spatial-correction network; the method does not assume a known linear echo path or claim a conventional adaptive echo-canceller update.
+
+The corrected mono signal $u[n]$ and enrollment waveform $e[n]$ condition the pretrained SpEx+ time-domain extractor. The model emits three estimates at different internal temporal scales, $\hat{s}_1,\hat{s}_2,\hat{s}_3$. Each estimate is compared with the aligned clean target $s$ using mean-centered SI-SDR, defined in Equation~\eqref{eq:sisdr}. The minimized objective is
+\begin{equation}
+  \mathcal{J}_1=-\operatorname{SI\text{-}SDR}(\hat{s}_1,s)
+       -0.1\operatorname{SI\text{-}SDR}(\hat{s}_2,s)
+       -0.1\operatorname{SI\text{-}SDR}(\hat{s}_3,s).
+  \label{eq:method-stage1-loss}
+\end{equation}
+The primary output has unit weight; auxiliary resolutions regularize the representation with weight 0.1 each. A speaker-classification term is available in the training implementation but has coefficient zero in the selected configuration, and the optional absent-output penalty is likewise disabled for this adaptation run.
+
+Training follows transfer learning in three phases. During epochs 1--2, the pretrained SpEx+ parameters are frozen while the cabin front end is adapted (front-end learning rate $5\times10^{-5}$). During epochs 3--5, the encoder remains frozen while other extraction layers are tuned (rest learning rate $10^{-5}$ and front-end learning rate $2\times10^{-5}$). During epochs 6--10, encoder weights are unfrozen at $5\times10^{-7}$, with the remaining extraction parameters at $5\times10^{-6}$ and front end at $2\times10^{-5}$. The configured batch size is four, gradient norm is clipped at five, and automatic mixed precision is used. The selected evaluation reports mean SI-SDR improvement, $\Delta_{\mathrm{SI\text{-}SDR}}=\mathrm{SI\text{-}SDR}(\hat{s}_1,s)-\mathrm{SI\text{-}SDR}(u,s)$, on 400 held-out CAVEMOVE examples.
+
+\subsection{Stage 2: target-speaker presence estimation}
+\label{subsec:method-stage2}
+
+The scalar presence model consumes the Stage 1 primary waveform $\hat{s}_1[n]$. Its feature extractor consists of two one-dimensional convolutional layers with 128 channels, kernel length 15, stride four, and ReLU activation, followed by temporal pooling and a linear scalar-logit head $z_p$. The probability and hard gate are
+\begin{equation}
+  p_p=\sigma(z_p),\qquad d_p=\mathbf{1}[p_p\geq\tau_p].
+  \label{eq:method-stage2-gate}
+\end{equation}
+The model is trained on frozen Stage 1 outputs for five epochs with AdamW at learning rate $5\times10^{-4}$, gradient clipping at norm five. The objective combines binary cross-entropy with an absent-target energy penalty:
+\begin{equation}
+  \mathcal{J}_2=\frac{1}{B}\sum_{i=1}^{B}\left[-y_i\log p_i-(1-y_i)\log(1-p_i)\right]
+  +\lambda_{\mathrm{abs}}\frac{1}{|A|}\sum_{i\in A}\frac{1}{T}\sum_{t=1}^{T}\hat{s}_{1,i}[t]^2,
+  \quad \lambda_{\mathrm{abs}}=1,
+  \label{eq:method-stage2-loss}
+\end{equation}
+where $A=\{i:y_i=0\}$ and the second term is defined as zero if $A$ is empty. This penalty discourages nonzero extraction energy for negative examples; it complements the classification loss rather than replacing it. The threshold $\tau_p$ sets the operating point: lower thresholds favor recall and higher thresholds favor specificity. The scalar-head results at thresholds 0.50 and 0.90 are reported in the corresponding presence-results table. The optional framewise head described in Section~\ref{subsec:tse-presence} is a separate experimental path and is not substituted for these scalar-head results.
+
+\subsection{Stage 3: keyword spotting}
+\label{subsec:method-stage3}
+
+The KWS classifier receives a one-second, 16-kHz extracted-speech window. Its frontend computes STFT power, projects it through 40 mel filters, and applies a logarithm with a small numerical floor. Three convolutional blocks use channel widths $32,64,128$; each block applies convolution, batch normalization, ReLU, and max pooling. Global average pooling converts the final time-frequency feature map to a fixed-size vector, and a linear head returns logits for the binary Marvin/non-Marvin classes. Given logits $z_w$, the wake probability is $q_w=\operatorname{softmax}(z_w)_{\mathrm{Marvin}}$ and the training loss is binary-class cross-entropy:
+\begin{equation}
+  \mathcal{J}_3=-\frac{1}{B}\sum_{i=1}^{B}\sum_{k\in\{0,1\}}
+       y_{ik}\log\operatorname{softmax}(z_{w,i})_k.
+  \label{eq:method-stage3-loss}
+\end{equation}
+The configured training recipe uses batch size 512, 15 epochs, AdamW with initial learning rate $10^{-3}$, cosine learning-rate decay, gradient clipping at five, and a balanced sampler to address class imbalance. The trained window classifier is not itself a continuous-stream detector: at runtime, scores are accumulated in a finite history, threshold-crossing hits are counted, and a refractory interval suppresses repeated triggers after activation. Evaluation must therefore separate window-level accuracy from continuous false activations per hour.
+
+\subsection{Stage 4: command-intent classification}
+\label{subsec:method-stage4}
+
+After a wake decision, the next accepted target-speech segment is captured as a two-second command window. The window is mean-centered and normalized, then processed by a pretrained wav2vec 2.0 encoder. If $H_t\in\mathbb{R}^{768}$ is its contextual representation at frame $t$, temporal mean pooling gives $\bar{H}=T^{-1}\sum_{t=1}^{T}H_t$. A LayerNorm, linear projection to 512 dimensions, GELU, dropout with probability 0.2, and final linear layer produce 31 class logits. For class $y$, the smoothed target distribution is $q_k=(1-\epsilon)\mathbf{1}[k=y]+\epsilon/K$ with $K=31$ and $\epsilon=0.03$; the objective is $\mathcal{J}_4=-\sum_{k=1}^{K}q_k\log\operatorname{softmax}(z_i)_k$.
+
+The intent recipe uses AdamW, cosine scheduling, gradient clipping at five, and checkpoint selection by validation macro-F1. The repository first supports fitting the head over frozen/cached encoder representations and provides a fine-tuning recipe that partially unfreezes upper encoder layers with a smaller learning rate. The reported best model is wav2vec 2.0; the implemented log-mel CNN/BiLSTM is a baseline and should be identified as such. The selected intent label is $\hat{c}=\arg\max_k z_{i,k}$ and is converted to an application action through an explicit class-to-action mapping. An unknown or unmapped label should not dispatch an action.
+
+\subsection{Runtime state machine and end-to-end decision}
+\label{subsec:method-runtime}
+
+The cascade is stateful. In the listening state, only presence-accepted speech contributes KWS evidence. Once the configured number of wake-score hits has accumulated within the score history, the state changes to command-waiting. The wake window is not reused as a command: a later accepted target-speech segment is passed to Stage 4. After classification and action mapping, the state resets; if no command arrives before the configured timeout, it returns to listening. This separation prevents the wake phrase from being classified as the user's command.
+
+Let $A$ denote correct wake activation on the intended enrolled speaker, $I$ denote correct intent on the subsequent utterance, and $M$ denote correct mapping/execution. The end-to-end success event is $A\cap I\cap M$, so
+\begin{equation}
+  P(\mathrm{success})=P(A)P(I\mid A)P(M\mid A,I).
+  \label{eq:method-e2e}
+\end{equation}
+This conditional decomposition highlights why independently measured stage accuracies cannot simply be presented as end-to-end accuracy. Evaluation should report stage metrics and, separately, continuous trials with matched speaker identity, target wake and command utterances, vehicle noise, false actions per hour, command latency, and the fraction of trials that execute the correct action. The repository's cross-corpus/speaker-mismatch proxy is diagnostic evidence only; it is not a substitute for a matched continuous in-car evaluation.
+
+\begin{algorithm}[H]
+  \caption{Implemented inference protocol from cabin audio to command action}
+  \label{alg:method-inference}
+  \begin{algorithmic}[1]
+    \Require Audio chunk $\mathbf{x}$, enrollment $e$, optional reference $r$, state $S$
+    \Ensure Updated state and either no action or action $a$
+    \State $u\gets\operatorname{CabinFrontEnd}(\mathbf{x},r)$
+    \State $\hat{s}\gets\operatorname{SpExPlus}(u,e)$
+    \If{$\sigma(\operatorname{PresenceHead}(\hat{s}))<\tau_p$}
+      \State Do not run downstream decisions on this chunk; update timeout/reset state as configured
+      \State \Return $(S,\varnothing)$
+    \EndIf
+    \If{$S=\text{command-waiting}$}
+      \State $z_i\gets\operatorname{IntentModel}(\text{later two-second target-speech window})$
+      \State $\hat{c}\gets\arg\max_k z_{i,k}$; $a\gets\mathcal{M}(\hat{c})$
+      \State Reset $S$ and \Return $(S,a)$ if $\hat{c}$ is mapped, else return no action
+    \EndIf
+    \State $q_w\gets\operatorname{KWS}(\text{one-second extracted window})_{\mathrm{wake}}$
+    \State Update score history, hit count, and refractory timer
+    \If{wake-hit rule is satisfied and refractory timer is inactive}
+      \State Set $S\gets\text{command-waiting}$; clear wake-score history
+    \EndIf
+    \State \Return $(S,\varnothing)$
+  \end{algorithmic}
+\end{algorithm}

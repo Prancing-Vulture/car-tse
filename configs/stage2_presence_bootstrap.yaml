@@ -1,0 +1,17 @@
+name: stage2_presence_bootstrap
+sample_rate: 8000
+segment_seconds: 4.0
+manifest: stage2_presence.jsonl
+stage1_config: "configs/stage1_spex_sc_bootstrap.yaml"
+spex_checkpoint: stage1_spex_sc_bootstrap/best.pt
+presence_threshold: 0.5
+
+model:
+  hidden: 128
+
+train:
+  batch_size: 16
+  max_epochs: 2
+  lr: 1.0e-4
+  grad_clip: 5.0
+  absent_output_penalty: 1.0

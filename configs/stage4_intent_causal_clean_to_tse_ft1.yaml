@@ -1,0 +1,29 @@
+name: stage4_intent_causal_clean_to_tse_ft1
+sample_rate: 16000
+segment_seconds: 2.0
+manifest_train: stage4_intent_tse_domain_train.jsonl
+manifest_eval: stage4_intent_tse_domain_eval.jsonl
+label_map: intent_label_map.json
+cabin_noise: false
+audio_cache_size: 0
+waveform_cache_dir: data/cache/stage4_intent_tse_domain_16k_v4
+waveform_cache_includes_cabin_noise: true
+pretrained_checkpoint: checkpoints/stage4_intent_clean_causal_crnn_v1_fp32/best.pt
+
+model:
+  n_mels: 80
+  hidden: 384
+  num_layers: 2
+  normalize_input: true
+  bidirectional: false
+
+train:
+  batch_size: 512
+  val_batch_size: 512
+  max_epochs: 10
+  patience: 3
+  lr: 1.0e-4
+  grad_clip: 5.0
+  amp: false
+  balanced_sampler: true
+  num_workers: 0

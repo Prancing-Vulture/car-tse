@@ -1,0 +1,17 @@
+{
+  "epoch": 5,
+  "run_id": "afd9d1d58b344430a634f4108b51f631",
+  "train_si_sdr_s1": 5.4462545796763155,
+  "val": {
+    "si_sdr_s1": 2.712388277053833,
+    "input_si_sdr": -5.494802951812744,
+    "si_sdri": 8.207191467285156,
+    "si_sdri_median": 8.630703926086426,
+    "si_sdri_p10": -0.2808375358581543,
+    "si_sdri_p90": 16.083608627319336,
+    "si_sdri_negative": 86.0,
+    "examples": 800.0,
+    "absent_output_energy": 0.0
+  },
+  "best_metric": 8.341567039489746
+}

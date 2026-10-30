@@ -1,0 +1,17 @@
+name: stage4_intent_runtime_aligned_frozen_small_2s_2026-10-17
+sample_rate: 16000
+segment_seconds: 2.0
+manifest_train: stage4_intent_runtime_aligned_frozen_small_2s_2026-10-17.jsonl
+manifest_eval: stage4_intent_runtime_aligned_frozen_small_2s_2026-10-17.jsonl
+label_map: intent_label_map.json
+waveform_cache_dir: data/cache/stage4_intent_runtime_aligned_frozen_small_2s_2026-10-17_16k
+waveform_cache_includes_cabin_noise: false
+waveform_cache_train: train_joint_tse_overlap_wav_16000hz.npy
+waveform_cache_eval: val_joint_tse_overlap_wav_16000hz.npy
+
+model:
+  encoder: facebook/wav2vec2-base-960h
+
+train:
+  clean_and_overlap_balanced: true
+  passenger_snr_db: 0.0

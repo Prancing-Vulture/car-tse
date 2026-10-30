@@ -1,0 +1,12 @@
+Model / domain,Top-1 accuracy (%)
+CRNN bootstrap clean,41.53
+CRNN CAVEMOVE,41.1
+CRNN TSE-domain,48.62
+wav2vec bootstrap clean,92.09
+wav2vec bootstrap raw cabin,88.98
+wav2vec bootstrap TSE-domain,89.41
+wav2vec fine-tuned local clean,93.04
+wav2vec fine-tuned raw cabin,90.71
+wav2vec fine-tuned TSE-domain,90.49
+wav2vec fine-tuned FSC validation,96.6
+wav2vec fine-tuned FSC test,99.31

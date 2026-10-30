@@ -1,0 +1,11 @@
+{
+  "run_id": "482db40589c54683a44d18b949b46399",
+  "run_name": "stage4_intent_wav2vec_large_passenger_joint_tse_2026-10-16",
+  "device": "cuda",
+  "config": "configs\\stage4_intent_large_passenger_joint_tse_2026-10-16.yaml",
+  "train_manifest": "D:\\Prawin_New\\tse\\car-tse-main\\manifests\\train\\stage4_intent_large_passenger_joint_tse_2026-10-16.jsonl",
+  "val_manifest": "D:\\Prawin_New\\tse\\car-tse-main\\manifests\\val\\stage4_intent_large_passenger_joint_tse_2026-10-16.jsonl",
+  "feature_dir": "D:\\Prawin_New\\tse\\car-tse-main\\data\\cache\\stage4_intent_large_passenger_joint_tse_2026-10-16_features",
+  "init_checkpoint": "checkpoints\\stage4_intent_wav2vec_overlap_trainsplit_0db_2026-10-16\\best.pt",
+  "encoder_checkpoint": null
+}

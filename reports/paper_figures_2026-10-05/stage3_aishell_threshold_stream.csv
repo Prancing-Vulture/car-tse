@@ -1,0 +1,5 @@
+Candidate,Threshold,Smoothed false events/hour
+Prior hybrid,0.81,9
+AISHELL-augmented,0.81,30
+AISHELL-augmented,0.9,12
+AISHELL-augmented,0.95,3

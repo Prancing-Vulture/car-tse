@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180mm" height="50.4mm" viewBox="0 0 2000 560" role="img" aria-labelledby="title desc">
+  <title id="title">Four-stage full-pipeline architecture</title>
+  <desc id="desc">A compact left-to-right in-car voice pipeline with cabin audio and speaker enrollment inputs, four numbered stages, post-wake command capture, and intent-to-action mapping.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1 1 L11 6 L1 11 Z" fill="#222"/>
+    </marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #111; text-anchor: middle; }
+      .box { fill: #fff; stroke: #222; stroke-width: 2; }
+      .icon { fill: none; stroke: #222; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+      .flow { fill: none; stroke: #222; stroke-width: 2.5; marker-end: url(#arrow); }
+      .ref { fill: none; stroke: #333; stroke-width: 2.2; stroke-dasharray: 9 7; marker-end: url(#arrow); }
+      .tag { fill: #eef4f8; stroke: #c7d7e2; stroke-width: 1; }
+      .tagtext { font-size: 18px; fill: #315e7a; }
+      .input { font-size: 18px; font-weight: 700; }
+      .stage { font-size: 19px; font-weight: 700; letter-spacing: .5px; }
+      .heading { font-size: 24px; font-weight: 700; }
+      .mapheading { font-size: 20px; font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect width="2000" height="560" fill="#fff"/>
+
+  <!-- Input blocks -->
+  <rect x="30" y="220" width="180" height="82" rx="12" class="box"/>
+  <rect x="30" y="355" width="180" height="82" rx="12" class="box"/>
+
+  <!-- Cabin microphone array logo -->
+  <g class="icon">
+    <rect x="48" y="238" width="13" height="29" rx="6"/>
+    <rect x="69" y="238" width="13" height="29" rx="6"/>
+    <rect x="90" y="238" width="13" height="29" rx="6"/>
+    <path d="M47 270 q7 9 14 0 M68 270 q7 9 14 0 M89 270 q7 9 14 0"/>
+  </g>
+  <text x="151" y="251" class="input">Cabin microphone</text>
+  <text x="151" y="276" class="input">array</text>
+
+  <!-- Enrollment logo -->
+  <circle cx="68" cy="379" r="9" class="icon"/>
+  <path d="M51 406 C52 392 58 389 68 389 C78 389 84 392 85 406 M94 385 q7-9 14 0 t14 0 t14 0" class="icon"/>
+  <text x="157" y="386" class="input">Target-speaker</text>
+  <text x="157" y="411" class="input">enrollment</text>
+
+  <!-- Four numbered stages and capture block -->
+  <rect x="250" y="265" width="230" height="170" rx="14" class="box"/>
+  <rect x="540" y="265" width="190" height="170" rx="14" class="box"/>
+  <rect x="790" y="265" width="190" height="170" rx="14" class="box"/>
+  <rect x="1040" y="265" width="180" height="170" rx="14" class="box"/>
+  <rect x="1280" y="265" width="210" height="170" rx="14" class="box"/>
+
+  <!-- Input connectors -->
+  <path d="M210 261 H230 V315 H250" class="flow"/>
+  <path d="M210 396 H250" class="ref"/>
+
+  <!-- Stage 1: SpEx+ -->
+  <path d="M280 323 h13 l8-13 10 29 10-22 9 15 h19 M280 345 h15 l8-8 9 16 10-22 9 16 h18" class="icon"/>
+  <text x="382" y="386" class="stage">Stage 1</text>
+  <text x="382" y="414" class="heading">SpEx+ extraction</text>
+
+  <!-- Stage 2: presence -->
+  <path d="M635 306 l25 10 v17 c0 17-12 27-25 34-13-7-25-17-25-34v-17z M624 333 l8 8 15-19" class="icon"/>
+  <text x="635" y="386" class="stage">Stage 2</text>
+  <text x="635" y="414" class="heading">Presence</text>
+
+  <!-- Stage 3: wake word -->
+  <path d="M850 320 h12 l18-14 v42 l-18-14 h-12z M889 318 q14 9 0 19 M898 310 q24 18 0 36" class="icon"/>
+  <text x="885" y="386" class="stage">Stage 3</text>
+  <text x="885" y="414" class="heading">Wake word</text>
+
+  <!-- Post-wake command capture -->
+  <circle cx="1092" cy="330" r="22" class="icon"/>
+  <path d="M1092 317 v14 l10 6 M1128 315 h32 a7 7 0 0 1 7 7 v16 a7 7 0 0 1-7 7 h-20 l-11 9 v-9 a7 7 0 0 1-7-7v-16a7 7 0 0 1 7-7z M1134 330 h6 l5-7 7 14 5-9 4 2 h5" class="icon"/>
+  <text x="1130" y="386" class="stage">Post-wake</text>
+  <text x="1130" y="414" class="heading">Capture</text>
+
+  <!-- Stage 4: command intent -->
+  <g class="icon">
+    <path d="M1318 309 L1345 302 M1318 309 L1345 331 M1318 359 L1345 302 M1318 359 L1345 331 M1318 359 L1345 366 M1345 302 L1372 316 M1345 331 L1372 316 M1345 331 L1372 351 M1345 366 L1372 351"/>
+    <circle cx="1315" cy="309" r="5"/><circle cx="1315" cy="359" r="5"/>
+    <circle cx="1345" cy="302" r="5"/><circle cx="1345" cy="331" r="5"/><circle cx="1345" cy="366" r="5"/>
+    <circle cx="1375" cy="316" r="5"/><circle cx="1375" cy="351" r="5"/>
+  </g>
+  <text x="1385" y="386" class="stage">Stage 4</text>
+  <text x="1385" y="414" class="heading">Command intent</text>
+
+  <!-- Main pipeline arrows and compact labels -->
+  <path d="M482 350 H538" class="flow"/>
+  <rect x="490" y="337" width="40" height="25" rx="12" class="tag"/>
+  <text x="510" y="355" class="tagtext">s1</text>
+
+  <path d="M732 350 H788" class="flow"/>
+  <rect x="739" y="337" width="43" height="25" rx="12" class="tag"/>
+  <text x="760" y="355" class="tagtext">pass</text>
+
+  <path d="M982 350 H1038" class="flow"/>
+  <rect x="988" y="337" width="44" height="25" rx="12" class="tag"/>
+  <text x="1010" y="355" class="tagtext">wake</text>
+
+  <path d="M1222 350 H1278" class="flow"/>
+  <rect x="1229" y="337" width="43" height="25" rx="12" class="tag"/>
+  <text x="1250" y="355" class="tagtext">2 s</text>
+
+  <!-- Action mapping chain -->
+  <text x="1755" y="246" class="mapheading">Action mapping</text>
+  <rect x="1540" y="290" width="130" height="120" rx="11" class="box"/>
+  <rect x="1690" y="290" width="130" height="120" rx="11" class="box"/>
+  <rect x="1840" y="290" width="130" height="120" rx="11" class="box"/>
+
+  <!-- intent ID icon -->
+  <path d="M1579 319 h37 l14 17-14 17 h-37z M1589 336 h23 M1589 346 h16" class="icon"/>
+  <text x="1605" y="385" class="mapheading">Intent ID</text>
+
+  <!-- map icon -->
+  <g class="icon">
+    <rect x="1732" y="316" width="44" height="42"/>
+    <path d="M1746 316 v42 M1761 316 v42 M1732 330 h44 M1732 344 h44"/>
+    <path d="M1736 326 l5 4 6-7 M1750 340 l5 4 6-7 M1765 354 l5 4 6-7"/>
+  </g>
+  <text x="1755" y="385" class="mapheading">label_map</text>
+
+  <!-- ActionResult icon -->
+  <path d="M1884 316 h33 l12 12 v31 h-45z M1917 316 v13 h12 M1893 340 h24 M1893 350 h17 M1893 360 h21" class="icon"/>
+  <text x="1905" y="385" class="mapheading">ActionResult</text>
+
+  <path d="M1492 350 H1538" class="flow"/>
+  <rect x="1497" y="337" width="37" height="25" rx="12" class="tag"/>
+  <text x="1515" y="355" class="tagtext">ID</text>
+  <path d="M1672 350 H1688 M1822 350 H1838" class="flow"/>
+</svg>

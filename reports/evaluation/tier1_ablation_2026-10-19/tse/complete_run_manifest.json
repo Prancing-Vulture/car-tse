@@ -1,0 +1,12 @@
+{
+  "experiment": "complete Tier-1 TSE ablation results with local pretrained SpEx+ control",
+  "created_utc": "2026-10-19T19:55:03.880013+00:00",
+  "main_per_example_sha256": "b79fb84228ec973f717ce556cae44e79c7cb5905f71b69468b41ca2cfff35a59",
+  "local_control_per_example_sha256": "30929848d289a0ceabe7b6496a8b9bde959e321f131d87f0becc699d72e72349",
+  "row_count": 3000,
+  "row_alignment": "all row IDs match and the delay-sum reference was checked against the original run before computing paired controls",
+  "outputs": {
+    "per_example_metrics_complete.jsonl": "d58b39a791d01df6e038f76547420ce5ab30fd549b652cb2344dd31621f832d1",
+    "summary_by_snr_gender_sir_complete.csv": "f41a673e198b5d904347c862b93dcd5c5354d042b6c577da09f9acca22c5cda3"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "description": "One held-out CAVEMOVE/Libri2Mix cabin scene through Stage 1 TSE, presence, KWS, and intent.",
+  "dataset": "Libri2Mix target+distractor rendered with CAVEMOVE cabin noise",
+  "sample_rate": 16000,
+  "row_id": "librimix_test_0",
+  "vehicle": "Volkswagen_Golf",
+  "mic_setup": "distributed",
+  "cabin_noise_type": "noise",
+  "cabin_noise_wav": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\cavemove\\extracted\\cavemove_dataset\\Volkswagen_Golf\\distributed\\noise\\s100_w3_ver1.wav",
+  "cabin_noise_channels": [
+    0,
+    2,
+    4,
+    6
+  ],
+  "cabin_noise_snr_db": -5.0,
+  "target_speaker_id": "1089",
+  "pipeline": {
+    "presence_probability": 0.9805096387863159,
+    "presence_threshold": 0.5,
+    "wake_probability": 0.7075653076171875,
+    "wake_threshold": 0.59,
+    "accepted": true,
+    "wake_detected": true,
+    "predicted_intent_id": "19",
+    "predicted_intent": "increase|heat|washroom",
+    "intent_confidence": 0.48710158467292786,
+    "vehicle_action": "increase|heat|washroom"
+  },
+  "tse_metrics": {
+    "input_si_sdr_db": -8.230449676513672,
+    "extracted_si_sdr_db": 3.1839075088500977,
+    "si_sdri_db": 11.41435718536377
+  },
+  "audio": {
+    "cabin_input_4ch": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\01_cabin_input_4ch_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\01_cabin_input_4ch_listen.wav"
+    },
+    "cabin_input_mean": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\02_cabin_input_mean_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\02_cabin_input_mean_listen.wav"
+    },
+    "speech_mixture_without_cabin_noise": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\03_speech_mixture_without_cabin_noise_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\03_speech_mixture_without_cabin_noise_listen.wav"
+    },
+    "estimated_passenger_interference": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\04_estimated_passenger_interference_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\04_estimated_passenger_interference_listen.wav"
+    },
+    "cabin_noise_4ch": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\05_cabin_noise_4ch_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\05_cabin_noise_4ch_listen.wav"
+    },
+    "target_clean_reference": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\06_target_clean_reference_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\06_target_clean_reference_listen.wav"
+    },
+    "target_enrollment": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\07_target_enrollment_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\07_target_enrollment_listen.wav"
+    },
+    "stage1_extracted_output": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\08_stage1_extracted_output_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\08_stage1_extracted_output_listen.wav"
+    },
+    "stage1_downstream_normalized": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\09_stage1_downstream_normalized_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\09_stage1_downstream_normalized_listen.wav"
+    },
+    "kws_input_1s": {
+      "raw": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\10_kws_input_1s_raw.wav",
+      "listen": "D:\\Prawin_New\\tse\\car-tse-main\\reports\\artifacts\\full_pipeline_cavemove_sample_000\\10_kws_input_1s_listen.wav"
+    }
+  },
+  "note": "This is a valid full computational-path showcase, but this CAVEMOVE TSE row has no ground-truth wake-word or intent label. The final KWS/intent values are model decisions, not an accuracy claim. *_listen.wav files are independently peak-normalized; raw files preserve the generated waveforms."
+}

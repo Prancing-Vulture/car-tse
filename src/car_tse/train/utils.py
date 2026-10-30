@@ -33,6 +33,20 @@ def write_metrics(path: Path, metrics: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
+    # Preserve every epoch: metrics_last.json is intentionally a convenient
+    # snapshot, but replacing it each epoch otherwise destroys learning curves.
+    if path.name == "metrics_last.json" and "epoch" in metrics:
+        history_path = path.with_name("metrics_history.jsonl")
+        with history_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(metrics, separators=(",", ":")) + "\n")
+
+
+def append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    """Append one durable JSON record without destroying prior run history."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def schedule_for_epoch(schedule: list[dict], epoch: int) -> dict[str, Any]:

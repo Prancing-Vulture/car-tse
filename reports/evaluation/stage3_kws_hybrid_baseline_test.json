@@ -1,0 +1,13 @@
+{
+  "split": "test",
+  "wake_word": "marvin",
+  "accuracy": 0.43336199484092863,
+  "precision": 0.21776155717761558,
+  "recall": 0.9179487179487179,
+  "f1": 0.35201573254670604,
+  "examples": 1163,
+  "true_positive": 179,
+  "false_positive": 643,
+  "false_negative": 16,
+  "test_manifest": "E:\\car-tse-data\\manifests\\test\\stage3_kws_cabin_test.jsonl"
+}

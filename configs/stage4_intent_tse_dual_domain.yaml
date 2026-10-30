@@ -1,0 +1,29 @@
+name: stage4_intent_tse_dual_domain
+sample_rate: 16000
+segment_seconds: 2.0
+manifest_train: stage4_intent_tse_dual_domain_train.jsonl
+manifest_eval: stage4_intent_tse_dual_domain_eval.jsonl
+source_manifest_train: stage4_cavemove_intent.jsonl
+source_manifest_eval: stage4_cavemove_intent.jsonl
+label_map: intent_label_map.json
+waveform_cache_dir: data/cache/stage4_intent_tse_dual_domain_16k_v1
+waveform_cache_includes_cabin_noise: true
+
+# The cache is generated with the dual-domain Stage 1 candidate.  This keeps
+# the intent head's training distribution aligned with the extractor used by
+# the next end-to-end comparison while preserving the legacy cache/checkpoint.
+stage1_config: configs/stage1_spex_dual_domain_rms010_ft1.yaml
+stage1_checkpoint: checkpoints/stage1_spex_dual_domain_rms010_ft1/best.pt
+
+model:
+  head_hidden: 512
+  dropout: 0.2
+
+train:
+  batch_size: 64
+  feature_batch_size: 32
+  max_epochs: 32
+  patience: 7
+  lr: 1.0e-3
+  balanced_sampler: true
+  amp: true

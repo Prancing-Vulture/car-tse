@@ -1,0 +1,50 @@
+{
+  "split": "test",
+  "manifest": "E:\\car-tse-data\\manifests\\test\\stage2_presence_gsc_cavemove.jsonl",
+  "checkpoint": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\checkpoints\\stage2_frame_presence_gsc_cavemove_pilot\\best.pt",
+  "examples": 300,
+  "locked_validation_threshold": 0.4,
+  "chunk_metrics_at_locked_threshold": {
+    "threshold": 0.4,
+    "accuracy": 0.7866666666666666,
+    "precision": 0.7311827956989247,
+    "recall": 0.9066666666666666,
+    "specificity": 0.6666666666666666,
+    "f1": 0.8095238095238095,
+    "false_accept_rate": 0.3333333333333333,
+    "false_reject_rate": 0.09333333333333334,
+    "true_positive": 136,
+    "false_positive": 50,
+    "true_negative": 100,
+    "false_negative": 14
+  },
+  "chunk_metrics_at_0_50": {
+    "threshold": 0.5,
+    "accuracy": 0.7766666666666666,
+    "precision": 0.754601226993865,
+    "recall": 0.82,
+    "specificity": 0.7333333333333333,
+    "f1": 0.7859424920127794,
+    "false_accept_rate": 0.26666666666666666,
+    "false_reject_rate": 0.18,
+    "true_positive": 123,
+    "false_positive": 40,
+    "true_negative": 110,
+    "false_negative": 27
+  },
+  "frame_metrics_at_0_50": {
+    "threshold": 0.5,
+    "accuracy": 0.9316057585825027,
+    "precision": 0.5979014247208317,
+    "recall": 0.7565164433617539,
+    "specificity": 0.9491168229991472,
+    "f1": 0.6679212818582644,
+    "false_accept_rate": 0.05088317700085272,
+    "false_reject_rate": 0.24348355663824603,
+    "true_positive": 6211,
+    "false_positive": 4177,
+    "true_negative": 77913,
+    "false_negative": 1999
+  },
+  "protocol_note": "The locked threshold is selected on validation; test metrics are reported at that fixed threshold. Test-optimal threshold sweeps are not used for model selection."
+}

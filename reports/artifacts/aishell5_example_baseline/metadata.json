@@ -1,0 +1,24 @@
+{
+  "row_id": "aishell5_present_Eval1_006_P0127_002",
+  "speaker_id": "P0127",
+  "source_split": "AISHELL-5 Eval1 held-out target-present",
+  "mixture_wav": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\aishell5\\extracted\\Eval1\\006\\DX01C01.wav",
+  "mixture_multich_wavs": [
+    "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\aishell5\\extracted\\Eval1\\006\\DX01C01.wav",
+    "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\aishell5\\extracted\\Eval1\\006\\DX02C01.wav",
+    "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\aishell5\\extracted\\Eval1\\006\\DX03C01.wav",
+    "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\aishell5\\extracted\\Eval1\\006\\DX04C01.wav"
+  ],
+  "enrollment_wav": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\aishell5\\extracted\\Eval1\\006\\DA03.wav",
+  "target_reference_wav": "D:\\Prawin_New\\tse\\car-tse-main\\data\\raw\\aishell5\\extracted\\Eval1\\006\\DA03.wav",
+  "segment_start_seconds": 32.78,
+  "enrollment_start_seconds": 33.03,
+  "transcript": "嗯，这礼拜歇礼拜天，成天嗯。",
+  "checkpoint": "D:\\Prawin_New\\tse\\car-tse-main\\checkpoints\\stage1_spex_transfer_mc_cavemove_cabin\\best.pt",
+  "device": "cuda",
+  "sample_rate": 16000,
+  "input_si_sdr_db": -15.497093200683594,
+  "extracted_si_sdr_db": -6.928775787353516,
+  "si_sdri_db": 8.568317413330078,
+  "note": "*_listen.wav files are independently peak-normalized for listening; metrics use raw float waveforms."
+}

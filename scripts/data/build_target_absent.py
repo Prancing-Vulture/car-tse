@@ -38,9 +38,15 @@ def main() -> int:
                 "seat": "passenger",
                 "condition": "target_absent",
                 "target_present": 0,
+                "speaker_label": ref.get("speaker_label", 0),
                 "transcript": "",
                 "intent": "",
                 "playback_ref_wav": "",
+                # Keep optional batch fields present for DataLoader collation.
+                # The bootstrap presence model uses the mono stage-1 path;
+                # MC presence training can replace this with a paired s2
+                # spatial mixture when that augmentation is enabled.
+                "mixture_multich_wav": ref.get("mixture_multich_wav", ""),
                 "meta": {"source": "passenger_only"},
             }
         )

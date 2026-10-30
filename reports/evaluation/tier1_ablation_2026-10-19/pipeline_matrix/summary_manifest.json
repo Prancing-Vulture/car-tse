@@ -1,0 +1,22 @@
+{
+  "created_utc": "2026-10-19T19:47:14.052553+00:00",
+  "aggregation": "scene-level rates; conditional intent accuracy uses scenes with a captured target command; actual SIR is measured only over co-active target/passenger speech samples",
+  "inputs": [
+    {
+      "path": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\reports\\evaluation\\tier1_ablation_2026-10-19\\pipeline_matrix\\overlap_target_passenger_sir_m10.json",
+      "sha256": "d3f81748a9ded846a05b7af05802d0c4be2f1f3db5ff3c80398cf9124acebe1e"
+    },
+    {
+      "path": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\reports\\evaluation\\tier1_ablation_2026-10-19\\pipeline_matrix\\overlap_target_passenger_sir_m5.json",
+      "sha256": "16e0f44dc3175094414b708e3ead091d8b461769bc3bc9300a1c1501f0a8ba93"
+    },
+    {
+      "path": "C:\\Users\\Harreesh\\projects\\audio-bss-tse\\car-tse\\reports\\evaluation\\tier1_ablation_2026-10-19\\pipeline_matrix\\overlap_target_passenger_sir_0.json",
+      "sha256": "9f3962c67a62872e9b10ffa2e423e84d8374f1a560a72afbf6cfaa709c15cfee"
+    }
+  ],
+  "outputs": {
+    "summary_by_requested_sir_cabin_snr.csv": "c2a4fe24f69e64ead9ee4d6c541808f058f2af44e9fee1c6c7e2669732b57bb1",
+    "summary_by_requested_sir.csv": "ce73a1fe447e4c26ed8e5e2dfff18bfd1d5211c1d25d8d1161cfb34caba17c65"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "run_id": "50a46a908b39481c95e0fc61b4848390",
+  "run_name": "stage1_spex_fsc_passenger_balanced_domain_ft1_2026-10-16",
+  "device": "cuda",
+  "config": "configs\\stage1_spex_fsc_passenger_balanced_domain_ft1_2026-10-16.yaml",
+  "train_manifest": "stage1_fsc_passenger_balanced_domain_2026-10-16.jsonl",
+  "val_manifest": "stage1_fsc_passenger_balanced_domain_2026-10-16.jsonl",
+  "init_checkpoint": "stage1_spex_dual_domain_rms010_ft1/best.pt"
+}

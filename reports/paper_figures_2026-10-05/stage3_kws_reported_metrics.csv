@@ -1,0 +1,6 @@
+Candidate,N,Precision,Recall,F1
+Original cabin,1147,52.29,82.05,63.87
+Hard-negative cabin,3147,32.91,79.49,46.55
+TSE-domain,445,95.94,96.92,96.43
+Post-TSE hybrid,3397,84.48,75.38,79.67
+AISHELL-5 augmented,4551,83.15,78.46,80.74

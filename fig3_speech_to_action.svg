@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="760" viewBox="0 0 1800 760" role="img" aria-labelledby="title desc">
+  <title id="title">In-car speech to action pipeline</title>
+  <desc id="desc">A driver speaks in a car. A short enrolled voice reference conditions speaker extraction from the cabin mixture. Target speech presence is checked, a wake phrase arms command capture, and the following utterance is mapped to a vehicle action.</desc>
+  <defs>
+    <marker id="arr" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1L10 6 1 11" fill="none" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <marker id="arrBlue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1L10 6 1 11" fill="none" stroke="#256b83" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <style>
+      text{font-family:Arial,Helvetica,sans-serif;fill:#171717}.main{font-size:25px;font-weight:600}.label{font-size:20px}.small{font-size:16px}.tiny{font-size:14px}.stage{font-size:18px;font-weight:600}.muted{fill:#555}.blue{fill:#256b83}.stroke{stroke:#333;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.box{fill:#fff;stroke:#333;stroke-width:2.3}.subbox{fill:#fff;stroke:#666;stroke-width:1.8}.arrow{stroke:#333;stroke-width:2.2;fill:none;marker-end:url(#arr);stroke-linecap:round;stroke-linejoin:round}.arrowBlue{stroke:#256b83;stroke-width:2.2;fill:none;marker-end:url(#arrBlue);stroke-linecap:round;stroke-linejoin:round}
+    </style>
+  </defs>
+  <rect width="1800" height="760" fill="#fff"/>
+  <text x="66" y="59" class="main">Target-speaker in-car voice assistant: speech → action</text>
+  <text x="66" y="91" class="small muted">The enrolled driver’s speech is isolated from cabin sound; the wake phrase opens a separate command step.</text>
+
+  <!-- Driver and vehicle, drawn as schematic pictograms -->
+  <g transform="translate(65,143)">
+    <path d="M18 145q2-9 12-16l20-36q10-18 32-24l52-14q9-3 22-3h111q28 0 46 20l43 50q5 6 15 10l8 4q5 3 5 10v19q0 8-9 8H14q-8 0-8-8v-9q0-7 12-11z" fill="#fff" stroke="#333" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M80 91l43-12q8-2 16-2h4v42H57zM154 77h108q19 0 32 16l27 26H154z" fill="#f2f5f6" stroke="#555" stroke-width="1.7" stroke-linejoin="round"/>
+    <path d="M147 77v43M17 145h346M329 124q14-3 26 5" class="stroke"/>
+    <path d="M304 91l16-4 7 9-17 4" fill="#fff" stroke="#333" stroke-width="1.7" stroke-linejoin="round"/>
+    <circle cx="87" cy="165" r="24" fill="#fff" stroke="#333" stroke-width="2.5"/><circle cx="87" cy="165" r="10" fill="#fff" stroke="#555" stroke-width="2"/>
+    <circle cx="282" cy="165" r="24" fill="#fff" stroke="#333" stroke-width="2.5"/><circle cx="282" cy="165" r="10" fill="#fff" stroke="#555" stroke-width="2"/>
+    <!-- seated driver -->
+    <circle cx="188" cy="69" r="17" fill="#fff" stroke="#333" stroke-width="2"/><path d="M170 70q1-23 19-24 17 2 17 22-10-9-36 2" fill="#333"/>
+    <path d="M166 121q2-37 21-42l19 0q20 10 21 42z" fill="#eaf2f4" stroke="#333" stroke-width="2"/>
+    <path d="M213 78q13-7 22 1m-20 9q12-5 21 1m-16 8q9-3 16 1" fill="none" stroke="#256b83" stroke-width="2"/>
+    <text x="178" y="220" text-anchor="middle" class="label">Driver speaking in cabin</text>
+    <text x="178" y="245" text-anchor="middle" class="small muted">voice + other talkers + road noise</text>
+  </g>
+
+  <!-- microphone/audio stream -->
+  <path d="M436 294H510" class="arrow"/>
+  <text x="472" y="271" text-anchor="middle" class="small">cabin audio</text>
+  <g transform="translate(526,232)">
+    <rect x="15" y="0" width="18" height="53" rx="9" fill="#fff" stroke="#333" stroke-width="2.3"/>
+    <path d="M6 36q0 35 18 35t18-35M24 71v17m-18 0h36" class="stroke"/>
+    <text x="24" y="119" text-anchor="middle" class="label">Mic</text>
+  </g>
+  <path d="M578 294H642" class="arrow"/>
+
+  <!-- Main pipeline as a connected functional schematic -->
+  <rect x="650" y="222" width="178" height="142" rx="11" class="box"/>
+  <text x="739" y="255" text-anchor="middle" class="stage">Target-speaker</text>
+  <text x="739" y="279" text-anchor="middle" class="stage">extraction</text>
+  <path d="M678 318h16l8-19 14 37 13-27 11 9h42" fill="none" stroke="#256b83" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="739" y="350" text-anchor="middle" class="tiny muted">keep enrolled voice</text>
+  <path d="M828 294H875" class="arrow"/>
+
+  <rect x="881" y="222" width="169" height="142" rx="11" class="box"/>
+  <text x="965" y="255" text-anchor="middle" class="stage">Target speech</text>
+  <text x="965" y="279" text-anchor="middle" class="stage">present?</text>
+  <circle cx="965" cy="316" r="19" fill="#fff" stroke="#333" stroke-width="2"/><path d="M955 316l7 7 14-16" fill="none" stroke="#256b83" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="965" y="350" text-anchor="middle" class="tiny muted">keep target speech</text>
+  <path d="M1050 294H1097" class="arrow"/>
+
+  <rect x="1103" y="222" width="177" height="142" rx="11" class="box"/>
+  <text x="1191" y="255" text-anchor="middle" class="stage">Wake-word</text>
+  <text x="1191" y="279" text-anchor="middle" class="stage">detector</text>
+  <path d="M1159 319h9v-12q0-23 23-23t23 23v12h9v6h-64z" fill="none" stroke="#333" stroke-width="2" stroke-linejoin="round"/>
+  <text x="1191" y="350" text-anchor="middle" class="tiny muted">“Hey car” → arm</text>
+  <path d="M1280 294H1327" class="arrow"/>
+
+  <rect x="1333" y="222" width="177" height="142" rx="11" class="box"/>
+  <text x="1421" y="255" text-anchor="middle" class="stage">Next speech</text>
+  <text x="1421" y="279" text-anchor="middle" class="stage">= command</text>
+  <path d="M1388 314h8l7-12 9 26 9-20 7 6h27" fill="none" stroke="#256b83" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1421" y="350" text-anchor="middle" class="tiny muted">wake ≠ command</text>
+  <path d="M1510 294H1556" class="arrow"/>
+
+  <rect x="1562" y="222" width="177" height="142" rx="11" class="box"/>
+  <text x="1650" y="255" text-anchor="middle" class="stage">Intent →</text>
+  <text x="1650" y="279" text-anchor="middle" class="stage">vehicle action</text>
+  <path d="M1619 319h62" class="stroke"/><path d="M1628 319v-15h28l11 15m-42 0a7 7 0 1 0 14 0m17 0a7 7 0 1 0 14 0" class="stroke"/>
+  <text x="1650" y="350" text-anchor="middle" class="tiny muted">e.g. A/C on</text>
+
+  <!-- A clean example utterance under the command-to-action mapping -->
+  <path d="M1421 365v66q0 8 8 8h112" fill="none" stroke="#777" stroke-width="1.8" stroke-dasharray="6 6" marker-end="url(#arr)" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="1548" y="403" width="191" height="58" rx="10" class="subbox"/>
+  <text x="1644" y="427" text-anchor="middle" class="small">“Turn on the air”</text>
+  <text x="1644" y="448" text-anchor="middle" class="tiny muted">intent: climate control</text>
+  <path d="M1644 461v35" class="arrowBlue"/>
+  <rect x="1570" y="502" width="148" height="55" rx="10" fill="#fff" stroke="#256b83" stroke-width="2.2"/>
+  <text x="1644" y="536" text-anchor="middle" class="label blue">A/C turns on</text>
+
+  <!-- rejected branch, makes the target-speaker concept concrete -->
+  <path d="M1015 364v69q0 9 9 9h83" fill="none" stroke="#888" stroke-width="1.8" stroke-dasharray="6 6" marker-end="url(#arr)" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="1115" y="420" width="216" height="62" rx="10" class="subbox"/>
+  <text x="1223" y="445" text-anchor="middle" class="small">Passenger / road noise</text>
+  <text x="1223" y="468" text-anchor="middle" class="tiny muted">does not trigger action</text>
+  <text x="1028" y="399" class="tiny muted">no</text>
+
+  <!-- enrollment reference, placed beneath extraction in its own lane -->
+  <rect x="652" y="405" width="206" height="66" rx="10" class="subbox"/>
+  <circle cx="679" cy="438" r="14" fill="#fff" stroke="#256b83" stroke-width="2"/><path d="M679 430v16m-6-8a6 6 0 1 0 12 0" fill="none" stroke="#256b83" stroke-width="1.8" stroke-linecap="round"/>
+  <text x="702" y="434" class="small">Enrolled voice</text><text x="702" y="455" class="tiny muted">reference: who to follow</text>
+  <path d="M755 405V374" class="arrowBlue"/>
+  <text x="771" y="393" class="tiny blue">conditions extraction</text>
+
+  <!-- legend / workflow note -->
+  <path d="M66 625H1735" stroke="#bbb" stroke-width="1"/>
+  <text x="66" y="665" class="small muted">Flow:</text>
+  <text x="120" y="665" class="small">isolate the right speaker</text><path d="M328 659h43" class="arrow"/>
+  <text x="389" y="665" class="small">confirm speech</text><path d="M523 659h43" class="arrow"/>
+  <text x="584" y="665" class="small">wait for wake phrase</text><path d="M768 659h43" class="arrow"/>
+  <text x="829" y="665" class="small">interpret next utterance</text><path d="M1044 659h43" class="arrow"/>
+  <text x="1105" y="665" class="small">map intent to action</text>
+  <text x="1735" y="718" text-anchor="end" class="tiny muted">Target-speaker extraction → presence check → wake-word detection → intent-to-action mapping</text>
+</svg>

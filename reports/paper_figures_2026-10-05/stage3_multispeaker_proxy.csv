@@ -1,0 +1,9 @@
+SNR (dB),Enrollment,Smoothed wake recall (%),False events/hour
+-5,One clip,6.3,70.3
+-5,Two clips,15.6,not reported
+0,One clip,18.8,112.5
+0,Two clips,31.3,not reported
+10,One clip,53.1,140.6
+10,Two clips,46.9,112.5
+20,One clip,25.0,42.2
+20,Two clips,21.9,51.6

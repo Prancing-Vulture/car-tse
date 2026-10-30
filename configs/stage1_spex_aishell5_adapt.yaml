@@ -1,0 +1,57 @@
+name: stage1_spex_aishell5_adapt_ft1
+sample_rate: 16000
+segment_seconds: 3.0
+multichannel: true
+use_cabin_frontend: true
+num_mics: 4
+cabin_noise: false
+spex_backend: transfer_spexplus_16k
+
+pretrained_checkpoint: "E:/prawin/snn/runs/spexplus_no_jepa_30/best.pt"
+
+spex:
+  L1_ms: 1.25
+  L2_ms: 5.0
+  L3_ms: 10.0
+  N: 256
+  B: 8
+  O: 256
+  P: 512
+  Q: 3
+  num_spks: 251
+  spk_embed_dim: 256
+  causal: false
+
+frontend:
+  ec_hidden: 128
+  spatial_channels: 64
+
+loss:
+  alpha: 0.1
+  beta: 0.1
+  gamma: 0.0
+
+train:
+  batch_size: 4
+  train_limit: 256
+  max_epochs: 2
+  grad_clip: 5.0
+  amp: true
+  manifest: stage2_presence_aishell_target.jsonl
+  val_split: presence_aishell_target/val
+  val_manifest: stage2_presence_aishell_target.jsonl
+  val_limit: 288
+  val_batch_size: 4
+  num_workers: 0
+  init_checkpoint: stage1_spex_transfer_mc_cavemove_cabin/best.pt
+  schedule:
+    - epochs: [1, 1]
+      freeze_spex: true
+      lr_encoder: 0.0
+      lr_rest: 0.0
+      lr_frontend: 1.0e-4
+    - epochs: [2, 2]
+      freeze_encoder: true
+      lr_encoder: 0.0
+      lr_rest: 1.0e-5
+      lr_frontend: 5.0e-5

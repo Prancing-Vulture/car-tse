@@ -1,0 +1,146 @@
+{
+  "run_date": "2026-10-13",
+  "timezone": "Asia/Calcutta",
+  "benchmark": "complete InCarPipeline.forward wall-clock latency",
+  "hardware": {
+    "motherboard": "Gigabyte B650 GAMING X AX V2",
+    "cpu": "AMD Ryzen 7 7700X",
+    "cpu_cores": 8,
+    "logical_processors": 16,
+    "ram_gib": 47.1,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti",
+    "gpu_memory_mib": 16311,
+    "gpu_driver": "610.88",
+    "os": "Windows 11 Pro x64 build 26200"
+  },
+  "runtime": {
+    "python": "3.14.6",
+    "pytorch": "2.14.1+cpu",
+    "cuda_available_in_pytorch": false,
+    "threads": 8
+  },
+  "input": {
+    "sample_rate_hz": 16000,
+    "context_seconds": 3.0,
+    "microphones": 4,
+    "enrollment_seconds": 2.0,
+    "type": "synthetic random waveform",
+    "seed": 20261013
+  },
+  "warmup_calls": 2,
+  "repeats_per_case": 10,
+  "normal_processing_call": {
+    "stages": [
+      "stage1",
+      "stage2_presence",
+      "stage3_kws"
+    ],
+    "median_ms": 440.9476,
+    "mean_ms": 441.80168,
+    "min_ms": 388.9558,
+    "max_ms": 505.7215,
+    "p95_ms_estimated_by_max_of_10": 505.7215,
+    "rtf": 0.1469825
+  },
+  "armed_command_completion_call": {
+    "stages": [
+      "stage1",
+      "stage2_presence",
+      "stage4_intent"
+    ],
+    "median_ms": 453.4473,
+    "mean_ms": 447.2535,
+    "min_ms": 398.0586,
+    "max_ms": 487.3511,
+    "p95_ms_estimated_by_max_of_10": 487.3511,
+    "rtf": 0.1511491,
+    "intent_ready": true
+  },
+  "thresholds": {
+    "presence": 0.0,
+    "kws": 0.0,
+    "smoothing_window": 1,
+    "required_hits": 1
+  },
+  "notes": [
+    "Thresholds overridden to ensure full processing path; not an accuracy test.",
+    "Command-completion call started with pipeline armed and a 2-second command crop available.",
+    "Excludes audio acquisition/context accumulation, OS scheduling, and vehicle action/reply playback.",
+    "GPU installed but not measured because current PyTorch build is CPU-only.",
+    "transformers is not installed; unused optional wav2vec import was shimmed for CRNN-only run."
+  ],
+  "checkpoints": {
+    "stage1": "stage1_spex_transfer_mc_cavemove_cabin/best.pt",
+    "stage2_presence": "stage2_presence_cavemove_cabin/best.pt",
+    "stage3_kws": "stage3_kws_cavemove_binary/best.pt",
+    "stage4_intent": "stage4_intent_cavemove_cabin/best.pt"
+  },
+  "audioml_base_rerun": {
+    "environment": {
+      "name": "audioml_base",
+      "python": "3.11.16",
+      "pytorch": "2.12.0+cu132",
+      "cuda": "13.2",
+      "cuda_available": true,
+      "gpu": "NVIDIA GeForce RTX 5060 Ti",
+      "cpu_threads": 8
+    },
+    "method": {
+      "warmup_calls": 3,
+      "repeats_per_case": 20,
+      "input_to_gpu_transfer_included": true,
+      "input_seed": 20261013
+    },
+    "gpu": {
+      "normal_processing_call": {
+        "median_ms": 24.20695,
+        "mean_ms": 24.349815,
+        "min_ms": 24.0302,
+        "max_ms": 25.134,
+        "p95_ms_nearest_rank": 25.1251,
+        "median_rtf": 0.00806898
+      },
+      "armed_command_completion_call": {
+        "median_ms": 27.3303,
+        "mean_ms": 31.041395,
+        "min_ms": 27.0601,
+        "max_ms": 99.0161,
+        "p95_ms_nearest_rank": 28.6394,
+        "median_rtf": 0.0091101,
+        "intent_ready": true
+      },
+      "peak_allocated_gpu_memory_mib": 185.2
+    },
+    "cpu_same_environment": {
+      "normal_processing_call": {
+        "median_ms": 469.3014,
+        "mean_ms": 470.20436,
+        "min_ms": 447.9236,
+        "max_ms": 511.0092,
+        "p95_ms_nearest_rank": 483.7835,
+        "median_rtf": 0.1564338
+      },
+      "armed_command_completion_call": {
+        "median_ms": 474.4218,
+        "mean_ms": 481.46618,
+        "min_ms": 450.5589,
+        "max_ms": 521.9463,
+        "p95_ms_nearest_rank": 513.301,
+        "median_rtf": 0.1581406
+      }
+    },
+    "gpu_speedup_vs_cpu_median": {
+      "normal_processing_call": 19.387,
+      "armed_command_completion_call": 17.36
+    },
+    "input": {
+      "sample_rate_hz": 16000,
+      "context_seconds": 3.0,
+      "microphones": 4,
+      "enrollment_seconds": 2.0,
+      "waveform": "fixed synthetic random input",
+      "seed": 20261013
+    },
+    "gates": "presence=0, KWS=0, one hit; armed command case begins in armed state"
+  }
+}

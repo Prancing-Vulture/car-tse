@@ -1,0 +1,21 @@
+{
+  "epoch": 5,
+  "train_accuracy": 0.6959161147902869,
+  "train_loss": 0.6215822253269339,
+  "sampled_positive_examples": 361,
+  "sampled_negative_examples": 1451,
+  "sampled_negative_to_positive_ratio": 4.019390581717452,
+  "val": {
+    "accuracy": 0.658974358974359,
+    "precision": 0.49387755102040815,
+    "recall": 0.9307692307692308,
+    "f1": 0.6453333333333333,
+    "examples": 390.0,
+    "true_positive": 121.0,
+    "false_positive": 124.0,
+    "false_negative": 9.0,
+    "decision_threshold": 0.29
+  },
+  "lr": 6.294095225512605e-06,
+  "best_f1": 0.6839080459770115
+}

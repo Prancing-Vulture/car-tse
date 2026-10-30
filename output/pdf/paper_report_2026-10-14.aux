@@ -1,0 +1,116 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Executive summary}{3}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Goal}{3}{subsection.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}System}{3}{subsection.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Headline results}{3}{subsection.1.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Best current component and system evidence. Percentages are percentages, SI-SDRi is in dB, and false-event rates are events per hour.}}{3}{table.1}\protected@file@percent }
+\newlabel{tab:headline}{{1}{3}{Best current component and system evidence. Percentages are percentages, SI-SDRi is in dB, and false-event rates are events per hour}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.4}What is strong}{4}{subsection.1.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.5}What is weak or not proven}{4}{subsection.1.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Research question and intended contribution}{4}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Research question}{4}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Contribution boundary}{4}{subsection.2.2}\protected@file@percent }
+\gdef \LT@i {\LT@entry 
+    {1}{92.065pt}\LT@entry 
+    {1}{125.24197pt}\LT@entry 
+    {1}{125.24197pt}\LT@entry 
+    {1}{105.65349pt}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Architecture}{5}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Runtime data flow}{5}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Runtime checkpoints}{5}{subsection.3.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Retained runtime identity used for latency and ONNX parity.}}{5}{table.2}\protected@file@percent }
+\newlabel{tab:runtime-checkpoints}{{2}{5}{Retained runtime identity used for latency and ONNX parity}{table.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Datasets and data contracts}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Training and evaluation data}{5}{subsection.4.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{Datasets and their role. The local repository contains manifests and cached derivatives; licenses must be checked again before redistribution.}}{5}{table.3}\protected@file@percent }
+\newlabel{tab:datasets}{{3}{5}{Datasets and their role. The local repository contains manifests and cached derivatives; licenses must be checked again before redistribution}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Licensing and redistribution}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Required real-driver study}{6}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Training methodology}{6}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Stage 1: target-speaker extraction}{6}{subsection.5.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Project architecture and intended production flow. The current runtime implements the learned extraction, presence, wake, state-machine, and intent blocks; real vehicle echo cancellation and seat-zone validation remain open evidence gates.}}{7}{figure.1}\protected@file@percent }
+\newlabel{fig:architecture}{{1}{7}{Project architecture and intended production flow. The current runtime implements the learned extraction, presence, wake, state-machine, and intent blocks; real vehicle echo cancellation and seat-zone validation remain open evidence gates}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Stage 2: target presence}{8}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Stage 3: wake detection}{8}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Stage 4: intent}{8}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Numerical and training safeguards}{8}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Per-stage accuracy results}{8}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Stage 1 target-speaker extraction}{8}{subsection.6.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Dual-domain held-out Stage 1 regression. There are 144 AISHELL-5 and 144 CAVEMOVE validation examples.}}{8}{table.4}\protected@file@percent }
+\newlabel{tab:stage1}{{4}{8}{Dual-domain held-out Stage 1 regression. There are 144 AISHELL-5 and 144 CAVEMOVE validation examples}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Stage 2 presence gate}{9}{subsection.6.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Frame and chunk views of the dual-domain non-wake validation cache: 1,926 training examples and 482 validation chunks.}}{9}{table.5}\protected@file@percent }
+\newlabel{tab:presence}{{5}{9}{Frame and chunk views of the dual-domain non-wake validation cache: 1,926 training examples and 482 validation chunks}{table.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Stage 3 wake-word models}{9}{subsection.6.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Representative KWS scores. F1 is split-dependent; continuous false events per hour are the deployment-relevant measure.}}{9}{table.6}\protected@file@percent }
+\newlabel{tab:kws}{{6}{9}{Representative KWS scores. F1 is split-dependent; continuous false events per hour are the deployment-relevant measure}{table.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Stage 3b speaker verification}{10}{subsection.6.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Compact cabin+Smart speaker verifier. The threshold was selected on validation and applied to the held-out Eval1 cache.}}{10}{table.7}\protected@file@percent }
+\newlabel{tab:verifier}{{7}{10}{Compact cabin+Smart speaker verifier. The threshold was selected on validation and applied to the held-out Eval1 cache}{table.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Stage 4 intent classification}{10}{subsection.6.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Intent results for the retained wav2vec2 FSC classifier.}}{10}{table.8}\protected@file@percent }
+\newlabel{tab:intent}{{8}{10}{Intent results for the retained wav2vec2 FSC classifier}{table.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}End-to-end results}{11}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Positive cross-corpus proxies}{11}{subsection.7.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Positive continuous proxies. These are not real-driver tests: enrollment, wake, and command are not guaranteed to be the same speaker.}}{11}{table.9}\protected@file@percent }
+\newlabel{tab:positive-proxies}{{9}{11}{Positive continuous proxies. These are not real-driver tests: enrollment, wake, and command are not guaranteed to be the same speaker}{table.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Long target-absent cabin negative stream}{11}{subsection.7.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces AISHELL-5 target-absent negative stream.}}{11}{table.10}\protected@file@percent }
+\newlabel{tab:aishell-negative}{{10}{11}{AISHELL-5 target-absent negative stream}{table.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Open-set non-Marvin speech}{11}{subsection.7.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Completed full-corpus open-set study (N = files; h = hours). The hard-negative and compact rows use the corrected full-context evaluator. The clean-only row is retained as a historical pre-correction diagnostic and is not directly comparable.}}{12}{table.11}\protected@file@percent }
+\newlabel{tab:smart-negative}{{11}{12}{Completed full-corpus open-set study (N = files; h = hours). The hard-negative and compact rows use the corrected full-context evaluator. The clean-only row is retained as a historical pre-correction diagnostic and is not directly comparable}{table.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}15-minute continuous streams}{12}{subsection.7.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Production readiness and release gates}{13}{section.8}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Current production-readiness audit.}}{13}{table.12}\protected@file@percent }
+\newlabel{tab:gates}{{12}{13}{Current production-readiness audit}{table.12}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Reproducibility}{13}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}Primary artifacts}{13}{subsection.9.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Representative commands}{14}{subsection.9.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.3}Jetson validation procedure}{14}{subsection.9.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Paper claims that are currently safe}{14}{section.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {11}Claims that are not currently safe}{15}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {12}Recommended next experiments}{15}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {13}Conclusion}{15}{section.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Metric definitions}{16}{appendix.A}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {B}Artifact and model transfer inventory}{17}{appendix.B}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Files included in the two transfer archives created with this report.}}{17}{table.13}\protected@file@percent }
+\newlabel{tab:transfer}{{13}{17}{Files included in the two transfer archives created with this report}{table.13}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C}References and citation placeholders}{17}{appendix.C}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {D}Ablation studies}{18}{appendix.D}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {D.1}Component ablation under passenger speech}{18}{subsection.D.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Passenger loudness ablation. The no-TSE and no-presence variants are diagnostic variants, not recommended deployments.}}{18}{table.14}\protected@file@percent }
+\newlabel{tab:component-ablation}{{14}{18}{Passenger loudness ablation. The no-TSE and no-presence variants are diagnostic variants, not recommended deployments}{table.14}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {D.2}Temporal and enrollment ablation}{18}{subsection.D.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces Runtime temporal settings on the same eight-scene proxy.}}{18}{table.15}\protected@file@percent }
+\newlabel{tab:temporal}{{15}{18}{Runtime temporal settings on the same eight-scene proxy}{table.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {D.3}Channel and speaker gate ablation}{18}{subsection.D.3}\protected@file@percent }
+\gdef \LT@ii {\LT@entry 
+    {1}{132.83044pt}\LT@entry 
+    {3}{112.37479pt}\LT@entry 
+    {3}{128.79976pt}\LT@entry 
+    {1}{68.77246pt}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {D.4}Verifier scale and fusion}{19}{subsection.D.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces Speaker-verifier data scaling and ensemble diagnostic at threshold 0.30.}}{19}{table.16}\protected@file@percent }
+\newlabel{tab:verifier-ablation}{{16}{19}{Speaker-verifier data scaling and ensemble diagnostic at threshold 0.30}{table.16}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {E}Latency, footprint, and deployment}{19}{appendix.E}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {E.1}Measurement contract}{19}{subsection.E.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {E.2}Component latency}{19}{subsection.E.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {17}{Per-component latency in milliseconds. Values are mean / p50 / p95.}}{19}{table.17}\protected@file@percent }
+\newlabel{tab:component-latency}{{17}{19}{Per-component latency in milliseconds. Values are mean / p50 / p95}{table.17}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {E.3}Composite latency}{20}{subsection.E.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Full reference pipeline model-forward timing.}}{20}{table.18}\protected@file@percent }
+\newlabel{tab:composite-latency}{{18}{20}{Full reference pipeline model-forward timing}{table.18}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {E.4}Streaming runner}{20}{subsection.E.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {19}{\ignorespaces Streaming simulation on the development host. RTF below 1.0 means the runner keeps up with the replayed audio.}}{20}{table.19}\protected@file@percent }
+\newlabel{tab:streaming}{{19}{20}{Streaming simulation on the development host. RTF below 1.0 means the runner keeps up with the replayed audio}{table.19}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {E.5}ONNX deployment path}{20}{subsection.E.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {20}{\ignorespaces ONNX streaming optimization.}}{20}{table.20}\protected@file@percent }
+\newlabel{tab:onnx}{{20}{20}{ONNX streaming optimization}{table.20}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {E.6}Footprint}{21}{subsection.E.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {21}{\ignorespaces Retained PyTorch reference footprint.}}{21}{table.21}\protected@file@percent }
+\newlabel{tab:footprint}{{21}{21}{Retained PyTorch reference footprint}{table.21}{}}
+\gdef \@abspage@last{21}
