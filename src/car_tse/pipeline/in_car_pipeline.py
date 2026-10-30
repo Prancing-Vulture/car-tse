@@ -221,6 +221,7 @@ class InCarPipeline:
         self.target_kws = target_kws
         self.target_kws_secondary = target_kws_secondary
         self.compact_speaker_verifier = compact_speaker_verifier
+        self.stage23_fusion = None
         self.target_kws_fusion_mode = str(target_kws_fusion_mode).lower()
         self.intent = intent
         self.presence_threshold = presence_threshold
@@ -846,6 +847,7 @@ class InCarPipeline:
         multichannel: torch.Tensor | None = None,
         pre_extracted: torch.Tensor | None = None,
         playback_ref: torch.Tensor | None = None,
+        audio_start_sample: int | None = None,
     ) -> tuple[PipelineOutput, PipelineState]:
         """Run one streaming step.
 
@@ -863,6 +865,15 @@ class InCarPipeline:
             mixture = mixture.unsqueeze(0)
         if enrollment.dim() == 1:
             enrollment = enrollment.unsqueeze(0)
+        new_audio_start_sample = (
+            int(state.stream_sample_cursor)
+            if audio_start_sample is None
+            else max(0, int(audio_start_sample))
+        )
+        state.stream_sample_cursor = max(
+            int(state.stream_sample_cursor),
+            new_audio_start_sample + int(mixture.shape[-1]),
+        )
         if multichannel is not None and multichannel.dim() == 2:
             multichannel = multichannel.unsqueeze(0)
         # ``state.playback_ref`` remains a backwards-compatible static hook.

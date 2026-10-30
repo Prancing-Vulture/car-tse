@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import threading
 import time
+import inspect
 from typing import Any, Callable
 
 import numpy as np
@@ -139,6 +140,15 @@ class StreamingRunner:
         if overload_policy not in ("drop_oldest", "catch_up"):
             raise ValueError("overload_policy must be 'drop_oldest' or 'catch_up'")
         self.forward = forward
+        try:
+            parameters = inspect.signature(forward).parameters.values()
+            self._forward_accepts_audio_start_sample = any(
+                parameter.name == "audio_start_sample"
+                or parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters
+            )
+        except (TypeError, ValueError):
+            self._forward_accepts_audio_start_sample = False
         self.sample_rate = int(sample_rate)
         self.window_samples = int(round(float(window_seconds) * self.sample_rate))
         self.hop_samples = max(1, int(round(float(hop_seconds) * self.sample_rate)))
@@ -309,6 +319,8 @@ class StreamingRunner:
             mixture_tensor = mixture_tensor.to(self.device)
         started = time.perf_counter()
         forward_kwargs: dict[str, Any] = {"multichannel": multichannel_tensor}
+        if self._forward_accepts_audio_start_sample:
+            forward_kwargs["audio_start_sample"] = start
         if playback_tensor is not None:
             forward_kwargs["playback_ref"] = playback_tensor
         output, self.state = self.forward(
