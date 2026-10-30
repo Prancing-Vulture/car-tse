@@ -8,7 +8,7 @@ air-conditioning, and music-playback conditions.
 The included `stream_rec/stream_trimmed_for_alignment.wav` is the requested
 demo recording. It is stereo, so it is not a four-microphone condition trial
 and must not be used to claim passenger rejection or per-condition accuracy.
-The generated PNGs are local outputs and are not required by these scripts.
+Generated PNGs are local outputs and are not committed.
 
 ## 1. Get the branch and activate the Xavier environment
 
@@ -37,6 +37,42 @@ ls checkpoints/car_tse_spexplus_from_stage1.pt
 The evaluation config also expects the Stage 1, 2, 3, and 4 checkpoints named
 in `configs/eval_end_to_end_cavemove.yaml` under the configured checkpoint
 root. The script records checkpoint hashes in its JSON output.
+
+## Reproduce the stream recording and its figures
+
+The branch contains the audio at `stream_rec/stream_trimmed_for_alignment.wav`.
+Install Matplotlib in the existing venv if it is not already available:
+
+```bash
+python -m pip install matplotlib
+```
+
+Run the paced replay to regenerate both figures and save per-window metrics:
+
+```bash
+mkdir -p logs
+python scripts/eval/reproduce_stream_recording.py \
+  --audio stream_rec/stream_trimmed_for_alignment.wav \
+  --enrollment data/enrollment.wav \
+  --config configs/eval_end_to_end_cavemove.yaml \
+  --paths configs/paths.yaml \
+  --base-checkpoint checkpoints/car_tse_spexplus_from_stage1.pt \
+  --device cuda \
+  --command-delay-calls 5 \
+  --command-timeout-calls 12 \
+  --kws-threshold 0.4 \
+  --mode all \
+  --output-dir stream_rec/reproduced \
+  --metrics-output logs/stream_recording_metrics.json \
+  --windows-csv logs/stream_recording_windows.csv
+```
+
+This creates `stream_rec/reproduced/tse_speaker_and_removed_component.png`
+and `stream_rec/reproduced/stagewise_processing_paper_style.png`. To rerun the
+audio and write metrics without generating images, use the same command with
+`--mode metrics`. The sample is stereo; the script downmixes it and repeats
+the signal to four model inputs. It demonstrates the replay and plotting path,
+not four-microphone spatial separation or condition-wise performance.
 
 The recorder needs SoundDevice and PortAudio. Install them in the existing
 Xavier environment without replacing its CUDA-enabled PyTorch:
