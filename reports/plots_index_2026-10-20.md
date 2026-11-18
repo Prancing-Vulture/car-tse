@@ -75,6 +75,15 @@ rendered with a generic classification renderer that expected
 `scripts/reporting/plot_stage1_history.py`; the other Stage-1 figures were
 visually checked and contain plotted data.
 
+### Stage-3 plot audit
+
+The target-speaker KWS comparison figure was repaired on 2026-11-18. The
+historical Stage-3 JSONL logs contain `train_accuracy` and validation
+accuracy/F1/precision/recall, but no `train_loss`. The old generic renderer
+therefore produced an empty training-loss panel. The figure is now generated
+by `scripts/reporting/plot_stage3_target_kws_history.py`, uses only recorded
+metrics, and explicitly notes that training loss was not inferred.
+
 The PNG and PDF variants are both tracked where available. The current
 end-to-end figures use the corrected FT6 1,000-scene logs, not the older
 candidate comparison plots. The plots remain synthetic/clean proxy evidence;

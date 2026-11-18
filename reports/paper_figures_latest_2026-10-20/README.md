@@ -36,7 +36,12 @@ recommended soft-gate configuration is
   training-history comparison. The current dual-domain FT1 log contains only
   a final summary, so this is not a current FT1 epoch curve.
 - `stage3_target_kws_negative_calibrated_comparison_2026-10-16.*` — target-KWS
-  candidate training/validation comparison.
+  candidate training/validation comparison. It was regenerated on 2026-11-18
+  with `scripts/reporting/plot_stage3_target_kws_history.py`: the old blank
+  panel expected `train_loss`, which these historical Stage-3 logs never
+  recorded. The repaired figure uses training accuracy plus validation
+  accuracy, F1, precision, and recall, and explicitly states that loss was not
+  inferred.
 - `compact_speaker_verifier_*` — speaker-verifier training evidence.
 - `stage4_intent_runtime_jitter_clean_overlap_ft6_fromft4_2026-10-17.*` —
   current FT6 intent fine-tuning curves.

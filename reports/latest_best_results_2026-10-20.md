@@ -234,6 +234,11 @@ epoch history. Its plotted comparison therefore uses older retained Stage-2
 runs with complete histories; this limitation is documented in the figure-pack
 README.
 
+The Stage-3 target-KWS comparison was regenerated after audit because its
+historical logs did not contain per-epoch training loss. The repaired figure
+uses the recorded training accuracy and validation accuracy/F1/precision/recall
+instead of showing an empty or inferred loss panel.
+
 ## 8. Evidence boundary and production status
 
 The system is **not production-ready**. The main blockers are:
