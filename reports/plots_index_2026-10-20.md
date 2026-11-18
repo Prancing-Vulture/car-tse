@@ -89,9 +89,19 @@ historical Stage-3 JSONL logs contain `train_accuracy` and validation
 accuracy/F1/precision/recall, but no `train_loss`. The old generic renderer
 therefore produced an empty training-loss panel. The figure is now generated
 by `scripts/reporting/plot_stage3_target_kws_history.py`, uses only recorded
-metrics, and explicitly notes that training loss was not inferred.
+metrics, and explicitly notes that training loss was not inferred. It also
+labels all validation values as fixed-threshold epoch metrics. The roughly
+0.70 maximum F1 in this figure is correct for that protocol; the 97.40% value
+reported elsewhere is a separate threshold-swept TSE-domain operating point,
+not an epoch value from these runs. See
+`reports/stage3_epoch_plot_metric_reconciliation_2026-11-18.md`.
 
 The PNG and PDF variants are both tracked where available. The current
 end-to-end figures use the corrected FT6 1,000-scene logs, not the older
 candidate comparison plots. The plots remain synthetic/clean proxy evidence;
 they do not establish same-driver real-cabin reliability or Jetson latency.
+
+The companion `stage3_kws_epoch_vs_operating_point_reconciliation_2026-11-18`
+figure makes the protocol difference visual: the epoch-history maxima are
+0.6667 and 0.7036 at the fixed 0.50 point, while the selected 0.9742 result is
+from a separate threshold sweep.

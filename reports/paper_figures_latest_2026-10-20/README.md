@@ -49,8 +49,15 @@ recommended soft-gate configuration is
   with `scripts/reporting/plot_stage3_target_kws_history.py`: the old blank
   panel expected `train_loss`, which these historical Stage-3 logs never
   recorded. The repaired figure uses training accuracy plus validation
-  accuracy, F1, precision, and recall, and explicitly states that loss was not
-  inferred.
+  accuracy, F1, precision, and recall at the fixed binary argmax threshold and
+  explicitly states that loss and per-epoch threshold sweeps were not inferred.
+  Its roughly 0.70 epoch F1 is not the separate 97.40% threshold-swept
+  TSE-domain operating point reported in the paper.
+- `stage3_kws_epoch_vs_operating_point_reconciliation_2026-11-18.*` — direct
+  visual reconciliation of the fixed-threshold epoch maxima, the selected
+  97.40% threshold-swept TSE-domain point, and the current stored target-KWS
+  validation point. The protocols are labeled separately and must not be
+  treated as one curve.
 - `compact_speaker_verifier_*` — speaker-verifier training evidence.
 - `stage4_intent_runtime_jitter_clean_overlap_ft6_fromft4_2026-10-17.*` —
   current FT6 intent fine-tuning curves.

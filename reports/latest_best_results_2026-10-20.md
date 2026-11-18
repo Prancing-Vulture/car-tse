@@ -36,6 +36,11 @@ The component picture is stronger than the full-pipeline safety picture:
   reached 97.40% F1 but still had approximately 28.8 false accepts/hour and
   is not the current continuous-safety result.
 
+The Stage-3 epoch-plot reconciliation is documented in
+`reports/stage3_epoch_plot_metric_reconciliation_2026-11-18.md`. The roughly
+0.70 F1 epoch curve is the correct fixed-threshold history; 97.40% is not an
+epoch metric and is shown separately as a threshold-swept operating point.
+
 The main remaining bottleneck is therefore not clean intent classification or
 basic TSE training. It is continuous authorization: target-speaker gating,
 false-wake suppression, command endpointing, and the lack of a same-driver

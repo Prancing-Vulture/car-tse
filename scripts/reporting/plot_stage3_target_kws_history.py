@@ -1,10 +1,13 @@
 #!/usr/bin/env python
-"""Render Stage-3 target-speaker KWS training curves.
+"""Render the fixed-threshold Stage-3 target-speaker KWS epoch history.
 
-The Stage-3 trainer records training accuracy and validation metrics, but the
-historical runs used for the paper figure did not record per-epoch training
-loss.  This renderer therefore uses only fields present in the source JSONL
-and replaces the misleading empty loss panel with validation precision/recall.
+The Stage-3 trainer records training accuracy and validation metrics at the
+argmax operating point (equivalent to a binary probability threshold of 0.50),
+but the historical runs used for the paper figure did not record per-epoch
+training loss or per-epoch threshold sweeps.  This renderer therefore uses only
+fields present in the source JSONL and labels the fixed-threshold metrics
+explicitly.  It must not be used to imply that a separately threshold-tuned
+operating point is an epoch metric.
 """
 
 from __future__ import annotations
@@ -63,7 +66,13 @@ def main() -> int:
     parser.add_argument("--pdf-output", type=Path, default=None)
     parser.add_argument(
         "--title",
-        default="Target-speaker KWS fine-tuning: prior large model vs negative-calibrated candidate",
+        default="Target-speaker KWS epoch history at fixed validation threshold 0.50",
+    )
+    parser.add_argument(
+        "--validation-threshold",
+        type=float,
+        default=0.50,
+        help="Threshold used by the logged binary argmax metrics (display only).",
     )
     args = parser.parse_args()
 
@@ -78,27 +87,52 @@ def main() -> int:
 
     # These runs do not contain train_loss.  Do not fabricate it or leave an
     # empty panel; training accuracy is the available training-side metric.
+    threshold_label = f"{args.validation_threshold:.2f}"
     plot_lines(axes[0, 0], histories, [("train_accuracy", "")], "Training accuracy", "Accuracy")
-    plot_lines(axes[0, 1], histories, [("val.accuracy", "")], "Validation accuracy", "Accuracy")
-    plot_lines(axes[1, 0], histories, [("val.f1", "")], "Validation F1", "F1")
+    plot_lines(
+        axes[0, 1],
+        histories,
+        [("val.accuracy", "")],
+        f"Validation accuracy @ threshold {threshold_label}",
+        "Accuracy",
+    )
+    plot_lines(
+        axes[1, 0],
+        histories,
+        [("val.f1", "")],
+        f"Validation F1 @ threshold {threshold_label}",
+        "F1",
+    )
     plot_lines(
         axes[1, 1],
         histories,
-        [("val.precision", " precision"), ("val.recall", " recall")],
-        "Validation precision and recall",
+        [
+            ("val.precision", f" precision @ {threshold_label}"),
+            ("val.recall", f" recall @ {threshold_label}"),
+        ],
+        f"Validation precision and recall @ {threshold_label}",
         "Score",
     )
 
     fig.suptitle(args.title)
     fig.text(
         0.5,
-        0.018,
-        "Per-epoch training loss was not recorded for these historical Stage-3 runs; no loss curve is inferred.",
+        0.030,
+        "Epoch metrics are from the negative-heavy target-KWS validation split (n=1,629) at the fixed binary argmax threshold. "
+        "The reported 97.40% F1 is a separate threshold-swept TSE-domain operating point, not an epoch value from these runs.",
         ha="center",
-        fontsize=9,
+        fontsize=8.5,
         color="#555555",
     )
-    fig.tight_layout(rect=(0.0, 0.055, 1.0, 0.96))
+    fig.text(
+        0.5,
+        0.012,
+        "Per-epoch training loss and per-epoch threshold sweeps were not recorded; no missing curves are inferred.",
+        ha="center",
+        fontsize=8.5,
+        color="#555555",
+    )
+    fig.tight_layout(rect=(0.0, 0.085, 1.0, 0.96))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.output, dpi=300, bbox_inches="tight")
     if args.pdf_output is not None:
