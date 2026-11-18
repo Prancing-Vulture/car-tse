@@ -28,13 +28,20 @@ auditable; historical figures must not be presented as the current FT6 result.
 
 ## Stage 2 — target-presence gate
 
-- `reports/figures/stage2_presence_training_comparison_2026-10-20.*` (new
-  comparison generated from the logged training histories)
+- `reports/figures/stage2_presence_current_dual_domain_validation_2026-11-18.*`
+  (authoritative current-checkpoint validation summary)
+- `reports/figures/stage2_presence_training_comparison_2026-10-20.*`
+  (compatibility alias to the corrected current-validation figure)
+- `reports/figures/stage2_presence_historical_training_comparison_2026-10-20.*`
+  (preserved historical training-history diagnostic)
 
-The current dual-domain FT1 log stores only its final summary, so the new
-training-history figure compares the Stage-2 runs that retain epoch histories
-(`gsc_aishell_cached`, `gsc_aishell_richer`, and `aishell_target`). Their
-source JSON histories remain the reproducibility source of truth.
+The old training-history figure mixed three older runs
+(`gsc_aishell_cached`, `gsc_aishell_richer`, and `aishell_target`) and plotted
+their fixed-threshold F1 values. It was not the current dual-domain FT1
+checkpoint and could therefore show values around 0.5--0.9. The authoritative
+current figure is generated from
+`logs/stage2_frame_presence_dual_domain_nonwake_ft1/metrics_last.json`, which
+stores the final held-out frame/chunk metrics for the reported checkpoint.
 
 ## Stage 3 — wake-word / target-conditioned KWS
 

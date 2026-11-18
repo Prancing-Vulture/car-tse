@@ -224,15 +224,18 @@ curves, ablations, resource plots, and external benchmark figures:
 - `reports/figures/ft6_corrected_multispeaker_1000_2026-10-20.{png,pdf}`
 - `reports/figures/ft6_resource_summary_2026-10-20.{png,pdf}`
 - `reports/figures/stage1_spex_fsc_passenger_cochannel_ft1_training_2026-10-16.{png,pdf}`
+- `reports/figures/stage2_presence_current_dual_domain_validation_2026-11-18.{png,pdf}`
 - `reports/figures/stage2_presence_training_comparison_2026-10-20.{png,pdf}`
+  (compatibility alias to the corrected current-validation figure)
 - `reports/figures/stage3_target_kws_negative_calibrated_comparison_2026-10-16.{png,pdf}`
 - `reports/figures/stage4_intent_runtime_jitter_clean_overlap_ft6_fromft4_2026-10-17.{png,pdf}`
 - `reports/figures/compact_speaker_verifier_cabin_smart_nodistill_h256_training_2026-10-16.{png,pdf}`
 
-The current Stage-2 dual-domain FT1 log contains only a final summary, not an
-epoch history. Its plotted comparison therefore uses older retained Stage-2
-runs with complete histories; this limitation is documented in the figure-pack
-README.
+The Stage-2 figure was corrected on 2026-11-18 after an audit found that the
+previous artifact plotted older, cross-dataset training histories rather than
+the current dual-domain FT1 checkpoint. The corrected figure is a held-out
+validation summary, not an epoch curve, because the current log records only a
+final summary. The historical comparison is preserved separately for audit.
 
 The Stage-3 target-KWS comparison was regenerated after audit because its
 historical logs did not contain per-epoch training loss. The repaired figure

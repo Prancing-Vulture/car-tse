@@ -32,9 +32,18 @@ recommended soft-gate configuration is
   regenerated on 2026-10-20 with `scripts/reporting/plot_stage1_history.py`.
   The original artifact was empty because a generic classification-curve
   renderer was pointed at Stage-1 SI-SDR logs.
-- `stage2_presence_training_comparison_2026-10-20.*` — retained Stage-2
-  training-history comparison. The current dual-domain FT1 log contains only
-  a final summary, so this is not a current FT1 epoch curve.
+- `stage2_presence_current_dual_domain_validation_2026-11-18.*` — authoritative
+  Stage-2 figure for the current dual-domain FT1 checkpoint. It is rendered
+  from `logs/stage2_frame_presence_dual_domain_nonwake_ft1/metrics_last.json`
+  and reports frame F1 0.904 at threshold 0.50, best frame F1 0.913 at 0.65,
+  and chunk F1 0.996.
+- `stage2_presence_training_comparison_2026-10-20.*` — compatibility alias to
+  the corrected current-validation figure above. The filename is retained so
+  existing paper references do not resolve to the misleading historical plot.
+- `stage2_presence_historical_training_comparison_2026-10-20.*` — preserved
+  three-run training-history diagnostic. It combines older, different
+  datasets and checkpoints; its lower fixed-threshold F1 values must not be
+  cited as the current dual-domain FT1 result.
 - `stage3_target_kws_negative_calibrated_comparison_2026-10-16.*` — target-KWS
   candidate training/validation comparison. It was regenerated on 2026-11-18
   with `scripts/reporting/plot_stage3_target_kws_history.py`: the old blank
